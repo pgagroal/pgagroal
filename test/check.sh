@@ -170,46 +170,48 @@ cleanup() {
       fi
       
       # Generate LLVM coverage reports
-      if ls "$COVERAGE_DIR"/*.profraw >/dev/null 2>&1; then
-       echo "Generating coverage report, expect error when the binary is not covered at all"
-       llvm-profdata merge -sparse $COVERAGE_DIR/*.profraw -o $COVERAGE_DIR/coverage.profdata
+      if [[ $COVERAGE == "YES" ]]; then
+         if ls "$COVERAGE_DIR"/*.profraw >/dev/null 2>&1; then
+          echo "Generating coverage report, expect error when the binary is not covered at all"
+          llvm-profdata merge -sparse $COVERAGE_DIR/*.profraw -o $COVERAGE_DIR/coverage.profdata
 
-       echo "Generating $COVERAGE_DIR/coverage-report-libpgagroal.txt"
-       llvm-cov report $EXECUTABLE_DIRECTORY/libpgagroal.so \
-         --instr-profile=$COVERAGE_DIR/coverage.profdata \
-         --format=text > $COVERAGE_DIR/coverage-report-libpgagroal.txt
-       echo "Generating $COVERAGE_DIR/coverage-report-pgagroal.txt"
-       llvm-cov report $EXECUTABLE_DIRECTORY/pgagroal \
-         --instr-profile=$COVERAGE_DIR/coverage.profdata \
-         --format=text > $COVERAGE_DIR/coverage-report-pgagroal.txt
-      echo "Generating $COVERAGE_DIR/coverage-report-pgagroal-cli.txt"
-      llvm-cov report $EXECUTABLE_DIRECTORY/pgagroal-cli \
-         --instr-profile=$COVERAGE_DIR/coverage.profdata \
-         --format=text > $COVERAGE_DIR/coverage-report-pgagroal-cli.txt
-      echo "Generating $COVERAGE_DIR/coverage-report-pgagroal-admin.txt"
-      llvm-cov report $EXECUTABLE_DIRECTORY/pgagroal-admin \
-         --instr-profile=$COVERAGE_DIR/coverage.profdata \
-         --format=text > $COVERAGE_DIR/coverage-report-pgagroal-admin.txt
+          echo "Generating $COVERAGE_DIR/coverage-report-libpgagroal.txt"
+          llvm-cov report $EXECUTABLE_DIRECTORY/libpgagroal.so \
+            --instr-profile=$COVERAGE_DIR/coverage.profdata \
+            --format=text > $COVERAGE_DIR/coverage-report-libpgagroal.txt
+          echo "Generating $COVERAGE_DIR/coverage-report-pgagroal.txt"
+          llvm-cov report $EXECUTABLE_DIRECTORY/pgagroal \
+            --instr-profile=$COVERAGE_DIR/coverage.profdata \
+            --format=text > $COVERAGE_DIR/coverage-report-pgagroal.txt
+         echo "Generating $COVERAGE_DIR/coverage-report-pgagroal-cli.txt"
+         llvm-cov report $EXECUTABLE_DIRECTORY/pgagroal-cli \
+            --instr-profile=$COVERAGE_DIR/coverage.profdata \
+            --format=text > $COVERAGE_DIR/coverage-report-pgagroal-cli.txt
+         echo "Generating $COVERAGE_DIR/coverage-report-pgagroal-admin.txt"
+         llvm-cov report $EXECUTABLE_DIRECTORY/pgagroal-admin \
+            --instr-profile=$COVERAGE_DIR/coverage.profdata \
+            --format=text > $COVERAGE_DIR/coverage-report-pgagroal-admin.txt
 
-       echo "Generating $COVERAGE_DIR/coverage-libpgagroal.txt"
-       llvm-cov show $EXECUTABLE_DIRECTORY/libpgagroal.so \
-         --instr-profile=$COVERAGE_DIR/coverage.profdata \
-         --format=text > $COVERAGE_DIR/coverage-libpgagroal.txt
-       echo "Generating $COVERAGE_DIR/coverage-pgagroal.txt"
-       llvm-cov show $EXECUTABLE_DIRECTORY/pgagroal \
-         --instr-profile=$COVERAGE_DIR/coverage.profdata \
-         --format=text > $COVERAGE_DIR/coverage-pgagroal.txt
-      echo "Generating $COVERAGE_DIR/coverage-pgagroal-cli.txt"
-      llvm-cov show $EXECUTABLE_DIRECTORY/pgagroal-cli \
-         --instr-profile=$COVERAGE_DIR/coverage.profdata \
-         --format=text > $COVERAGE_DIR/coverage-pgagroal-cli.txt
-      echo "Generating $COVERAGE_DIR/coverage-pgagroal-admin.txt"
-      llvm-cov show $EXECUTABLE_DIRECTORY/pgagroal-admin \
-         --instr-profile=$COVERAGE_DIR/coverage.profdata \
-         --format=text > $COVERAGE_DIR/coverage-pgagroal-admin.txt
+          echo "Generating $COVERAGE_DIR/coverage-libpgagroal.txt"
+          llvm-cov show $EXECUTABLE_DIRECTORY/libpgagroal.so \
+            --instr-profile=$COVERAGE_DIR/coverage.profdata \
+            --format=text > $COVERAGE_DIR/coverage-libpgagroal.txt
+          echo "Generating $COVERAGE_DIR/coverage-pgagroal.txt"
+          llvm-cov show $EXECUTABLE_DIRECTORY/pgagroal \
+            --instr-profile=$COVERAGE_DIR/coverage.profdata \
+            --format=text > $COVERAGE_DIR/coverage-pgagroal.txt
+         echo "Generating $COVERAGE_DIR/coverage-pgagroal-cli.txt"
+         llvm-cov show $EXECUTABLE_DIRECTORY/pgagroal-cli \
+            --instr-profile=$COVERAGE_DIR/coverage.profdata \
+            --format=text > $COVERAGE_DIR/coverage-pgagroal-cli.txt
+         echo "Generating $COVERAGE_DIR/coverage-pgagroal-admin.txt"
+         llvm-cov show $EXECUTABLE_DIRECTORY/pgagroal-admin \
+            --instr-profile=$COVERAGE_DIR/coverage.profdata \
+            --format=text > $COVERAGE_DIR/coverage-pgagroal-admin.txt
          
-       echo "Coverage --> $COVERAGE_DIR"
-     fi
+          echo "Coverage --> $COVERAGE_DIR"
+       fi
+    fi
       
       echo "Logs --> $LOG_DIR, $PG_LOG_DIR"
       sudo chmod -R 700 "$PGAGROAL_ROOT_DIR"
@@ -506,6 +508,7 @@ usage() {
   echo "  ci-nonbuild            Run in CI mode (local PostgreSQL, skip build step)"
   echo "  run-configs-ci-nonbuild Run multiple configuration tests using local PostgreSQL, skip build step"
   echo "  (no sub-command)       Default: run all tests in containerized mode"
+  echo "  gcc                    Compile with gcc and no-coverage"
   exit 1
 }
 
@@ -514,17 +517,28 @@ run_tests() {
   if $CONTAINER_ENGINE image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
     echo "Image $IMAGE_NAME exists, skip building"
   else
-    if [[   $MODE != "ci" ]]; then
+    if [[ $MODE != "ci" ]]; then
       build_postgresql_image
     fi
   fi
 
+  if [[ $MODE == "gcc" ]]; then
+    COVERAGE=NO
+  else
+    COVERAGE=YES
+  fi
+
   echo "Preparing the pgagroal directory"
-  # Set up LLVM coverage
-  export LLVM_PROFILE_FILE="$COVERAGE_DIR/coverage-%m-%p.profraw"
   sudo rm -Rf "$PGAGROAL_ROOT_DIR"
   mkdir -p "$PGAGROAL_ROOT_DIR"
-  mkdir -p "$LOG_DIR" "$PG_LOG_DIR" "$COVERAGE_DIR" "$BASE_DIR" "$RESOURCE_DIRECTORY"
+  # Set up LLVM coverage
+  if [[ $COVERAGE == "YES" ]]; then 
+    export LLVM_PROFILE_FILE="$COVERAGE_DIR/coverage-%m-%p.profraw"
+    mkdir -p "$LOG_DIR" "$PG_LOG_DIR" "$COVERAGE_DIR" "$BASE_DIR" "$RESOURCE_DIRECTORY"
+  else 
+    mkdir -p "$LOG_DIR" "$PG_LOG_DIR" "$BASE_DIR" "$RESOURCE_DIRECTORY"
+  fi
+
   cp -R "$PROJECT_DIRECTORY/test/resource" $BASE_DIR
   mkdir -p "$CONFIGURATION_DIRECTORY"
   mkdir -p "$PROJECT_DIRECTORY/log"
@@ -540,12 +554,17 @@ run_tests() {
    echo "Building pgagroal"
    mkdir -p "$PROJECT_DIRECTORY/build"
    cd "$PROJECT_DIRECTORY/build"
-   # Configure build with LLVM coverage
-   export CC=$(which clang)
-   echo "Using Clang compiler with LLVM coverage: $CC"
-   cmake -DCMAKE_C_COMPILER=clang \
+   # Configure build with LLVM coverage or GCC without coverage
+   if [[ $MODE != gcc ]]; then
+     export CC=$(which clang)
+     echo "Using Clang compiler with LLVM coverage: $CC"
+   else
+     export CC=$(which gcc)
+     echo "Using GCC compiler without coverage: $CC"
+   cmake -DCMAKE_C_COMPILER=$CC \
         -DCMAKE_BUILD_TYPE=Debug \
-         ..
+        ..
+   fi
    make -j$(nproc)
    cd ..
   fi
@@ -592,11 +611,8 @@ if [[ $# -gt 1 ]]; then
 elif [[ $# -eq 1 ]]; then
   if [[ "$1" == "setup" ]]; then
     build_postgresql_image
-    # Install LLVM coverage dependencies
-    echo "Installing LLVM coverage tools..."
+    # Install LLVM coverage dependencies or GCC dependencies
     sudo dnf install -y \
-      clang \
-      clang-analyzer \
       cmake \
       make \
       libev libev-devel \
@@ -609,9 +625,20 @@ elif [[ $# -eq 1 ]]; then
       libatomic \
       bzip2 bzip2-devel \
       libarchive libarchive-devel \
-      libasan libasan-static \
-      check check-devel check-static \
-      llvm
+      check check-devel check-static
+    if [[ $MODE != "gcc" ]]; then
+      echo "Installing LLVM coverage tools..."
+      sudo dnf install -y \
+        clang \
+        clang-analyzer \
+        llvm \
+        libasan \
+        libasan-static
+    else
+      echo "Using GCC mode (no LLVM coverage tools)"
+      sudo dnf install -y gcc gcc-c++
+    fi
+
     echo "Setup complete"
   elif [[ "$1" == "clean" ]]; then
     sudo rm -Rf $COVERAGE_DIR
@@ -641,6 +668,10 @@ elif [[ $# -eq 1 ]]; then
     PORT=5432
     trap cleanup EXIT
     run_tests "run-configs-ci-nonbuild"
+  elif [[ "$1" == "gcc" ]]; then
+    MODE="gcc"
+    trap cleanup EXIT SIGINT
+    run_tests
   else
     echo "Invalid parameter: $1"
     usage # If an invalid parameter is provided, show usage and exit

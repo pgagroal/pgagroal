@@ -227,7 +227,7 @@ jobs:
             bridge-utils
           sudo systemctl start libvirtd
       - name: Setup FreeBSD VM
-        uses: vmactions/freebsd-vm@1885b78bae4c4c4b331b4b0461d23cc14cc72387
+        uses: vmactions/freebsd-vm@v1
         id: freebsd-vm
         with:
           release: "14.3"
@@ -247,7 +247,6 @@ jobs:
               sudo \
               libev \
               cmake \
-              llvm11 \
               postgresql17-server \
               postgresql17-contrib \
               zstd \
