@@ -28,7 +28,7 @@ This run uses:
 pgbench -M simple
 ```
 
-![pgbench simple](https://github.com/agroal/pgagroal/raw/master/doc/images/perf-simple.png "pgbench simple")
+![pgbench simple](https://github.com/pgagroal/pgagroal/raw/master/doc/images/perf-simple.png "pgbench simple")
 
 ### Extended Protocol
 
@@ -38,7 +38,7 @@ This run uses:
 pgbench -M extended
 ```
 
-![pgbench extended](https://github.com/agroal/pgagroal/raw/master/doc/images/perf-extended.png "pgbench extended")
+![pgbench extended](https://github.com/pgagroal/pgagroal/raw/master/doc/images/perf-extended.png "pgbench extended")
 
 ### Prepared Statements
 
@@ -48,7 +48,7 @@ This run uses:
 pgbench -M prepared
 ```
 
-![pgbench prepared](https://github.com/agroal/pgagroal/raw/master/doc/images/perf-prepared.png "pgbench prepared")
+![pgbench prepared](https://github.com/pgagroal/pgagroal/raw/master/doc/images/perf-prepared.png "pgbench prepared")
 
 ### Read-Only Workload
 
@@ -58,7 +58,7 @@ This run uses:
 pgbench -S
 ```
 
-![pgbench readonly](https://github.com/agroal/pgagroal/raw/master/doc/images/perf-readonly.png "pgbench readonly")
+![pgbench readonly](https://github.com/pgagroal/pgagroal/raw/master/doc/images/perf-readonly.png "pgbench readonly")
 
 ## Performance Tuning
 

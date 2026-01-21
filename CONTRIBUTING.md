@@ -44,7 +44,7 @@ in order to get the necessary dependencies.
 To build the `master` branch:
 
 ```
-git clone https://github.com/agroal/pgagroal.git
+git clone https://github.com/pgagroal/pgagroal.git
 cd pgagroal
 mkdir build
 cd build
@@ -87,7 +87,7 @@ for more information.
 
 ## Discuss a Feature
 
-You can discuss bug reports, enhancements and features in our [forum](https://github.com/agroal/pgagroal/discussions).
+You can discuss bug reports, enhancements and features in our [forum](https://github.com/pgagroal/pgagroal/discussions).
 
 Once there is an agreement on the development plan you can open an issue that will used for reference in the pull request.
 
@@ -100,7 +100,7 @@ Add your repository
 ```
 git clone git@github.com:yourname/pgagroal.git
 cd pgagroal
-git remote add upstream https://github.com/agroal/pgagroal.git
+git remote add upstream https://github.com/pgagroal/pgagroal.git
 ```
 
 Create a work branch

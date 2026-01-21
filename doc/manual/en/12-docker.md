@@ -51,7 +51,7 @@ Update `pg_hba.conf` to allow remote connections:
 host    all    all    0.0.0.0/0    scram-sha-256
 ```
 
-Follow [GETTING STARTED](https://github.com/agroal/pgagroal/blob/master/doc/GETTING_STARTED.md) for further server setup
+Follow [GETTING STARTED](https://github.com/pgagroal/pgagroal/blob/master/doc/GETTING_STARTED.md) for further server setup
 
 Then, restart PostgreSQL for the changes to take effect:
 ```sh
@@ -61,7 +61,7 @@ sudo systemctl restart postgresql
 **Step 2: Clone the Repository**
 
 ```sh
-git clone https://github.com/agroal/pgagroal.git
+git clone https://github.com/pgagroal/pgagroal.git
 cd pgagroal
 ```
 
@@ -175,7 +175,7 @@ We will assume that we have a user called `test` with the password `test` in our
 [PostgreSQL](https://www.postgresql.org), [add a user](https://www.postgresql.org/docs/current/app-createuser.html)
 and [add a database](https://www.postgresql.org/docs/current/app-createdb.html).
 
-We will connect to [**pgagroal**](https://github.com/agroal/pgagroal) using the [psql](https://www.postgresql.org/docs/current/app-psql.html)
+We will connect to [**pgagroal**](https://github.com/pgagroal/pgagroal) using the [psql](https://www.postgresql.org/docs/current/app-psql.html)
 application.
 
 ```
@@ -195,6 +195,6 @@ cd /etc/pgagroal
 /usr/local/bin/pgagroal-cli -c pgagroal.conf shutdown
 ```
 
-See [this](https://github.com/agroal/pgagroal/blob/main/doc/manual/user-10-cli.md) for more cli commands.
+See [this](https://github.com/pgagroal/pgagroal/blob/main/doc/manual/user-10-cli.md) for more cli commands.
 
 You can access the three binaries at `/usr/local/bin`

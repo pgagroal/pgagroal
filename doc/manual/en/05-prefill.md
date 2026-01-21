@@ -28,15 +28,15 @@ and press `Ctrl-d` to save the file.
 This will create a configuration where `mydb` will have a maximum connection size of 2,
 an initial connection size of 1 and a minimum connection size of 0 for the `myuser` user.
 
-The file must be owned by the operating system user [**pgagroal**](https://github.com/agroal/pgagroal).
+The file must be owned by the operating system user [**pgagroal**](https://github.com/pgagroal/pgagroal).
 
 The `max_size` value is mandatory, while the `initial_size` and `min_size` are optional and if not explicitly set are assumed to be `0`.
-See [the `pgagroal_databases.conf` file documentation](https://github.com/agroal/pgagroal/blob/master/doc/CONFIGURATION.md#pgagroal_databases-configuration) for more details.
+See [the `pgagroal_databases.conf` file documentation](https://github.com/pgagroal/pgagroal/blob/master/doc/CONFIGURATION.md#pgagroal_databases-configuration) for more details.
 
 **Restart pgagroal**
 
-In order to apply changes to the prefill configuration, you need to restart [**pgagroal**](https://github.com/agroal/pgagroal).
-You can do so by stopping it and then re-launch the daemon, as [**pgagroal**](https://github.com/agroal/pgagroal) operating system user:
+In order to apply changes to the prefill configuration, you need to restart [**pgagroal**](https://github.com/pgagroal/pgagroal).
+You can do so by stopping it and then re-launch the daemon, as [**pgagroal**](https://github.com/pgagroal/pgagroal) operating system user:
 
 ```
 pgagroal-cli shutdown
@@ -45,7 +45,7 @@ pgagroal -d
 
 **Check the prefill**
 
-You can check the prefill by running, as the [**pgagroal**](https://github.com/agroal/pgagroal) operating system user, the `status` command:
+You can check the prefill by running, as the [**pgagroal**](https://github.com/pgagroal/pgagroal) operating system user, the `status` command:
 
 ```
 pgagroal-cli status

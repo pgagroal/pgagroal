@@ -1831,7 +1831,7 @@ home_page(SSL* client_ssl, int client_fd)
       data = pgagroal_append(data, "  </table>\n");
    }
    data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   <a href=\"https://agroal.github.io/pgagroal/\">agroal.github.io/pgagroal/</a>\n");
+   data = pgagroal_append(data, "   <a href=\"https://pgagroal.github.io/pgagroal/\">pgagroal.github.io/pgagroal/</a>\n");
    data = pgagroal_append(data, "  </p>\n");
    data = pgagroal_append(data, "</body>\n");
    data = pgagroal_append(data, "</html>\n");
@@ -1933,7 +1933,7 @@ home_vault_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "   Number of sockets used by pgagroal-vault itself\n");
    data = pgagroal_append(data, "  </p>\n");
    data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   <a href=\"https://agroal.github.io/pgagroal/\">agroal.github.io/pgagroal/</a>\n");
+   data = pgagroal_append(data, "   <a href=\"https://pgagroal.github.io/pgagroal/\">pgagroal.github.io/pgagroal/</a>\n");
    data = pgagroal_append(data, "  </p>\n");
    data = pgagroal_append(data, "</body>\n");
    data = pgagroal_append(data, "</html>\n");

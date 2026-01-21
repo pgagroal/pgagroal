@@ -5,7 +5,7 @@
 **Create frontend users**
 
 Frontend users are stored into the `pgagroal_frontend_users.conf` file, that can be managed via the `pgagroal-admin` command line tool.
-See [the documentation on frontend users](https://github.com/agroal/pgagroal/blob/master/doc/CONFIGURATION.md#pgagroal_frontend_users-configuration) for more details.
+See [the documentation on frontend users](https://github.com/pgagroal/pgagroal/blob/master/doc/CONFIGURATION.md#pgagroal_frontend_users-configuration) for more details.
 
 As an example, consider the user `myuser` that has the `mypassword` password defined on the PostgreSQL side. It is possible to *remap* the user password on the [**pgagroal**][pgagroal] side,
 so that an application can connect to the [**pgagroal**][pgagroal] using a different password, like `application_password`. In turn, [**pgagroal**][pgagroal] will connect to PostgreSQL

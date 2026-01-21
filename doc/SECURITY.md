@@ -25,7 +25,7 @@ The user vault is specified using the `-u` or `--users` command line parameter.
 ### Frontend users
 
 The `-F` or `--frontend` command line parameter allows users to be defined for the client to
-[**pgagroal**](https://github.com/agroal/pgagroal) authentication. This allows the setup to use different passwords for the [**pgagroal**](https://github.com/agroal/pgagroal) to
+[**pgagroal**](https://github.com/pgagroal/pgagroal) authentication. This allows the setup to use different passwords for the [**pgagroal**](https://github.com/pgagroal/pgagroal) to
 PostgreSQL authentication.
 
 All users defined in the frontend authentication must be defined in the user vault (`-u`).

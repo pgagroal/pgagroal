@@ -6,7 +6,7 @@
 [Unit]
 Description=High-performance connection pool for PostgreSQL
 Documentation=man:pgagroal(1)
-Documentation=https://agroal.github.io/pgagroal/
+Documentation=https://pgagroal.github.io/pgagroal/
 After=network.target
 
 [Service]

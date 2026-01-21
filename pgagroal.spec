@@ -3,7 +3,7 @@ Version:       2.0.0
 Release:       1%{dist}
 Summary:       High-performance connection pool for PostgreSQL
 License:       BSD
-URL:           https://github.com/agroal/pgagroal
+URL:           https://github.com/pgagroal/pgagroal
 Source0:       %{name}-%{version}.tar.gz
 
 BuildRequires: gcc cmake make python3-docutils

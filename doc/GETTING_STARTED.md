@@ -1,6 +1,6 @@
 # Getting started with pgagroal
 
-First of all, make sure that [**pgagroal**](https://github.com/agroal/pgagroal) is installed and in your path by
+First of all, make sure that [**pgagroal**](https://github.com/pgagroal/pgagroal) is installed and in your path by
 using `pgagroal -?`. You should see
 
 ```
@@ -24,8 +24,8 @@ Options:
   -?, --help                         Display help
 ```
 
-If you don't have [**pgagroal**](https://github.com/agroal/pgagroal) in your path see [README](../README.md) on how to
-compile and install [**pgagroal**](https://github.com/agroal/pgagroal) in your system.
+If you don't have [**pgagroal**](https://github.com/pgagroal/pgagroal) in your path see [README](../README.md) on how to
+compile and install [**pgagroal**](https://github.com/pgagroal/pgagroal) in your system.
 
 ## Configuration
 
@@ -50,7 +50,7 @@ host = localhost
 port = 5432
 ```
 
-In our main section called `[pgagroal]` we setup [**pgagroal**](https://github.com/agroal/pgagroal) to listen on all
+In our main section called `[pgagroal]` we setup [**pgagroal**](https://github.com/pgagroal/pgagroal) to listen on all
 network addresses on port 2345. Logging will be performed at `info` level and
 put in a file called `/tmp/pgagroal.log`. We want a maximum of 100 connections
 that are being closed if they have been idle for 10 minutes, and we also specify that
@@ -71,16 +71,16 @@ with the content
 host    all      all   all      all
 ```
 
-This tells [**pgagroal**](https://github.com/agroal/pgagroal) that it can accept connections from all network addresses
+This tells [**pgagroal**](https://github.com/pgagroal/pgagroal) that it can accept connections from all network addresses
 for all databases and all user names.
 
-We are now ready to run [**pgagroal**](https://github.com/agroal/pgagroal).
+We are now ready to run [**pgagroal**](https://github.com/pgagroal/pgagroal).
 
 See [Configuration](./CONFIGURATION.md) for all configuration options.
 
 ## Running
 
-We will run [**pgagroal**](https://github.com/agroal/pgagroal) using the command
+We will run [**pgagroal**](https://github.com/pgagroal/pgagroal) using the command
 
 ```
 pgagroal -c pgagroal.conf -a pgagroal_hba.conf
@@ -94,7 +94,7 @@ We will assume that we have a user called `test` with the password `test` in our
 [PostgreSQL](https://www.postgresql.org), [add a user](https://www.postgresql.org/docs/current/app-createuser.html)
 and [add a database](https://www.postgresql.org/docs/current/app-createdb.html).
 
-We will connect to [**pgagroal**](https://github.com/agroal/pgagroal) using the [psql](https://www.postgresql.org/docs/current/app-psql.html)
+We will connect to [**pgagroal**](https://github.com/pgagroal/pgagroal) using the [psql](https://www.postgresql.org/docs/current/app-psql.html)
 application.
 
 ```
@@ -102,25 +102,25 @@ psql -h localhost -p 2345 -U test test
 ```
 
 That should give you a password prompt where `test` should be typed in. You are now connected
-to [PostgreSQL](https://www.postgresql.org) through [**pgagroal**](https://github.com/agroal/pgagroal).
+to [PostgreSQL](https://www.postgresql.org) through [**pgagroal**](https://github.com/pgagroal/pgagroal).
 
-Type `\q` to quit [psql](https://www.postgresql.org/docs/current/app-psql.html) and [**pgagroal**](https://github.com/agroal/pgagroal)
+Type `\q` to quit [psql](https://www.postgresql.org/docs/current/app-psql.html) and [**pgagroal**](https://github.com/pgagroal/pgagroal)
 will now put the connection that you used into its pool.
 
-If you type the above `psql` command again [**pgagroal**](https://github.com/agroal/pgagroal) will reuse the existing connection and
+If you type the above `psql` command again [**pgagroal**](https://github.com/pgagroal/pgagroal) will reuse the existing connection and
 thereby lower the overhead of getting a connection to [PostgreSQL](https://www.postgresql.org).
 
-Now you are ready to point your applications to use [**pgagroal**](https://github.com/agroal/pgagroal) instead of going directly to
-[PostgreSQL](https://www.postgresql.org). [**pgagroal**](https://github.com/agroal/pgagroal) will work with any
+Now you are ready to point your applications to use [**pgagroal**](https://github.com/pgagroal/pgagroal) instead of going directly to
+[PostgreSQL](https://www.postgresql.org). [**pgagroal**](https://github.com/pgagroal/pgagroal) will work with any
 [PostgreSQL](https://www.postgresql.org) compliant driver, for example [pgjdbc](https://jdbc.postgresql.org/),
 [Npgsql](https://www.npgsql.org/) and [pq](https://github.com/lib/pq).
 
-[**pgagroal**](https://github.com/agroal/pgagroal) is stopped by pressing Ctrl-C (`^C`) in the console where you started it, or by sending
+[**pgagroal**](https://github.com/pgagroal/pgagroal) is stopped by pressing Ctrl-C (`^C`) in the console where you started it, or by sending
 the `SIGTERM` signal to the process using `kill <pid>`.
 
 ## Run-time administration
 
-[**pgagroal**](https://github.com/agroal/pgagroal) has a run-time administration tool called `pgagroal-cli`.
+[**pgagroal**](https://github.com/pgagroal/pgagroal) has a run-time administration tool called `pgagroal-cli`.
 
 You can see the commands it supports by using `pgagroal-cli -?` which will give
 
@@ -174,11 +174,11 @@ Commands:
                            - a server name on its own
                            - 'prometheus' to reset the Prometheus metrics
 
-pgagroal: <https://agroal.github.io/pgagroal/>
-Report bugs: <https://github.com/agroal/pgagroal/issues>
+pgagroal: <https://pgagroal.github.io/pgagroal/>
+Report bugs: <https://github.com/pgagroal/pgagroal/issues>
 ```
 
-This tool can be used on the machine running [**pgagroal**](https://github.com/agroal/pgagroal) to flush connections.
+This tool can be used on the machine running [**pgagroal**](https://github.com/pgagroal/pgagroal) to flush connections.
 
 To flush all idle connections you would use
 
@@ -206,8 +206,8 @@ connect with TLS using the files `~/.pgagroal/pgagroal.key` (must be 0600 permis
 
 ## Administration
 
-[**pgagroal**](https://github.com/agroal/pgagroal) has an administration tool called `pgagroal-admin`, which is used to control user
-registration with [**pgagroal**](https://github.com/agroal/pgagroal).
+[**pgagroal**](https://github.com/pgagroal/pgagroal) has an administration tool called `pgagroal-admin`, which is used to control user
+registration with [**pgagroal**](https://github.com/pgagroal/pgagroal).
 
 You can see the commands it supports by using `pgagroal-admin -?` which will give
 
@@ -236,8 +236,8 @@ Commands:
                           - edit to change the password for an existing user
                           - ls   to list all available users
 
-pgagroal: https://agroal.github.io/pgagroal/
-Report bugs: https://github.com/agroal/pgagroal/issues
+pgagroal: https://pgagroal.github.io/pgagroal/
+Report bugs: https://github.com/pgagroal/pgagroal/issues
 ```
 
 In order to set the master key for all users you can use
@@ -276,21 +276,21 @@ Please, read the manual for a full description of all the features available.
 
 ## Closing
 
-The [pgagroal](https://github.com/agroal/pgagroal) community hopes that you find
+The [pgagroal](https://github.com/pgagroal/pgagroal) community hopes that you find
 the project interesting.
 
 Feel free to
 
-* [Ask a question](https://github.com/agroal/pgagroal/discussions)
-* [Raise an issue](https://github.com/agroal/pgagroal/issues)
-* [Submit a feature request](https://github.com/agroal/pgagroal/issues)
-* [Write a code submission](https://github.com/agroal/pgagroal/pulls)
+* [Ask a question](https://github.com/pgagroal/pgagroal/discussions)
+* [Raise an issue](https://github.com/pgagroal/pgagroal/issues)
+* [Submit a feature request](https://github.com/pgagroal/pgagroal/issues)
+* [Write a code submission](https://github.com/pgagroal/pgagroal/pulls)
 
 All contributions are most welcome !
 
 Please, consult our [Code of Conduct](../CODE_OF_CONDUCT.md) policies for interacting in our
 community.
 
-Consider giving the project a [star](https://github.com/agroal/pgagroal/stargazers) on
-[GitHub](https://github.com/agroal/pgagroal/) if you find it useful. And, feel free to follow
+Consider giving the project a [star](https://github.com/pgagroal/pgagroal/stargazers) on
+[GitHub](https://github.com/pgagroal/pgagroal/) if you find it useful. And, feel free to follow
 the project on [X](https://x.com/pgagroal/) as well.

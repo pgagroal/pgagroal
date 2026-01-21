@@ -1,6 +1,6 @@
 # pgagroal rpm
 
-[**pgagroal**](https://github.com/agroal/pgagroal) can be built into a RPM for [Fedora](https://getfedora.org/) systems.
+[**pgagroal**](https://github.com/pgagroal/pgagroal) can be built into a RPM for [Fedora](https://getfedora.org/) systems.
 
 ## Requirements
 
@@ -17,7 +17,7 @@ rpmdev-setuptree
 ## Create source package
 
 ```sh
-git clone https://github.com/agroal/pgagroal.git
+git clone https://github.com/pgagroal/pgagroal.git
 cd pgagroal
 mkdir build
 cd build

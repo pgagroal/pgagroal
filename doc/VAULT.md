@@ -72,7 +72,7 @@ The section with a name different from `pgagroal-vault` will be treated as a mai
 | port | | Int | Yes | The management port of pgagroal |
 | user | | String | Yes | The admin user of the pgagroal remote management service | 
 
-Note: For `pgagroal-vault` to function and connect properly to pgagroal, the remote server for management of the [**pgagroal**](https://github.com/agroal/pgagroal) should be enabled i.e. `management` should be greater than 0.
+Note: For `pgagroal-vault` to function and connect properly to pgagroal, the remote server for management of the [**pgagroal**](https://github.com/pgagroal/pgagroal) should be enabled i.e. `management` should be greater than 0.
 
 # Enable SSL connection with management port
 

@@ -1,8 +1,8 @@
 # pgagroal
 
-[**pgagroal**](https://github.com/agroal/pgagroal) is a high-performance protocol-native connection pool for [PostgreSQL](https://www.postgresql.org).
+[**pgagroal**](https://github.com/pgagroal/pgagroal) is a high-performance protocol-native connection pool for [PostgreSQL](https://www.postgresql.org).
 
-Pronounced: p-g-a-gro-al, named after [A](https://www.visitportugal.com/en/content/praia-fluvial-do-agroal)[gro](https://www.google.com/maps/place/Agroal,+Portugal/@39.6775431,-8.4486056,14z/)[al](https://www.infatima.pt/en/nearby/sun-sea/fluvial-beaches/agroal/) in Portugal.
+Pronounced: p-g-a-gro-al, named after [A](https://www.visitportugal.com/en/content/praia-fluvial-do-pgagroal)[gro](https://www.google.com/maps/place/pgagroal,+Portugal/@39.6775431,-8.4486056,14z/)[al](https://www.infatima.pt/en/nearby/sun-sea/fluvial-beaches/pgagroal/) in Portugal.
 
 ## Features
 
@@ -23,15 +23,15 @@ Pronounced: p-g-a-gro-al, named after [A](https://www.visitportugal.com/en/conte
 * Daemon mode
 * User vault
 
-See [Getting Started](./doc/GETTING_STARTED.md) on how to get started with [**pgagroal**](https://github.com/agroal/pgagroal).
+See [Getting Started](./doc/GETTING_STARTED.md) on how to get started with [**pgagroal**](https://github.com/pgagroal/pgagroal).
 
-See [Configuration](./doc/CONFIGURATION.md) on how to configure [**pgagroal**](https://github.com/agroal/pgagroal).
+See [Configuration](./doc/CONFIGURATION.md) on how to configure [**pgagroal**](https://github.com/pgagroal/pgagroal).
 
 See [Performance](./doc/PERFORMANCE.md) for a performance run.
 
 ## Overview
 
-[**pgagroal**](https://github.com/agroal/pgagroal) makes use of
+[**pgagroal**](https://github.com/pgagroal/pgagroal) makes use of
 
 * Process model
 * Shared memory model across processes
@@ -40,10 +40,10 @@ See [Performance](./doc/PERFORMANCE.md) for a performance run.
 * The [PostgreSQL](https://www.postgresql.org) native protocol
   [v3](https://www.postgresql.org/docs/11/protocol-message-formats.html) for its communication
 
-[**pgagroal**](https://github.com/agroal/pgagroal) will work with any [PostgreSQL](https://www.postgresql.org) compliant driver, for example
+[**pgagroal**](https://github.com/pgagroal/pgagroal) will work with any [PostgreSQL](https://www.postgresql.org) compliant driver, for example
 [pgjdbc](https://jdbc.postgresql.org/), [Npgsql](https://www.npgsql.org/) and [pq](https://github.com/lib/pq).
 
-See [Architecture](./doc/ARCHITECTURE.md) for the architecture of [**pgagroal**](https://github.com/agroal/pgagroal).
+See [Architecture](./doc/ARCHITECTURE.md) for the architecture of [**pgagroal**](https://github.com/pgagroal/pgagroal).
 
 ## Tested platforms
 
@@ -57,7 +57,7 @@ See [Architecture](./doc/ARCHITECTURE.md) for the architecture of [**pgagroal**]
 
 ## Compiling from sources
 
-[**pgagroal**](https://github.com/agroal/pgagroal) can be compiled from sources,
+[**pgagroal**](https://github.com/pgagroal/pgagroal) can be compiled from sources,
 after having installed all the required dependencies:
 
 * [gcc 8+](https://gcc.gnu.org) (C17) or [clang 8+](https://clang.llvm.org/)
@@ -95,11 +95,11 @@ dnf install git gcc cmake make      \
 
 ### Release build
 
-The following commands will install [**pgagroal**](https://github.com/agroal/pgagroal) in the `/usr/local` hierarchy
+The following commands will install [**pgagroal**](https://github.com/pgagroal/pgagroal) in the `/usr/local` hierarchy
 and run the default configuration.
 
 ```sh
-git clone https://github.com/agroal/pgagroal.git
+git clone https://github.com/pgagroal/pgagroal.git
 cd pgagroal
 mkdir build
 cd build
@@ -109,14 +109,14 @@ sudo make install
 /usr/local/bin/pgagroal -c /usr/local/etc/pgagroal/pgagroal.conf -a /usr/local/etc/pgagroal/pgagroal_hba.conf
 ```
 
-See [RPM](./doc/RPM.md) for how to build a RPM of [**pgagroal**](https://github.com/agroal/pgagroal).
+See [RPM](./doc/RPM.md) for how to build a RPM of [**pgagroal**](https://github.com/pgagroal/pgagroal).
 
 ### Debug build
 
-The following commands will create a `DEBUG` version of [**pgagroal**](https://github.com/agroal/pgagroal).
+The following commands will create a `DEBUG` version of [**pgagroal**](https://github.com/pgagroal/pgagroal).
 
 ```sh
-git clone https://github.com/agroal/pgagroal.git
+git clone https://github.com/pgagroal/pgagroal.git
 cd pgagroal
 mkdir build
 cd build
@@ -131,20 +131,20 @@ Remember to set the `log_level` configuration option to `debug5`.
 
 ## Contributing
 
-Contributions to [**pgagroal**](https://github.com/agroal/pgagroal) are managed on [GitHub.com](https://github.com/agroal/pgagroal/)
+Contributions to [**pgagroal**](https://github.com/pgagroal/pgagroal) are managed on [GitHub.com](https://github.com/pgagroal/pgagroal/)
 
-* [Ask a question](https://github.com/agroal/pgagroal/discussions)
-* [Raise an issue](https://github.com/agroal/pgagroal/issues)
-* [Feature request](https://github.com/agroal/pgagroal/issues)
-* [Code submission](https://github.com/agroal/pgagroal/pulls)
+* [Ask a question](https://github.com/pgagroal/pgagroal/discussions)
+* [Raise an issue](https://github.com/pgagroal/pgagroal/issues)
+* [Feature request](https://github.com/pgagroal/pgagroal/issues)
+* [Code submission](https://github.com/pgagroal/pgagroal/pulls)
 
 Contributions are most welcome !
 
 Please, consult our [Code of Conduct](./CODE_OF_CONDUCT.md) policies for interacting in our
 community.
 
-Consider giving the project a [star](https://github.com/agroal/pgagroal/stargazers) on
-[GitHub](https://github.com/agroal/pgagroal/) if you find it useful. And, feel free to follow
+Consider giving the project a [star](https://github.com/pgagroal/pgagroal/stargazers) on
+[GitHub](https://github.com/pgagroal/pgagroal/) if you find it useful. And, feel free to follow
 the project on [Twitter](https://twitter.com/pgagroal/) as well.
 
 ## License

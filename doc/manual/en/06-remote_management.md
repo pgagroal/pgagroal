@@ -24,7 +24,7 @@ under the `[pgagroal]` section, so that the configuration file looks like:
 management = 2347
 ```
 
-See [the pgagroal configuration settings](https://github.com/agroal/pgagroal/blob/master/doc/CONFIGURATION.md#pgagroal) for more details.
+See [the pgagroal configuration settings](https://github.com/pgagroal/pgagroal/blob/master/doc/CONFIGURATION.md#pgagroal) for more details.
 
 **Add remote admin user**
 

@@ -103,7 +103,7 @@ export PKG_CONFIG_PATH="$OPENSSL_ROOT_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
 After installing dependencies, build pgagroal:
 
 ```sh
-git clone https://github.com/agroal/pgagroal.git
+git clone https://github.com/pgagroal/pgagroal.git
 cd pgagroal
 mkdir build
 cd build

@@ -83,7 +83,7 @@ __Danger zone__
 
 **Server section**
 
-Each section with a name different from [**pgagroal**](https://github.com/agroal/pgagroal) will be treated as an host section.
+Each section with a name different from [**pgagroal**](https://github.com/pgagroal/pgagroal) will be treated as an host section.
 There can be up to `64` host sections, each with an unique name and different combination of `host` and `port` settings, otherwise the pooler will complain about duplicated server configuration.
 
 | Property | Default | Unit | Required | Description |
@@ -96,11 +96,11 @@ There can be up to `64` host sections, each with an unique name and different co
 | tls_key_file | | String | No | Private key file for TLS. This file must be owned by either the user running pgagroal or root. Additionally permissions must be at least `0640` when owned by root or `0600` otherwise.Changes require restart. |
 | tls_ca_file | | String | No | Certificate Authority (CA) file for TLS. This file must be owned by either the user running pgagroal or root. Changes require restart. |
 
-Note, that if `host` starts with a `/` it represents a path and [**pgagroal**](https://github.com/agroal/pgagroal) will connect using a Unix Domain Socket.
+Note, that if `host` starts with a `/` it represents a path and [**pgagroal**](https://github.com/pgagroal/pgagroal) will connect using a Unix Domain Socket.
 
 ## pgagroal_hba.conf
 
-The `pgagroal_hba` configuration controls access to [**pgagroal**](https://github.com/agroal/pgagroal) through host-based authentication.
+The `pgagroal_hba` configuration controls access to [**pgagroal**](https://github.com/pgagroal/pgagroal) through host-based authentication.
 
 The configuration is loaded from either the path specified by the `-a` flag or `/etc/pgagroal/pgagroal_hba.conf`.
 
@@ -128,7 +128,7 @@ There can be up to `64` HBA entries in the configuration file.
 ## pgagroal_databases.conf
 
 The `pgagroal_databases` configuration defines limits for a database or a user or both. The limits are the number
-of connections from [**pgagroal**](https://github.com/agroal/pgagroal) to PostgreSQL for each entry.
+of connections from [**pgagroal**](https://github.com/pgagroal/pgagroal) to PostgreSQL for each entry.
 
 The file also defines the initial and minimum pool size for a database and user pair. Note, that this feature requires
 a user definition file, see below.
@@ -206,7 +206,7 @@ The configuration is loaded from either the path specified by the `-u` flag or `
 ## pgagroal_frontend_users.conf
 
 The `pgagroal_frontend_users` configuration defines the passwords for the users connecting to pgagroal.
-This allows the setup to use different passwords for the [**pgagroal**](https://github.com/agroal/pgagroal) to PostgreSQL authentication.
+This allows the setup to use different passwords for the [**pgagroal**](https://github.com/pgagroal/pgagroal) to PostgreSQL authentication.
 This file is created and managed through the `pgagroal-admin` tool.
 
 All users defined in the frontend authentication must be defined in the user vault (`-u`).

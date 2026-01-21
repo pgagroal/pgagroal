@@ -54,7 +54,7 @@ pgagroal-admin -f /etc/pgagroal/pgagroal_vault_users.conf -U admin -P admin1234 
 
 The above will create the `admin` username with the `admin1234` password. Alternately, `/etc/pgagroal/pgagroal_admins.conf` can be provided for vault users information.
 
-See [the documentation about `pgagroal_vault.conf` for more details](https://github.com/agroal/pgagroal/blob/master/doc/VAULT.md).
+See [the documentation about `pgagroal_vault.conf` for more details](https://github.com/pgagroal/pgagroal/blob/master/doc/VAULT.md).
 
 ## Start the vault
 

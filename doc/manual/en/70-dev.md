@@ -41,7 +41,7 @@ pgagroal documentation is organized to serve different audiences and use cases. 
 | **Configure database aliases**         | [Database Aliases](#database-aliases) \| [09-database_alias.md](09-database_alias.md)                         |
 | **Manage user credentials**            | [Vault](#vault) \| [10-vault.md](10-vault.md)                                                                  |
 | **Contribute to project**              | [Git guide](#git-guide) \| [71-git.md](71-git.md), see also `CONTRIBUTING.md` in project root                |
-| **Report issues or get help**          | GitHub Issues: https://github.com/agroal/pgagroal/issues                                                       |
+| **Report issues or get help**          | GitHub Issues: https://github.com/pgagroal/pgagroal/issues                                                       |
 
 ### User Documentation
 
@@ -264,7 +264,7 @@ dnf install git gcc cmake make liburing liburing-devel openssl openssl-devel sys
 ### Quick Build
 
 ```bash
-git clone https://github.com/agroal/pgagroal.git
+git clone https://github.com/pgagroal/pgagroal.git
 cd pgagroal
 mkdir build
 cd build
@@ -294,6 +294,6 @@ For detailed Git workflow, see [Git guide](#git-guide) | [71-git.md](71-git.md).
 
 ## Getting Help
 
-- **GitHub Discussions** (https://github.com/agroal/pgagroal/discussions) - Ask questions
-- **GitHub Issues** (https://github.com/agroal/pgagroal/issues) - Report bugs or request features
+- **GitHub Discussions** (https://github.com/pgagroal/pgagroal/discussions) - Ask questions
+- **GitHub Issues** (https://github.com/pgagroal/pgagroal/issues) - Report bugs or request features
 - **Code of Conduct** (see `CODE_OF_CONDUCT.md` in project root) - Community guidelines

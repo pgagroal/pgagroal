@@ -1,6 +1,6 @@
 # `pgagroal-cli` user guide
 
-`pgagroal-cli` is a command line interface to interact with [**pgagroal**](https://github.com/agroal/pgagroal).
+`pgagroal-cli` is a command line interface to interact with [**pgagroal**](https://github.com/pgagroal/pgagroal).
 The executable accepts a set of options, as well as a command to execute.
 If no command is provided, the program will show the help screen.
 
@@ -66,7 +66,7 @@ pgagroal-cli flush pgbench   # pgagroal-cli flush gracefully pgbench
 ```
 
 ### ping
-The `ping` command checks if [**pgagroal**](https://github.com/agroal/pgagroal) is running.
+The `ping` command checks if [**pgagroal**](https://github.com/pgagroal/pgagroal) is running.
 In case of success, the command does not print anything on the standard output unless the `--verbose` flag is used.
 
 Command
@@ -82,7 +82,7 @@ pgagroal-cli ping --verbose  # pgagroal-cli: Success (0)
 pgagroal-cli ping            # $? = 0
 ```
 
-In the case [**pgagroal**](https://github.com/agroal/pgagroal) is not running, a message is printed on the standard error and the exit status is set to a non-zero value:
+In the case [**pgagroal**](https://github.com/pgagroal/pgagroal) is not running, a message is printed on the standard error and the exit status is set to a non-zero value:
 
 ```
 pgagroal-cli ping          # $? = 1
@@ -146,7 +146,7 @@ pgagroal-cli shutdown cancel  # stops the above command
 
 
 ### status
-The `status` command reports the current status of the [**pgagroal**](https://github.com/agroal/pgagroal) pooler.
+The `status` command reports the current status of the [**pgagroal**](https://github.com/pgagroal/pgagroal) pooler.
 Without any subcommand, `status` reports back a short set of information about the pooler.
 
 Command
@@ -489,7 +489,7 @@ pgagroal-cli clear prometheus
 ## Shell completions
 
 There is a minimal shell completion support for `pgagroal-cli`.
-Please refer to the [CLI Tools documentation](https://github.com/agroal/pgagroal/blob/master/doc/manual/en/13-cli-tools.md#shell-completions) for detailed information about how to enable and use shell completions.
+Please refer to the [CLI Tools documentation](https://github.com/pgagroal/pgagroal/blob/master/doc/manual/en/13-cli-tools.md#shell-completions) for detailed information about how to enable and use shell completions.
 
 
 ## JSON Output Format
@@ -540,7 +540,7 @@ As an example, when `pgagroal-cli` launches a command, the output includes an `a
 
 ### The `command` object
 
-The `command` object represents the launched command and contains also the answer from the [**pgagroal**](https://github.com/agroal/pgagroal).
+The `command` object represents the launched command and contains also the answer from the [**pgagroal**](https://github.com/pgagroal/pgagroal).
 The object is made by the following attributes:
 - `name` a string representing the command launched (e.g., `status`);
 - `status` a string that contains either "OK" or an error string if the command failed;

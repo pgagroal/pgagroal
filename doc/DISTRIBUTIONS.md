@@ -1,6 +1,6 @@
 # Compiling `pgagroal` from sources
 
-[**pgagroal**](https://github.com/agroal/pgagroal) requires the following dependencies:
+[**pgagroal**](https://github.com/pgagroal/pgagroal) requires the following dependencies:
 
 * a C compiler like [gcc 8+](https://gcc.gnu.org) (C17) or [clang 8+](https://clang.llvm.org/)
 * [cmake](https://cmake.org)

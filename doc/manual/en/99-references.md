@@ -6,7 +6,7 @@ This section contains reference links used throughout the manual.
 
 ## External Links
 
-- **pgagroal**: https://github.com/agroal/pgagroal
+- **pgagroal**: https://github.com/pgagroal/pgagroal
 - **PostgreSQL**: https://www.postgresql.org
 - **Rocky Linux**: https://www.rockylinux.org
 - **Fedora**: https://getfedora.org/
@@ -35,67 +35,67 @@ This section contains reference links used throughout the manual.
 
 ## Documentation
 
-- **Manual (English)**: https://github.com/agroal/pgagroal/tree/master/doc/manual/en
-- **Main Documentation Folder**: https://github.com/agroal/pgagroal/tree/master/doc
-- **RPM Documentation**: https://github.com/agroal/pgagroal/blob/master/doc/RPM.md
-- **Configuration Documentation**: https://github.com/agroal/pgagroal/blob/master/doc/CONFIGURATION.md
+- **Manual (English)**: https://github.com/pgagroal/pgagroal/tree/master/doc/manual/en
+- **Main Documentation Folder**: https://github.com/pgagroal/pgagroal/tree/master/doc
+- **RPM Documentation**: https://github.com/pgagroal/pgagroal/blob/master/doc/RPM.md
+- **Configuration Documentation**: https://github.com/pgagroal/pgagroal/blob/master/doc/CONFIGURATION.md
 
 ## Configuration Examples
 
-- **Configuration Examples Folder**: https://github.com/agroal/pgagroal/tree/master/doc/etc
-- **Sample Configuration**: https://github.com/agroal/pgagroal/blob/master/doc/etc/pgagroal.conf
-- **HBA Configuration**: https://github.com/agroal/pgagroal/blob/master/doc/etc/pgagroal_hba.conf
-- **Vault Configuration**: https://github.com/agroal/pgagroal/blob/master/doc/etc/pgagroal_vault.conf
+- **Configuration Examples Folder**: https://github.com/pgagroal/pgagroal/tree/master/doc/etc
+- **Sample Configuration**: https://github.com/pgagroal/pgagroal/blob/master/doc/etc/pgagroal.conf
+- **HBA Configuration**: https://github.com/pgagroal/pgagroal/blob/master/doc/etc/pgagroal_hba.conf
+- **Vault Configuration**: https://github.com/pgagroal/pgagroal/blob/master/doc/etc/pgagroal_vault.conf
 
 ## Source Code
 
 ### Main Source Files
-- **main.c**: https://github.com/agroal/pgagroal/blob/master/src/main.c
-- **cli.c**: https://github.com/agroal/pgagroal/blob/master/src/cli.c
-- **admin.c**: https://github.com/agroal/pgagroal/blob/master/src/admin.c
-- **vault.c**: https://github.com/agroal/pgagroal/blob/master/src/vault.c
+- **main.c**: https://github.com/pgagroal/pgagroal/blob/master/src/main.c
+- **cli.c**: https://github.com/pgagroal/pgagroal/blob/master/src/cli.c
+- **admin.c**: https://github.com/pgagroal/pgagroal/blob/master/src/admin.c
+- **vault.c**: https://github.com/pgagroal/pgagroal/blob/master/src/vault.c
 
 ### Include Files
-- **shmem.h**: https://github.com/agroal/pgagroal/blob/master/src/include/shmem.h
-- **pgagroal.h**: https://github.com/agroal/pgagroal/blob/master/src/include/pgagroal.h
-- **message.h**: https://github.com/agroal/pgagroal/blob/master/src/include/message.h
-- **network.h**: https://github.com/agroal/pgagroal/blob/master/src/include/network.h
-- **memory.h**: https://github.com/agroal/pgagroal/blob/master/src/include/memory.h
-- **management.h**: https://github.com/agroal/pgagroal/blob/master/src/include/management.h
-- **remote.h**: https://github.com/agroal/pgagroal/blob/master/src/include/remote.h
-- **prometheus.h**: https://github.com/agroal/pgagroal/blob/master/src/include/prometheus.h
-- **logging.h**: https://github.com/agroal/pgagroal/blob/master/src/include/logging.h
-- **value.h**: https://github.com/agroal/pgagroal/blob/master/src/include/value.h
-- **deque.h**: https://github.com/agroal/pgagroal/blob/master/src/include/deque.h
-- **art.h**: https://github.com/agroal/pgagroal/blob/master/src/include/art.h
-- **json.h**: https://github.com/agroal/pgagroal/blob/master/src/include/json.h
+- **shmem.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/shmem.h
+- **pgagroal.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/pgagroal.h
+- **message.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/message.h
+- **network.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/network.h
+- **memory.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/memory.h
+- **management.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/management.h
+- **remote.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/remote.h
+- **prometheus.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/prometheus.h
+- **logging.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/logging.h
+- **value.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/value.h
+- **deque.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/deque.h
+- **art.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/art.h
+- **json.h**: https://github.com/pgagroal/pgagroal/blob/master/src/include/json.h
 
 ### Library Implementation Files
-- **message.c**: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/message.c
-- **network.c**: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/network.c
-- **memory.c**: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/memory.c
-- **remote.c**: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/remote.c
-- **prometheus.c**: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/prometheus.c
-- **logging.c**: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/logging.c
-- **value.c**: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/value.c
-- **deque.c**: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/deque.c
-- **art.c**: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/art.c
-- **json.c**: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/json.c
+- **message.c**: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/message.c
+- **network.c**: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/network.c
+- **memory.c**: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/memory.c
+- **remote.c**: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/remote.c
+- **prometheus.c**: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/prometheus.c
+- **logging.c**: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/logging.c
+- **value.c**: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/value.c
+- **deque.c**: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/deque.c
+- **art.c**: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/art.c
+- **json.c**: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/json.c
 
 ## Contributing
 
-- **Ask Questions**: https://github.com/agroal/pgagroal/discussions
-- **Report Issues**: https://github.com/agroal/pgagroal/issues
-- **Feature Requests**: https://github.com/agroal/pgagroal/issues
-- **Submit Code**: https://github.com/agroal/pgagroal/pulls
-- **Code of Conduct**: https://github.com/agroal/pgagroal/blob/master/CODE_OF_CONDUCT.md
-- **Star the Project**: https://github.com/agroal/pgagroal/stargazers
+- **Ask Questions**: https://github.com/pgagroal/pgagroal/discussions
+- **Report Issues**: https://github.com/pgagroal/pgagroal/issues
+- **Feature Requests**: https://github.com/pgagroal/pgagroal/issues
+- **Submit Code**: https://github.com/pgagroal/pgagroal/pulls
+- **Code of Conduct**: https://github.com/pgagroal/pgagroal/blob/master/CODE_OF_CONDUCT.md
+- **Star the Project**: https://github.com/pgagroal/pgagroal/stargazers
 - **Follow on Twitter**: https://twitter.com/pgagroal/
 - **BSD-3-Clause License**: https://opensource.org/licenses/BSD-3-Clause
 
 <!-- Reference links -->
 
-  [pgagroal]: https://github.com/agroal/pgagroal
+  [pgagroal]: https://github.com/pgagroal/pgagroal
   [postgresql]: https://www.postgresql.org
   [rocky]: https://www.rockylinux.org
   [fedora]: https://getfedora.org/
@@ -123,47 +123,47 @@ This section contains reference links used throughout the manual.
   [libart]: https://github.com/armon/libart
 
 <!-- doc/ -->
-[rpm]: https://github.com/agroal/pgagroal/blob/master/doc/RPM.md
-[configuration]: https://github.com/agroal/pgagroal/blob/master/doc/CONFIGURATION.md
-[sample]: https://github.com/agroal/pgagroal/blob/master/doc/etc/pgagroal.conf
+[rpm]: https://github.com/pgagroal/pgagroal/blob/master/doc/RPM.md
+[configuration]: https://github.com/pgagroal/pgagroal/blob/master/doc/CONFIGURATION.md
+[sample]: https://github.com/pgagroal/pgagroal/blob/master/doc/etc/pgagroal.conf
 
 <!-- src/ -->
-[main_c]: https://github.com/agroal/pgagroal/blob/master/src/main.c
-[cli_c]: https://github.com/agroal/pgagroal/blob/master/src/cli.c
-[admin_c]: https://github.com/agroal/pgagroal/blob/master/src/admin.c
-[vault_c]: https://github.com/agroal/pgagroal/blob/master/src/vault.c
+[main_c]: https://github.com/pgagroal/pgagroal/blob/master/src/main.c
+[cli_c]: https://github.com/pgagroal/pgagroal/blob/master/src/cli.c
+[admin_c]: https://github.com/pgagroal/pgagroal/blob/master/src/admin.c
+[vault_c]: https://github.com/pgagroal/pgagroal/blob/master/src/vault.c
 <!-- src/include -->
-[shmem_h]: https://github.com/agroal/pgagroal/blob/master/src/include/shmem.h
-[pgagroal_h]: https://github.com/agroal/pgagroal/blob/master/src/include/pgagroal.h
-[messge_h]: https://github.com/agroal/pgagroal/blob/master/src/include/message.h
-[network_h]: https://github.com/agroal/pgagroal/blob/master/src/include/network.h
-[memory_h]: https://github.com/agroal/pgagroal/blob/master/src/include/memory.h
-[management_h]: https://github.com/agroal/pgagroal/blob/master/src/include/management.h
-[remote_h]: https://github.com/agroal/pgagroal/blob/master/src/include/remote.h
-[prometheus_h]: https://github.com/agroal/pgagroal/blob/master/src/include/prometheus.h
-[logging_h]: https://github.com/agroal/pgagroal/blob/master/src/include/logging.h
-[value_h]: https://github.com/agroal/pgagroal/blob/master/src/include/value.h
-[deque_h]: https://github.com/agroal/pgagroal/blob/master/src/include/deque.h
-[art_h]: https://github.com/agroal/pgagroal/blob/master/src/include/art.h
-[json_h]: https://github.com/agroal/pgagroal/blob/master/src/include/json.h
+[shmem_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/shmem.h
+[pgagroal_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/pgagroal.h
+[messge_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/message.h
+[network_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/network.h
+[memory_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/memory.h
+[management_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/management.h
+[remote_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/remote.h
+[prometheus_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/prometheus.h
+[logging_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/logging.h
+[value_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/value.h
+[deque_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/deque.h
+[art_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/art.h
+[json_h]: https://github.com/pgagroal/pgagroal/blob/master/src/include/json.h
 <!-- src/libpgagroal -->
-[message_c]: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/message.c
-[network_c]: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/network.c
-[memory_c]: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/memory.c
-[remote_c]: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/remote.c
-[prometheus_c]: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/prometheus.c
-[logging_c]: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/logging.c
-[value_c]: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/value.c
-[deque_c]: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/deque.c
-[art_c]: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/art.c
-[json_c]: https://github.com/agroal/pgagroal/blob/master/src/libpgagroal/json.c
+[message_c]: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/message.c
+[network_c]: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/network.c
+[memory_c]: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/memory.c
+[remote_c]: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/remote.c
+[prometheus_c]: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/prometheus.c
+[logging_c]: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/logging.c
+[value_c]: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/value.c
+[deque_c]: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/deque.c
+[art_c]: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/art.c
+[json_c]: https://github.com/pgagroal/pgagroal/blob/master/src/libpgagroal/json.c
 
 <!-- Contributing -->
-[ask]: https://github.com/agroal/pgagroal/discussions
-[issue]: https://github.com/agroal/pgagroal/issues
-[request]: https://github.com/agroal/pgagroal/issues
-[submission]: https://github.com/agroal/pgagroal/pulls
-[conduct]: https://github.com/agroal/pgagroal/blob/master/CODE_OF_CONDUCT.md
-[star]: https://github.com/agroal/pgagroal/stargazers
+[ask]: https://github.com/pgagroal/pgagroal/discussions
+[issue]: https://github.com/pgagroal/pgagroal/issues
+[request]: https://github.com/pgagroal/pgagroal/issues
+[submission]: https://github.com/pgagroal/pgagroal/pulls
+[conduct]: https://github.com/pgagroal/pgagroal/blob/master/CODE_OF_CONDUCT.md
+[star]: https://github.com/pgagroal/pgagroal/stargazers
 [twitter]: https://twitter.com/pgagroal/
 [license]: https://opensource.org/licenses/BSD-3-Clause

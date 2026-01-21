@@ -19,7 +19,7 @@ rpmdev-setuptree
 **Create source package**
 
 ```sh
-git clone https://github.com/agroal/pgagroal.git
+git clone https://github.com/pgagroal/pgagroal.git
 cd pgagroal
 mkdir build
 cd build

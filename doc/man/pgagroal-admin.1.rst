@@ -71,7 +71,7 @@ PGAGROAL_PASSWORD
 REPORTING BUGS
 ==============
 
-pgagroal is maintained on GitHub at https://github.com/agroal/pgagroal
+pgagroal is maintained on GitHub at https://github.com/pgagroal/pgagroal
 
 COPYRIGHT
 =========

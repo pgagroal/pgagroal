@@ -1,7 +1,7 @@
 # `pgagroal-admin` user guide
 
 `pgagroal-admin` is a command line interface to manage users known
-to the [**pgagroal**](https://github.com/agroal/pgagroal) connection pooler.
+to the [**pgagroal**](https://github.com/pgagroal/pgagroal) connection pooler.
 The executable accepts a set of options, as well as a command to execute.
 If no command is provided, the program will show the help screen.
 
@@ -65,7 +65,7 @@ that is the "container" for users' credentials.
 ## Deprecated commands
 
 The following commands have been deprecated and will be removed
-in later releases of [**pgagroal**](https://github.com/agroal/pgagroal).
+in later releases of [**pgagroal**](https://github.com/pgagroal/pgagroal).
 For each command, this is the corresponding current mapping
 to the working command:
 
@@ -86,4 +86,4 @@ pgagroal-admin user-add -U luca -P strongPassword 2>/dev/null
 ## Shell completion
 
 There is a minimal shell completion support for `pgagroal-admin`.
-See the [CLI Tools documentation](https://github.com/agroal/pgagroal/blob/master/doc/manual/en/13-cli-tools.md#shell-completions) for more details.
+See the [CLI Tools documentation](https://github.com/pgagroal/pgagroal/blob/master/doc/manual/en/13-cli-tools.md#shell-completions) for more details.

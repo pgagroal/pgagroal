@@ -2,7 +2,7 @@
 
 ## Overview
 
-[**pgagroal**](https://github.com/agroal/pgagroal) use a process model (`fork()`), where each process handles one connection to [PostgreSQL](https://www.postgresql.org).
+[**pgagroal**](https://github.com/pgagroal/pgagroal) use a process model (`fork()`), where each process handles one connection to [PostgreSQL](https://www.postgresql.org).
 This was done such a potential crash on one connection won't take the entire pool down.
 
 The main process is defined in [main.c](../src/main.c). When a client connects it is processed in its own process, which
@@ -12,10 +12,10 @@ Once the client disconnects the connection is put back in the pool, and the chil
 
 ## Shared memory
 
-A memory segment ([shmem.h](../src/include/shmem.h)) is shared among all processes which contains the [**pgagroal**](https://github.com/agroal/pgagroal)
+A memory segment ([shmem.h](../src/include/shmem.h)) is shared among all processes which contains the [**pgagroal**](https://github.com/pgagroal/pgagroal)
 state containing the configuration of the pool, the list of servers and the state of each connection.
 
-The configuration of [**pgagroal**](https://github.com/agroal/pgagroal) (`struct configuration`), the configuration of the servers (`struct server`) and
+The configuration of [**pgagroal**](https://github.com/pgagroal/pgagroal) (`struct configuration`), the configuration of the servers (`struct server`) and
 the state of each connection (`struct connection`) is initialized in this shared memory segment.
 These structs are all defined in [pgagroal.h](../src/include/pgagroal.h).
 
@@ -43,7 +43,7 @@ These state are defined in [pgagroal.h](../src/include/pgagroal.h).
 
 ## Pool
 
-The [**pgagroal**](https://github.com/agroal/pgagroal) pool API is defined in [pool.h](../src/include/pool.h) ([pool.c](../src/libpgagroal/pool.c)).
+The [**pgagroal**](https://github.com/pgagroal/pgagroal) pool API is defined in [pool.h](../src/include/pool.h) ([pool.c](../src/libpgagroal/pool.c)).
 
 This API defines the functionality of the pool such as getting a connection from the pool, and returning it.
 There is no ordering among processes, so a newly created process can obtain a connection before an older process.
@@ -182,7 +182,7 @@ The implementation is done in [ev.h](../src/include/ev.h) and [ev.c](../src/libp
 
 ## Pipeline
 
-[**pgagroal**](https://github.com/agroal/pgagroal) has the concept of a pipeline that defines how communication is routed from the client through [**pgagroal**](https://github.com/agroal/pgagroal) to
+[**pgagroal**](https://github.com/pgagroal/pgagroal) has the concept of a pipeline that defines how communication is routed from the client through [**pgagroal**](https://github.com/pgagroal/pgagroal) to
 [PostgreSQL](https://www.postgresql.org). Likewise in the other direction.
 
 A pipeline is defined by
@@ -208,8 +208,8 @@ The functions in the pipeline are defined as
 |----------|-------------|
 | `initialize` | Global initialization of the pipeline, may return a pointer to a shared memory segment |
 | `start` | Called when the pipeline instance is started |
-| `client` | Client to [**pgagroal**](https://github.com/agroal/pgagroal) communication |
-| `server` | [PostgreSQL](https://www.postgresql.org) to [**pgagroal**](https://github.com/agroal/pgagroal) communication |
+| `client` | Client to [**pgagroal**](https://github.com/pgagroal/pgagroal) communication |
+| `server` | [PostgreSQL](https://www.postgresql.org) to [**pgagroal**](https://github.com/pgagroal/pgagroal) communication |
 | `stop` | Called when the pipeline instance is stopped |
 | `destroy` | Global destruction of the pipeline |
 | `periodic` | Called periodic |
@@ -231,7 +231,7 @@ defined in [worker.h](../src/include/worker.h).
 
 ### Performance pipeline
 
-One of the goals for [**pgagroal**](https://github.com/agroal/pgagroal) is performance, so the performance pipeline will only look for the
+One of the goals for [**pgagroal**](https://github.com/pgagroal/pgagroal) is performance, so the performance pipeline will only look for the
 [`Terminate`](https://www.postgresql.org/docs/11/protocol-message-formats.html) message from the client and act on that.
 Likewise the performance pipeline will only look for `FATAL` errors from the server. This makes the pipeline very fast, since there
 is a minimum overhead in the interaction.
@@ -242,8 +242,8 @@ The pipeline is defined in [pipeline_perf.c](../src/libpgagroal/pipeline_perf.c)
 |----------|-------------|
 | `performance_initialize` | Nothing |
 | `performance_start` | Nothing |
-| `performance_client` | Client to [**pgagroal**](https://github.com/agroal/pgagroal) communication |
-| `performance_server` | [PostgreSQL](https://www.postgresql.org) to [**pgagroal**](https://github.com/agroal/pgagroal) communication |
+| `performance_client` | Client to [**pgagroal**](https://github.com/pgagroal/pgagroal) communication |
+| `performance_server` | [PostgreSQL](https://www.postgresql.org) to [**pgagroal**](https://github.com/pgagroal/pgagroal) communication |
 | `performance_stop` | Nothing |
 | `performance_destroy` | Nothing |
 | `performance_periodic` | Nothing |
@@ -259,8 +259,8 @@ The pipeline is defined in [pipeline_session.c](../src/libpgagroal/pipeline_sess
 |----------|-------------|
 | `session_initialize` | Initialize memory segment if disconnect_client is active |
 | `session_start` | Prepares the client segment if disconnect_client is active |
-| `session_client` | Client to [**pgagroal**](https://github.com/agroal/pgagroal) communication |
-| `session_server` | [PostgreSQL](https://www.postgresql.org) to [**pgagroal**](https://github.com/agroal/pgagroal) communication |
+| `session_client` | Client to [**pgagroal**](https://github.com/pgagroal/pgagroal) communication |
+| `session_server` | [PostgreSQL](https://www.postgresql.org) to [**pgagroal**](https://github.com/pgagroal/pgagroal) communication |
 | `session_stop` | Updates the client segment if disconnect_client is active |
 | `session_destroy` | Destroys memory segment if initialized |
 | `session_periodic` | Checks if clients should be disconnected |
@@ -282,18 +282,18 @@ The pipeline is defined in [pipeline_transaction.c](../src/libpgagroal/pipeline_
 |----------|-------------|
 | `transaction_initialize` | Nothing |
 | `transaction_start` | Setup process variables and returns the connection to the pool |
-| `transaction_client` | Client to [**pgagroal**](https://github.com/agroal/pgagroal) communication. Obtain connection if needed |
-| `transaction_server` | [PostgreSQL](https://www.postgresql.org) to [**pgagroal**](https://github.com/agroal/pgagroal) communication. Keep track of message headers |
+| `transaction_client` | Client to [**pgagroal**](https://github.com/pgagroal/pgagroal) communication. Obtain connection if needed |
+| `transaction_server` | [PostgreSQL](https://www.postgresql.org) to [**pgagroal**](https://github.com/pgagroal/pgagroal) communication. Keep track of message headers |
 | `transaction_stop` | Return connection to the pool if needed. Possible rollback of active transaction |
 | `transaction_destroy` | Nothing |
 | `transaction_periodic` | Nothing |
 
 ## Signals
 
-The main process of [**pgagroal**](https://github.com/agroal/pgagroal) supports the following signals `SIGTERM`, `SIGINT` and `SIGALRM`
-as a mechanism for shutting down. The `SIGTRAP` signal will put [**pgagroal**](https://github.com/agroal/pgagroal) into graceful shutdown, meaning that
+The main process of [**pgagroal**](https://github.com/pgagroal/pgagroal) supports the following signals `SIGTERM`, `SIGINT` and `SIGALRM`
+as a mechanism for shutting down. The `SIGTRAP` signal will put [**pgagroal**](https://github.com/pgagroal/pgagroal) into graceful shutdown, meaning that
 exisiting connections are allowed to finish their session. The `SIGABRT` is used to request a core dump (`abort()`).
-The `SIGHUP` signal will trigger a full reload of the configuration. When `SIGHUP` is received, [**pgagroal**](https://github.com/agroal/pgagroal) will re-read the configuration from the configuration files on disk and apply any changes that can be handled at runtime. This is the standard way to apply changes made to the configuration files.
+The `SIGHUP` signal will trigger a full reload of the configuration. When `SIGHUP` is received, [**pgagroal**](https://github.com/pgagroal/pgagroal) will re-read the configuration from the configuration files on disk and apply any changes that can be handled at runtime. This is the standard way to apply changes made to the configuration files.
 
 In contrast, the `SIGUSR1` signal will trigger a service reload, but **does not** re-read the configuration files. Instead, `SIGUSR1` restarts sockets and listeners using the current in-memory configuration. This is useful for applying certain changes (such as re-opening sockets or refreshing listeners) without modifying or reloading the configuration from disk. Any changes made to the configuration files will **not** be picked up when using `SIGUSR1`; only the configuration already loaded in memory will be used.
 
@@ -302,14 +302,14 @@ Use `SIGUSR1` when you want to restart services without changing the current con
 
 The child processes support `SIGQUIT` as a mechanism to shutdown. This will not shutdown the pool itself.
 
-It should not be needed to use `SIGKILL` for [**pgagroal**](https://github.com/agroal/pgagroal). Please, consider using `SIGABRT` instead, and share the
-core dump and debug logs with the [**pgagroal**](https://github.com/agroal/pgagroal) community.
+It should not be needed to use `SIGKILL` for [**pgagroal**](https://github.com/pgagroal/pgagroal). Please, consider using `SIGABRT` instead, and share the
+core dump and debug logs with the [**pgagroal**](https://github.com/pgagroal/pgagroal) community.
 
 ## Reload
 
 The `SIGHUP` signal will trigger a reload of the configuration.
 
-However, some configuration settings requires a full restart of [**pgagroal**](https://github.com/agroal/pgagroal) in order to take effect. These are
+However, some configuration settings requires a full restart of [**pgagroal**](https://github.com/pgagroal/pgagroal) in order to take effect. These are
 
 * `hugepage`
 * `ev_backend`

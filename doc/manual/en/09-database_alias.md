@@ -315,4 +315,4 @@ analytics                                   analyst   5     2     1
 - Check HBA rules allow connections for the target database
 - Ensure proper escaping when using quoted aliases
 
-[pgagroal]: https://github.com/agroal/pgagroal
+[pgagroal]: https://github.com/pgagroal/pgagroal

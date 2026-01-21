@@ -25,7 +25,7 @@ Do
 
 ```sh
 cd pgagroal
-git remote add upstream https://github.com/agroal/pgagroal.git
+git remote add upstream https://github.com/pgagroal/pgagroal.git
 ```
 
 **Do a work branch**

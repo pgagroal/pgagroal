@@ -2,7 +2,7 @@
 
 The configuration is loaded from either the path specified by the `-c` flag or `/etc/pgagroal/pgagroal.conf`.
 
-The configuration of [**pgagroal**](https://github.com/agroal/pgagroal) is split into sections using the `[` and `]` characters.
+The configuration of [**pgagroal**](https://github.com/pgagroal/pgagroal) is split into sections using the `[` and `]` characters.
 
 The main section, called `[pgagroal]`, is where you configure the overall properties
 of the connection pool.
@@ -34,7 +34,7 @@ pipeline = 'performance' # no need to quote since it does not contain any spaces
 
 ```
 
-See a more complete [sample](./etc/pgagroal.conf) configuration for running [**pgagroal**](https://github.com/agroal/pgagroal) on `localhost`.
+See a more complete [sample](./etc/pgagroal.conf) configuration for running [**pgagroal**](https://github.com/pgagroal/pgagroal) on `localhost`.
 
 ## [pgagroal]
 
@@ -100,7 +100,7 @@ __Danger zone__
 
 ## Server section
 
-Each section with a name different from [**pgagroal**](https://github.com/agroal/pgagroal) will be treated as an host section.
+Each section with a name different from [**pgagroal**](https://github.com/pgagroal/pgagroal) will be treated as an host section.
 There can be up to `64` host sections, each with an unique name and different combination of `host` and `port` settings, otherwise the pooler will complain about duplicated server configuration.
 
 | Property | Default | Unit | Required | Description |
@@ -113,11 +113,11 @@ There can be up to `64` host sections, each with an unique name and different co
 | tls_key_file | | String | No | Private key file for TLS. This file must be owned by either the user running pgagroal or root. Additionally permissions must be at least `0640` when owned by root or `0600` otherwise.Changes require restart. |
 | tls_ca_file | | String | No | Certificate Authority (CA) file for TLS. This file must be owned by either the user running pgagroal or root. Changes require restart. |
 
-Note, that if `host` starts with a `/` it represents a path and [**pgagroal**](https://github.com/agroal/pgagroal) will connect using a Unix Domain Socket.
+Note, that if `host` starts with a `/` it represents a path and [**pgagroal**](https://github.com/pgagroal/pgagroal) will connect using a Unix Domain Socket.
 
 # pgagroal_hba configuration
 
-The `pgagroal_hba` configuration controls access to [**pgagroal**](https://github.com/agroal/pgagroal) through host-based authentication.
+The `pgagroal_hba` configuration controls access to [**pgagroal**](https://github.com/pgagroal/pgagroal) through host-based authentication.
 
 The configuration is loaded from either the path specified by the `-a` flag or `/etc/pgagroal/pgagroal_hba.conf`.
 
@@ -145,7 +145,7 @@ There could be up to `64` HBA entries in the configuration file.
 # pgagroal_databases configuration
 
 The `pgagroal_databases` configuration defines limits for a database or a user or both. The limits are the number
-of connections from [**pgagroal**](https://github.com/agroal/pgagroal) to PostgreSQL for each entry.
+of connections from [**pgagroal**](https://github.com/pgagroal/pgagroal) to PostgreSQL for each entry.
 
 The file also defines the initial and minimum pool size for a database and user pair. Note, that this feature requires
 a user definition file, see below.
@@ -225,12 +225,12 @@ the `pgagroal-admin` tool.
 
 The configuration is loaded from either the path specified by the `-u` flag or `/etc/pgagroal/pgagroal_users.conf`.
 
-There can be up to `64` users known to [**pgagroal**](https://github.com/agroal/pgagroal).
+There can be up to `64` users known to [**pgagroal**](https://github.com/pgagroal/pgagroal).
 
 # pgagroal_frontend_users configuration
 
 The `pgagroal_frontend_users` configuration defines the passwords for the users connecting to pgagroal.
-This allows the setup to use different passwords for the [**pgagroal**](https://github.com/agroal/pgagroal) to PostgreSQL authentication.
+This allows the setup to use different passwords for the [**pgagroal**](https://github.com/pgagroal/pgagroal) to PostgreSQL authentication.
 This file is created and managed through the `pgagroal-admin` tool.
 
 All users defined in the frontend authentication must be defined in the user vault (`-u`).
