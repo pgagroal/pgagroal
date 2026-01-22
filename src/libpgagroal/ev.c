@@ -39,6 +39,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <signal.h>
 #include <stdatomic.h>
@@ -132,10 +133,12 @@ static int ev_kqueue_signal_handler(struct kevent*);
 
 #endif /* HAVE_LINUX */
 
+static void init_watcher_message(struct io_watcher* watcher);
+
 /* context globals */
 
 static struct event_loop* loop = NULL;
-static struct signal_watcher* signal_watchers[PGAGROAL_NSIG] = {0};
+static _Atomic(struct signal_watcher*) signal_watchers[PGAGROAL_NSIG] = {0};
 
 #if HAVE_LINUX
 
@@ -179,6 +182,11 @@ setup_ops(void)
       {
          backend_type = main_config->ev_backend;
       }
+   }
+
+   if (backend_type == PGAGROAL_EVENT_BACKEND_AUTO)
+   {
+      backend_type = DEFAULT_EVENT_BACKEND;
    }
 
 #if HAVE_LINUX
@@ -232,6 +240,11 @@ pgagroal_event_loop_init(void)
    static bool context_is_set = false;
 
    loop = calloc(1, sizeof(struct event_loop));
+   if (loop == NULL)
+   {
+      pgagroal_log_fatal("calloc error: %s", strerror(errno));
+      return NULL;
+   }
    sigemptyset(&loop->sigset);
 
    if (!context_is_set)
@@ -269,7 +282,7 @@ pgagroal_event_loop_init(void)
 
       if (setup_ops())
       {
-         pgagroal_log_fatal("Failed to event backend operations");
+         pgagroal_log_fatal("Failed to set event backend operations");
          goto error;
       }
 
@@ -392,10 +405,18 @@ pgagroal_event_accept_init(struct io_watcher* watcher, int listen_fd, io_cb cb)
 int
 pgagroal_event_worker_init(struct io_watcher* watcher, int rcv_fd, int snd_fd, io_cb cb)
 {
+   struct main_configuration* config = (struct main_configuration*)shmem;
+
    watcher->event_watcher.type = PGAGROAL_EVENT_TYPE_WORKER;
    watcher->fds.worker.rcv_fd = rcv_fd;
    watcher->fds.worker.snd_fd = snd_fd;
    watcher->cb = cb;
+
+   if (config->ev_backend == PGAGROAL_EVENT_BACKEND_IO_URING)
+   {
+      init_watcher_message(watcher);
+   }
+
    return PGAGROAL_EVENT_RC_OK;
 }
 
@@ -439,13 +460,20 @@ pgagroal_io_stop(struct io_watcher* watcher)
       return PGAGROAL_EVENT_RC_ERROR;
    }
 
+   int rc = io_stop(watcher);
+   if (rc != PGAGROAL_EVENT_RC_OK)
+   {
+      pgagroal_log_error("pgagroal_io_stop: io_stop failed %d", rc);
+      return rc;
+   }
+
    loop->events_nr--;
    if (i != loop->events_nr)
    {
       loop->events[i] = loop->events[loop->events_nr];
    }
 
-   return io_stop(watcher);
+   return PGAGROAL_EVENT_RC_OK;
 }
 
 int
@@ -499,13 +527,20 @@ pgagroal_periodic_stop(struct periodic_watcher* watcher)
       return PGAGROAL_EVENT_RC_ERROR;
    }
 
+   int rc = periodic_stop(watcher);
+   if (rc != PGAGROAL_EVENT_RC_OK)
+   {
+      pgagroal_log_error("pgagroal_periodic_stop: periodic_stop failed %d", rc);
+      return rc;
+   }
+
    loop->events_nr--;
    if (i != loop->events_nr)
    {
       loop->events[i] = loop->events[loop->events_nr];
    }
 
-   return periodic_stop(watcher);
+   return PGAGROAL_EVENT_RC_OK;
 }
 
 int
@@ -521,6 +556,11 @@ pgagroal_event_prep_submit_send(struct io_watcher* watcher, struct message* msg)
 
 #if EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED
    int bid = loop->bid;
+   if (bid < 0 || bid >= 2)
+   {
+      pgagroal_log_fatal("invalid buffer id: %d", bid);
+      return -1;
+   }
    void* data = loop->br.buf + bid * DEFAULT_BUFFER_SIZE;
    msg->data = data;
 #endif /* EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED */
@@ -589,13 +629,23 @@ pgagroal_event_prep_submit_send(struct io_watcher* watcher, struct message* msg)
       if (cqe_res == 0)
       {
          /* Connection closed */
+         pgagroal_log_debug("io_uring send closed fd=%d after %zd/%zd bytes",
+                            watcher->fds.worker.snd_fd, total_sent, to_send);
          break;
       }
 
       total_sent += cqe_res;
    }
 
-   sent_bytes = (int)total_sent;
+   if (total_sent > INT_MAX)
+   {
+      pgagroal_log_error("io_uring send overflow: %zd", total_sent);
+      sent_bytes = -EOVERFLOW;
+   }
+   else
+   {
+      sent_bytes = (int)total_sent;
+   }
 
 #if EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED
    io_uring_buf_ring_add(loop->br.br,
@@ -617,7 +667,17 @@ pgagroal_wait_recv(void)
    int recv_bytes = 0;
 #if HAVE_LINUX
    struct io_uring_cqe* rcv_cqe = NULL;
-   io_uring_wait_cqe(&loop->ring_rcv, &rcv_cqe);
+   int rc = io_uring_wait_cqe(&loop->ring_rcv, &rcv_cqe);
+   if (rc < 0)
+   {
+      pgagroal_log_error("io_uring recv wait error: %s", strerror(-rc));
+      return rc;
+   }
+   if (!rcv_cqe)
+   {
+      pgagroal_log_error("io_uring recv wait error: missing CQE");
+      return -EIO;
+   }
    recv_bytes = rcv_cqe->res;
    io_uring_cqe_seen(&loop->ring_rcv, rcv_cqe);
 #endif
@@ -692,6 +752,13 @@ ev_io_uring_init(void)
 static int
 ev_io_uring_destroy(void)
 {
+#if EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED
+   if (loop->br.buf != NULL)
+   {
+      free(loop->br.buf);
+      loop->br.buf = NULL;
+   }
+#endif /* EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED */
    io_uring_queue_exit(&loop->ring_rcv);
    io_uring_queue_exit(&loop->ring_snd);
    return PGAGROAL_EVENT_RC_OK;
@@ -711,11 +778,11 @@ ev_io_uring_io_start(struct io_watcher* watcher)
          break;
       case PGAGROAL_EVENT_TYPE_WORKER:
 #if EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED
-         io_uring_prep_recv_multishot(sqe, watcher->fds.worker.rcv_fd, msg, 0, 0); /* msg must be NULL */
+         io_uring_prep_recv_multishot(sqe, watcher->fds.worker.rcv_fd, NULL, 0, 0); /* msg must be NULL */
          sqe->buf_group = 0;
          sqe->flags |= IOSQE_BUFFER_SELECT;
 #else
-         msg = pgagroal_memory_message();
+         msg = pgagroal_get_watcher_message(watcher);
          /* Use MESSAGE_PARSE_BUFFER_SIZE to leave headroom and prevent buffer
           * overflow when parsing message headers near the end of received data */
          io_uring_prep_recv(sqe, watcher->fds.worker.rcv_fd, msg->data, MESSAGE_PARSE_BUFFER_SIZE, 0);
@@ -739,7 +806,7 @@ ev_io_uring_io_stop(struct io_watcher* target)
    /* When io_stop is called it may never return to a loop
     * where sqes are submitted. Flush these sqes so the get call
     * doesn't return NULL. */
-   do
+   for (int retries = 0; retries < 100; retries++)
    {
       sqe = io_uring_get_sqe(&loop->ring_rcv);
       if (sqe)
@@ -749,7 +816,11 @@ ev_io_uring_io_stop(struct io_watcher* target)
       pgagroal_log_warn("sqe is full");
       io_uring_submit(&loop->ring_rcv);
    }
-   while (1);
+   if (!sqe)
+   {
+      pgagroal_log_error("io_uring: no SQE available for cancel");
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
 
    io_uring_prep_cancel(sqe, (void*)target, 0);
 
@@ -792,7 +863,7 @@ ev_io_uring_flush(void)
    unsigned int head;
    struct __kernel_timespec ts = {
       .tv_sec = 0,
-      .tv_nsec = 100000LL, /* seems best with 10000LL ms for most loads */
+      .tv_nsec = 100000LL, /* seems best with 100000LL ns for most loads */
    };
 
    struct io_uring_cqe* cqe;
@@ -852,7 +923,7 @@ ev_io_uring_loop(void)
    struct __kernel_timespec* ts = NULL;
    struct __kernel_timespec idle_ts = {
       .tv_sec = 0,
-      .tv_nsec = 100000LL, /* seems best with 10000LL ms for most loads */
+      .tv_nsec = 100000LL, /* seems best with 100000LL ns for most loads */
    };
 
    pgagroal_event_loop_start();
@@ -909,7 +980,7 @@ ev_io_uring_handler(struct io_uring_cqe* cqe)
    event_watcher_t* watcher = io_uring_cqe_get_data(cqe);
    struct io_watcher* io;
    struct periodic_watcher* per;
-   struct message* msg = pgagroal_memory_message();
+   struct message* msg = NULL;
 
 #if EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED
    loop->bid = cqe->flags >> IORING_CQE_BUFFER_SHIFT;
@@ -951,6 +1022,7 @@ ev_io_uring_handler(struct io_uring_cqe* cqe)
          break;
       case PGAGROAL_EVENT_TYPE_WORKER:
          io = (struct io_watcher*)watcher;
+         msg = pgagroal_get_watcher_message(io);
          if (cqe->res <= 0)
          {
             if (cqe->res == 0)
@@ -999,7 +1071,6 @@ ev_io_uring_setup_buffers(void)
    int br_mask = DEFAULT_BUFFER_SIZE;
    int br_flags = 0;
    int bid = 0;
-   struct message* msg = pgagroal_memory_message();
 
 #if EXPERIMENTAL_FEATURE_USE_HUGE_ENABLED
    pgagroal_log_fatal("io_uring use_huge not implemented");
@@ -1007,7 +1078,7 @@ ev_io_uring_setup_buffers(void)
 #endif /* EXPERIMENTAL_FEATURE_USE_HUGE_ENABLED */
 
    loop->br.br = NULL;
-   loop->br.buf = msg->data;
+   loop->br.buf = NULL;
    loop->br.pending_send = false;
    loop->br.cnt = 0;
 
@@ -1020,6 +1091,7 @@ ev_io_uring_setup_buffers(void)
    if (posix_memalign(&loop->br.buf, sysconf(_SC_PAGESIZE), 2 * DEFAULT_BUFFER_SIZE))
    {
       pgagroal_log_fatal("posix_memalign error: %s", strerror(errno));
+      return PGAGROAL_EVENT_RC_FATAL;
    }
    io_uring_buf_ring_add(loop->br.br,
                          loop->br.buf,
@@ -1065,6 +1137,18 @@ ev_epoll_loop(void)
 #else
       nfds = epoll_pwait(loop->epollfd, events, MAX_EVENTS, timeout, &loop->sigset);
 #endif
+
+      if (nfds == -1)
+      {
+         if (errno == EINTR)
+         {
+            continue;
+         }
+         pgagroal_log_error("epoll_pwait error: %s", strerror(errno));
+         rc = PGAGROAL_EVENT_RC_ERROR;
+         pgagroal_event_loop_break();
+         break;
+      }
 
       for (int i = 0; i < nfds; i++)
       {
@@ -1132,7 +1216,7 @@ ev_epoll_periodic_init(struct periodic_watcher* watcher, int msec)
 
    if (clock_gettime(CLOCK_MONOTONIC, &now) == -1)
    {
-      pgagroal_log_error("clock_gettime");
+      pgagroal_log_error("clock_gettime: %s", strerror(errno));
       return PGAGROAL_EVENT_RC_ERROR;
    }
 
@@ -1146,7 +1230,7 @@ ev_epoll_periodic_init(struct periodic_watcher* watcher, int msec)
    watcher->fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
    if (watcher->fd == -1)
    {
-      pgagroal_log_error("timerfd_create");
+      pgagroal_log_error("timerfd_create: %s", strerror(errno));
       return PGAGROAL_EVENT_RC_ERROR;
    }
 
@@ -1196,7 +1280,7 @@ ev_epoll_periodic_handler(struct periodic_watcher* watcher)
    int nread = read(watcher->fd, &exp, sizeof(uint64_t));
    if (nread != sizeof(uint64_t))
    {
-      pgagroal_log_error("periodic_handler: read");
+      pgagroal_log_error("periodic_handler read: %s", strerror(errno));
       return PGAGROAL_EVENT_RC_ERROR;
    }
    watcher->cb();
@@ -1455,7 +1539,7 @@ ev_kqueue_periodic_start(struct periodic_watcher* watcher)
           watcher->interval * 1000, watcher);
    if (kevent(loop->kqueuefd, &kev, 1, NULL, 0, NULL) == -1)
    {
-      pgagroal_log_error("kevent: timer add");
+      pgagroal_log_error("kevent timer add: %s", strerror(errno));
       return PGAGROAL_EVENT_RC_ERROR;
    }
    return PGAGROAL_EVENT_RC_OK;
@@ -1468,7 +1552,7 @@ ev_kqueue_periodic_stop(struct periodic_watcher* watcher)
    EV_SET(&kev, (uintptr_t)watcher, EVFILT_TIMER, EV_DELETE, 0, 0, NULL);
    if (kevent(loop->kqueuefd, &kev, 1, NULL, 0, NULL) == -1)
    {
-      pgagroal_log_error("kevent: timer delete");
+      pgagroal_log_error("kevent timer delete: %s", strerror(errno));
       return PGAGROAL_EVENT_RC_ERROR;
    }
 
@@ -1622,6 +1706,21 @@ int
 pgagroal_signal_start(struct signal_watcher* watcher)
 {
    struct sigaction act;
+
+   if (!loop)
+   {
+      pgagroal_log_error("signal_start: loop is NULL");
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
+
+   if (watcher->signum <= 0 || watcher->signum >= PGAGROAL_NSIG)
+   {
+      pgagroal_log_error("signal_start: invalid signum %d", watcher->signum);
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
+
+   atomic_store_explicit(&signal_watchers[watcher->signum], watcher, memory_order_release);
+
    sigemptyset(&act.sa_mask);
    act.sa_sigaction = &signal_handler;
    act.sa_flags = SA_SIGINFO | SA_RESTART;
@@ -1630,7 +1729,11 @@ pgagroal_signal_start(struct signal_watcher* watcher)
       pgagroal_log_fatal("sigaction failed for signum %d", watcher->signum);
       return PGAGROAL_EVENT_RC_ERROR;
    }
-   signal_watchers[watcher->signum] = watcher;
+   if (sigaddset(&loop->sigset, watcher->signum) == -1)
+   {
+      pgagroal_log_error("sigaddset error: %s", strerror(errno));
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
 
    return PGAGROAL_EVENT_RC_OK;
 }
@@ -1652,6 +1755,15 @@ pgagroal_signal_stop(struct signal_watcher* target)
 
    sigemptyset(&tmp);
    sigaddset(&tmp, target->signum);
+   if (loop && sigdelset(&loop->sigset, target->signum) == -1)
+   {
+      pgagroal_log_error("sigdelset error: %s", strerror(errno));
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
+   if (target->signum > 0 && target->signum < PGAGROAL_NSIG)
+   {
+      atomic_store_explicit(&signal_watchers[target->signum], NULL, memory_order_release);
+   }
 #if !HAVE_LINUX
    /* XXX: FreeBSD catches SIGINT as soon as it is removed from
     * sigset. This could probably be improved */
@@ -1660,7 +1772,7 @@ pgagroal_signal_stop(struct signal_watcher* target)
 #endif
       if (sigprocmask(SIG_UNBLOCK, &tmp, NULL) == -1)
       {
-         pgagroal_log_fatal("sigprocmask error: %s");
+         pgagroal_log_fatal("sigprocmask error: %s", strerror(errno));
          return PGAGROAL_EVENT_RC_FATAL;
       }
 #if !HAVE_LINUX
@@ -1673,6 +1785,36 @@ pgagroal_signal_stop(struct signal_watcher* target)
 static void
 signal_handler(int signum, siginfo_t* si __attribute__((unused)), void* p __attribute__((unused)))
 {
-   struct signal_watcher* watcher = signal_watchers[signum];
-   watcher->cb();
+   if (signum < 0 || signum >= PGAGROAL_NSIG)
+   {
+      return;
+   }
+
+   struct signal_watcher* watcher = atomic_load_explicit(&signal_watchers[signum], memory_order_acquire);
+   if (watcher && watcher->cb)
+   {
+      watcher->cb();
+   }
+}
+
+static void
+init_watcher_message(struct io_watcher* watcher)
+{
+   if (watcher->msg == NULL)
+   {
+      watcher->msg = calloc(1, sizeof(struct message));
+      if (watcher->msg == NULL)
+      {
+         pgagroal_log_fatal("failed to allocate message");
+         exit(1);
+      }
+      watcher->msg->data = calloc(1, DEFAULT_BUFFER_SIZE);
+      if (watcher->msg->data == NULL)
+      {
+         pgagroal_log_fatal("failed to allocate message buffer");
+         exit(1);
+      }
+      watcher->msg->length = 0;
+      watcher->msg->kind = 0;
+   }
 }

@@ -97,9 +97,9 @@ pgagroal_write_socket_message(int socket, struct message* msg)
 }
 
 static int
-read_message_from_buffer(struct io_watcher* watcher __attribute__((unused)), struct message** msg_p)
+read_message_from_buffer(struct io_watcher* watcher, struct message** msg_p)
 {
-   struct message* msg = pgagroal_memory_message();
+   struct message* msg = pgagroal_get_watcher_message(watcher);
 
    if (msg->length == 0)
    {
@@ -1631,4 +1631,15 @@ ssl_write_message(SSL* ssl, struct message* msg)
    while (keep_write);
 
    return MESSAGE_STATUS_ERROR;
+}
+
+struct message*
+pgagroal_get_watcher_message(struct io_watcher* watcher)
+{
+   if (watcher != NULL && watcher->msg != NULL)
+   {
+      return watcher->msg;
+   }
+
+   return pgagroal_memory_message();
 }

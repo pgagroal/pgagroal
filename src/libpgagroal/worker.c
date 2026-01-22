@@ -264,18 +264,20 @@ pgagroal_worker(int client_fd, char* address, char** argv)
    {
       pgagroal_log_error("pgagroal_workers: Unable to get a transfer connection");
    }
-
-   if (pgagroal_connection_id_write(transfer_fd, CONNECTION_CLIENT_DONE))
+   else
    {
-      pgagroal_log_error("pgagroal_workers: Unable to write to a transfer connection");
-   }
+      if (pgagroal_connection_id_write(transfer_fd, CONNECTION_CLIENT_DONE))
+      {
+         pgagroal_log_error("pgagroal_workers: Unable to write to a transfer connection");
+      }
 
-   if (pgagroal_connection_pid_write(transfer_fd, getpid()))
-   {
-      pgagroal_log_error("pgagroal_workers: Unable to write to a transfer connection");
-   }
+      if (pgagroal_connection_pid_write(transfer_fd, getpid()))
+      {
+         pgagroal_log_error("pgagroal_workers: Unable to write to a transfer connection");
+      }
 
-   pgagroal_disconnect(transfer_fd);
+      pgagroal_disconnect(transfer_fd);
+   }
 
    if (client_ssl != NULL)
    {
@@ -304,6 +306,19 @@ pgagroal_worker(int client_fd, char* address, char** argv)
    free(address);
 
    pgagroal_tracking_event_basic(TRACKER_CLIENT_STOP, NULL, NULL);
+
+   if (client_io.io.msg)
+   {
+      free(client_io.io.msg->data);
+      free(client_io.io.msg);
+      client_io.io.msg = NULL;
+   }
+   if (server_io.io.msg)
+   {
+      free(server_io.io.msg->data);
+      free(server_io.io.msg);
+      server_io.io.msg = NULL;
+   }
 
    pgagroal_memory_destroy();
    pgagroal_stop_logging();

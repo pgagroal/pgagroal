@@ -396,6 +396,14 @@ int
 pgagroal_recv_message(struct io_watcher* watcher, struct message** msg);
 
 /**
+ * Get the message buffer for a watcher
+ * @param watcher The watcher
+ * @return The message buffer
+ */
+struct message*
+pgagroal_get_watcher_message(struct io_watcher* watcher);
+
+/**
  * Write a message to a buffer (io_uring backend)
  * @param watcher The io_wacher used to send
  * @param msg The message to send

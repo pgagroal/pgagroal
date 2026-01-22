@@ -577,6 +577,13 @@ shutdown_mgt(struct event_loop* loop __attribute__((unused)))
    errno = 0;
    pgagroal_remove_unix_socket(config->unix_socket_dir, &p[0]);
    errno = 0;
+
+   if (server_io.io.msg)
+   {
+      free(server_io.io.msg->data);
+      free(server_io.io.msg);
+      server_io.io.msg = NULL;
+   }
 }
 
 static void
