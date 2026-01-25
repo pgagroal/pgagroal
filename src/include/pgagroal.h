@@ -139,6 +139,13 @@ extern "C" {
 #define SERVER_FAILOVER                2
 #define SERVER_FAILED                  3
 
+#define SERVER_HEALTH_UNKNOWN          0
+#define SERVER_HEALTH_UP               1
+#define SERVER_HEALTH_DOWN             2
+
+#define HEALTH_CHECK_MAX_RETRIES       3
+#define HEALTH_CHECK_MIN_INTERVAL      1
+
 #define FLUSH_IDLE                     0
 #define FLUSH_GRACEFULLY               1
 #define FLUSH_ALL                      2
@@ -358,6 +365,8 @@ struct server
    char tls_key_file[MAX_PATH];  /**< TLS key path */
    char tls_ca_file[MAX_PATH];   /**< TLS CA certificate path */
    atomic_schar state;           /**< The state of the server */
+   atomic_schar health_state;    /**< The health state of the server */
+   int failures;                 /**< The number of failures */
    int lineno;                   /**< The line number within the configuration file */
 } __attribute__((aligned(64)));
 
@@ -673,6 +682,10 @@ struct main_configuration
    int validation;                                /**< Validation mode */
    unsigned int background_interval;              /**< Background validation timer in seconds */
    int max_retries;                               /**< The maximum number of retries */
+   bool health_check;                             /**< Is health check enabled */
+   int health_check_period;                       /**< Health check period in seconds */
+   unsigned int health_check_timeout;             /**< Health check timeout */
+   char health_check_query[MISC_LENGTH];          /**< The health check query */
    int disconnect_client;                         /**< Disconnect client if idle for more than the specified seconds */
    bool disconnect_client_force;                  /**< Force a disconnect client if active for more than the specified seconds */
    char pidfile[MAX_PATH];                        /**< File containing the PID */

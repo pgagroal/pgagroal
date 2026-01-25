@@ -142,6 +142,8 @@ pgagroal_init_configuration(void* shm)
    for (int i = 0; i < NUMBER_OF_SERVERS; i++)
    {
       atomic_init(&config->servers[i].state, SERVER_NOTINIT);
+      atomic_init(&config->servers[i].health_state, SERVER_HEALTH_UNKNOWN);
+      config->servers[i].failures = 0;
    }
 
    config->failover = false;
@@ -158,6 +160,10 @@ pgagroal_init_configuration(void* shm)
    config->validation = VALIDATION_OFF;
    config->background_interval = DEFAULT_BACKGROUND_INTERVAL;
    config->max_retries = 5;
+   config->health_check = false;
+   config->health_check_period = 30;
+   config->health_check_timeout = 5;
+   snprintf(config->health_check_query, MISC_LENGTH, "SELECT 1");
    config->common.authentication_timeout = DEFAULT_AUTHENTICATION_TIMEOUT;
    config->disconnect_client = 0;
    config->disconnect_client_force = false;
@@ -5534,6 +5540,42 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
       {
          unknown = true;
       }
+   }
+   else if (key_in_section("health_check", section, key, true, &unknown))
+   {
+      if (as_bool(value, &config->health_check))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("health_check_period", section, key, true, &unknown))
+   {
+      if (as_int(value, &config->health_check_period))
+      {
+         unknown = true;
+      }
+
+      if (config->health_check_period < 1)
+      {
+         pgagroal_log_warn("health_check_period must be greater than 0. Setting to 1.");
+         config->health_check_period = 1;
+      }
+   }
+   else if (key_in_section("health_check_timeout", section, key, true, &unknown))
+   {
+      if (as_seconds(value, &config->health_check_timeout, 5))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("health_check_query", section, key, true, &unknown))
+   {
+      max = strlen(value);
+      if (max > MISC_LENGTH - 1)
+      {
+         max = MISC_LENGTH - 1;
+      }
+      memcpy(config->health_check_query, value, max);
    }
    else if (key_in_section("authentication_timeout", section, key, true, &unknown))
    {
