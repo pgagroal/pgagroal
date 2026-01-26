@@ -1207,7 +1207,7 @@ read_superuser_path:
 
    if (config->health_check)
    {
-      pgagroal_start_health_check(argc, argv);
+      pgagroal_start_health_check(0);
    }
 
    if (config->idle_timeout > 0)

@@ -39,8 +39,10 @@ extern "C" {
 
 /**
  * Start the health check process
+ * @param slot The shared memory slot
  */
-void pgagroal_start_health_check(int argc, char** argv);
+void
+pgagroal_start_health_check(int slot);
 
 #ifdef __cplusplus
 }

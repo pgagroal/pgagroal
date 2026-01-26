@@ -161,9 +161,9 @@ pgagroal_init_configuration(void* shm)
    config->background_interval = DEFAULT_BACKGROUND_INTERVAL;
    config->max_retries = 5;
    config->health_check = false;
-   config->health_check_period = 30;
-   config->health_check_timeout = 5;
-   snprintf(config->health_check_query, MISC_LENGTH, "SELECT 1");
+   config->health_check_period = DEFAULT_HEALTH_CHECK_PERIOD;
+   config->health_check_timeout = DEFAULT_HEALTH_CHECK_TIMEOUT;
+   snprintf(config->health_check_user, MAX_USERNAME_LENGTH, "postgres");
    config->common.authentication_timeout = DEFAULT_AUTHENTICATION_TIMEOUT;
    config->disconnect_client = 0;
    config->disconnect_client_force = false;
@@ -519,6 +519,21 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
    {
       pgagroal_log_warn("pgagroal: max_connections (%d) is greater than allowed (%d)", config->max_connections, MAX_NUMBER_OF_CONNECTIONS);
       config->max_connections = MAX_NUMBER_OF_CONNECTIONS;
+   }
+
+   if (config->health_check && config->health_check_period < 1)
+   {
+      pgagroal_log_warn("pgagroal: health_check_period is invalid (< 1), disabling health check");
+      config->health_check = false;
+   }
+
+   /* If health_check is disabled, assume all servers are UP (trust the user config) */
+   if (!config->health_check)
+   {
+      for (int i = 0; i < config->number_of_servers; i++)
+      {
+         atomic_store(&config->servers[i].health_state, SERVER_HEALTH_UP);
+      }
    }
 
    if (config->number_of_frontend_users > 0 && config->allow_unknown_users)
@@ -5550,15 +5565,9 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("health_check_period", section, key, true, &unknown))
    {
-      if (as_int(value, &config->health_check_period))
+      if (as_int(value, (int*)&config->health_check_period))
       {
          unknown = true;
-      }
-
-      if (config->health_check_period < 1)
-      {
-         pgagroal_log_warn("health_check_period must be greater than 0. Setting to 1.");
-         config->health_check_period = 1;
       }
    }
    else if (key_in_section("health_check_timeout", section, key, true, &unknown))
@@ -5567,15 +5576,6 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
       {
          unknown = true;
       }
-   }
-   else if (key_in_section("health_check_query", section, key, true, &unknown))
-   {
-      max = strlen(value);
-      if (max > MISC_LENGTH - 1)
-      {
-         max = MISC_LENGTH - 1;
-      }
-      memcpy(config->health_check_query, value, max);
    }
    else if (key_in_section("authentication_timeout", section, key, true, &unknown))
    {

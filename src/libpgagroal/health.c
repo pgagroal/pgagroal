@@ -33,6 +33,7 @@
 #include <network.h>
 #include <shmem.h>
 #include <utils.h>
+#include <message.h>
 
 /* system */
 #include <stdlib.h>
@@ -44,13 +45,16 @@
 #include <errno.h>
 
 static void health_check_loop(void);
-static void write_int32(char* buf, int value);
-static bool pgagroal_server_probe(int server_idx);
+static bool server_probe(int server_idx);
 
 void
-pgagroal_start_health_check(int argc, char** argv)
+pgagroal_start_health_check(int slot)
 {
+   (void)slot;
+
    pid_t pid;
+   char title[512] = "pgagroal: health-check";
+   char* args[] = {title, NULL};
 
    pid = fork();
    if (pid == -1)
@@ -61,18 +65,17 @@ pgagroal_start_health_check(int argc, char** argv)
    else if (pid == 0)
    {
       /* Child process */
-      pgagroal_set_proc_title(argc, argv, "health check", NULL);
+      pgagroal_set_proc_title(1, args, "health check", NULL);
       health_check_loop();
+      exit(0);
    }
-
-   /* Parent process returns */
 }
 
 static void
 health_check_loop(void)
 {
    struct main_configuration* config;
-   int period;
+   unsigned int period;
 
    config = (struct main_configuration*)shmem;
 
@@ -91,8 +94,8 @@ health_check_loop(void)
 
    while (config->keep_running)
    {
-      /* Sleep for the defined period (usleep takes microseconds) */
-      usleep(period * 1000000);
+      /* Sleep for the defined period in seconds */
+      sleep(period);
 
       if (!config->keep_running)
       {
@@ -103,7 +106,7 @@ health_check_loop(void)
 
       for (int i = 0; i < config->number_of_servers; i++)
       {
-         bool up = pgagroal_server_probe(i);
+         bool up = server_probe(i);
 
          if (!up)
          {
@@ -115,34 +118,26 @@ health_check_loop(void)
          }
       }
    }
-
-   pgagroal_log_info("Health check stopped");
-   exit(0);
-}
-
-static void
-write_int32(char* buf, int value)
-{
-   int n = htonl(value);
-   memcpy(buf, &n, 4);
 }
 
 static bool
-pgagroal_server_probe(int server_idx)
+server_probe(int server_idx)
 {
    struct main_configuration* config = (struct main_configuration*)shmem;
    struct server* server = &config->servers[server_idx];
    int fd = -1;
    char buffer[1024];
    int offset = 0;
+   struct message* msg = NULL;
+   int status;
+   size_t start_packet_size;
 
-
+   pgagroal_log_trace("Health: Probing server %d", server_idx);
 
    /* ---------------------------------------------------------
     * STEP 1: Connect
     * --------------------------------------------------------- */
-   /* Use true for keep_alive, false for no_delay as default safe args */
-   if (pgagroal_connect(server->host, server->port, &fd, true, false))
+   if (pgagroal_connect(server->host, server->port, &fd, true, false) != 0)
    {
       pgagroal_log_debug("Health: Failed to connect to server %d (%s:%d)", server_idx, server->host, server->port);
       return false;
@@ -151,17 +146,19 @@ pgagroal_server_probe(int server_idx)
    /* ---------------------------------------------------------
     * STEP 2: Construct Startup Packet (Protocol v3.0)
     * --------------------------------------------------------- */
-   /* Format: [Length (4)] [Version (4)] [user\0name\0] [database\0name\0] [\0] */
+   /* Calculate size: Length(4) + Version(4) + "user\0" + user\0 + "database\0" + "postgres\0" + \0 */
+   start_packet_size = 4 + 4 + 5 + strlen(config->health_check_user) + 1 + 9 + strlen("postgres") + 1 + 1;
 
    memset(buffer, 0, sizeof(buffer));
-   offset = 8; // Skip Length (4) and Version (4) for now
+   pgagroal_write_int32(buffer, start_packet_size);
+   pgagroal_write_int32(buffer + 4, 196608); // Protocol Version 3.0 (0x00030000)
 
+   offset = 8;
    /* Parameter: user */
    pgagroal_snprintf(buffer + offset, sizeof(buffer) - offset, "user");
    offset += 5;
-   /* Use the server's username or fallback to "postgres" - simplifying to postgres for now */
-   pgagroal_snprintf(buffer + offset, sizeof(buffer) - offset, "postgres");
-   offset += strlen("postgres") + 1;
+   pgagroal_snprintf(buffer + offset, sizeof(buffer) - offset, "%s", config->health_check_user);
+   offset += strlen(config->health_check_user) + 1;
 
    /* Parameter: database */
    pgagroal_snprintf(buffer + offset, sizeof(buffer) - offset, "database");
@@ -173,136 +170,64 @@ pgagroal_server_probe(int server_idx)
    buffer[offset] = 0;
    offset += 1;
 
-   /* Now write the header */
-   write_int32(buffer, offset);     // Total Length
-   write_int32(buffer + 4, 196608); // Protocol Version 3.0 (0x00030000)
-
-   /* Send it */
-   if (pgagroal_write_socket(NULL, fd, buffer, offset) != 0)
+   if (pgagroal_write_socket(NULL, fd, buffer, offset) != offset)
    {
-      pgagroal_disconnect(fd);
-      return false;
+      pgagroal_log_debug("Health: Failed to write startup packet");
+      goto error;
    }
 
    /* ---------------------------------------------------------
     * STEP 3: Handle Authentication (Expect 'R')
     * --------------------------------------------------------- */
-   /* Read the Message Type (1 byte) */
-   if (pgagroal_read_socket(NULL, fd, buffer, 1) != 1)
-   {
-      pgagroal_disconnect(fd);
-      return false;
-   }
-   char msg_type = buffer[0];
+   status = pgagroal_read_socket_message(fd, &msg);
 
-   /* Read Length (4 bytes) */
-   if (pgagroal_read_socket(NULL, fd, buffer, 4) != 4)
+   if (status != MESSAGE_STATUS_OK || msg->kind != 'R')
    {
-      pgagroal_disconnect(fd);
-      return false;
+      pgagroal_log_debug("Health: Expected 'R' but got %c (status %d)", msg ? msg->kind : '?', status);
+      goto error;
    }
 
-   if (msg_type == 'E')
+   /* Auth Type is at offset 5 ('R'(1) + Length(4)) */
+   int auth_type = ntohl(*(int*)(msg->data + 5));
+
+   if (auth_type == 0) /* AUTH_REQ_OK (Trust) */
    {
-      /* Error Response from server */
-      pgagroal_log_debug("Health: Server returned Error on startup");
+      pgagroal_log_debug("Health: Server %d is UP (Trust)", server_idx);
+      pgagroal_clear_message(msg);
+      msg = NULL;
+
+      /* Send Terminate ('X') and close connection */
+      buffer[0] = 'X';
+      pgagroal_write_int32(buffer + 1, 4);
+      pgagroal_write_socket(NULL, fd, buffer, 5);
+
       pgagroal_disconnect(fd);
-      return false;
+      return true;
    }
-
-   if (msg_type == 'R')
+   else
    {
-      /* Authentication Request */
-      /* Read the payload (Auth Type) */
-      if (pgagroal_read_socket(NULL, fd, buffer, 4) != 4)
-      {
-         pgagroal_disconnect(fd);
-         return false;
-      }
-      int auth_type = ntohl(*(int*)buffer);
-
-      if (auth_type != 0)
-      {
-         pgagroal_log_warn("Health check failed: Server requires Auth (Type %d), but we only support TRUST", auth_type);
-         pgagroal_disconnect(fd);
-         return false;
-      }
-
-      /* If AuthOK (0), wait for ReadyForQuery ('Z') */
-      while (1)
-      {
-         if (pgagroal_read_socket(NULL, fd, buffer, 1) != 1)
-         {
-            pgagroal_disconnect(fd);
-            return false;
-         }
-         msg_type = buffer[0];
-
-         /* Read length */
-         if (pgagroal_read_socket(NULL, fd, buffer, 4) != 4)
-         {
-            pgagroal_disconnect(fd);
-            return false;
-         }
-         int len = ntohl(*(int*)buffer) - 4;
-
-         /* Skip payload */
-         if (len > 0)
-         {
-            while (len > 0)
-            {
-               int to_read = (len > (int)sizeof(buffer)) ? (int)sizeof(buffer) : len;
-               if (pgagroal_read_socket(NULL, fd, buffer, to_read) != to_read)
-               {
-                  pgagroal_disconnect(fd);
-                  return false;
-               }
-               len -= to_read;
-            }
-         }
-
-         if (msg_type == 'Z')
-            break; // Ready!
-         if (msg_type == 'E')
-         {
-            pgagroal_disconnect(fd);
-            return false;
-         }
-      }
+      pgagroal_log_warn("Health check failed: Server requires Auth (Type %d), but we only support TRUST", auth_type);
+      goto error;
    }
 
    /* ---------------------------------------------------------
     * STEP 4: Send Query ('Q')
     * --------------------------------------------------------- */
-
-   /* Reset buffer for the Query message */
-   memset(buffer, 0, sizeof(buffer));
-
-   /* Message Type 'Q' */
-   buffer[0] = 'Q';
-
-   /* Use the configured query, or default to "SELECT 1" */
    char* query_string = "SELECT 1";
-   if (config->health_check_query[0] != 0)
-   {
-      query_string = config->health_check_query;
-   }
-
    int query_len = strlen(query_string);
 
-   write_int32(buffer + 1, 4 + query_len + 1);
-
+   memset(buffer, 0, sizeof(buffer));
+   buffer[0] = 'Q';
+   pgagroal_write_int32(buffer + 1, 4 + query_len + 1);
    memcpy(buffer + 5, query_string, query_len);
-   buffer[5 + query_len] = 0; // Null terminator
+   buffer[5 + query_len] = 0;
 
    int msg_size = 1 + 4 + query_len + 1;
 
-   /* Send 'Q' packet */
-   if (pgagroal_write_socket(NULL, fd, buffer, msg_size) != 0)
+   if (pgagroal_write_socket(NULL, fd, buffer, msg_size) != msg_size)
    {
       pgagroal_log_debug("Health: Failed to write query");
-      pgagroal_disconnect(fd);
-      return false;
+      goto error;
    }
 
    /* ---------------------------------------------------------
@@ -312,23 +237,13 @@ pgagroal_server_probe(int server_idx)
 
    while (true)
    {
-      /* Read Message Type */
-      if (pgagroal_read_socket(NULL, fd, buffer, 1) != 1)
+      status = pgagroal_read_socket_message(fd, &msg);
+      if (status != MESSAGE_STATUS_OK || msg == NULL)
          break;
-      char type = buffer[0];
 
-      /* Read Length */
-      if (pgagroal_read_socket(NULL, fd, buffer, 4) != 4)
-         break;
-      int len = ntohl(*(int*)buffer) - 4;
-
-      while (len > 0)
-      {
-         int chunk = (len > (int)sizeof(buffer)) ? (int)sizeof(buffer) : len;
-         if (pgagroal_read_socket(NULL, fd, buffer, chunk) != chunk)
-            goto done;
-         len -= chunk;
-      }
+      char type = msg->kind;
+      pgagroal_clear_message(msg);
+      msg = NULL;
 
       if (type == 'T' || type == 'C')
       {
@@ -341,19 +256,30 @@ pgagroal_server_probe(int server_idx)
       }
       else if (type == 'Z')
       {
-         break; // We are done
+         break;
       }
    }
 
-done:
    /* ---------------------------------------------------------
     * STEP 6: Cleanup
     * --------------------------------------------------------- */
    buffer[0] = 'X';
-   write_int32(buffer + 1, 4);
+   pgagroal_write_int32(buffer + 1, 4);
    pgagroal_write_socket(NULL, fd, buffer, 5);
 
    pgagroal_disconnect(fd);
 
    return query_success;
+
+error:
+   if (msg)
+   {
+      pgagroal_clear_message(msg);
+      msg = NULL;
+   }
+   if (fd != -1)
+   {
+      pgagroal_disconnect(fd);
+   }
+   return false;
 }
