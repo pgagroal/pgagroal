@@ -37,26 +37,26 @@ firewall-cmd --permanent --zone=public --add-port=2346/tcp
 
 ## PostgreSQL
 
-We will install PostgreSQL 17 from the official [YUM repository][yum] with the community binaries,
+We will install PostgreSQL 18 from the official [YUM repository][yum] with the community binaries,
 
 **x86_64**
 
 ```
 dnf -qy module disable postgresql
-dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm
 ```
 
 **aarch64**
 
 ```
 dnf -qy module disable postgresql
-dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-aarch64/pgdg-redhat-repo-latest.noarch.rpm
+dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-aarch64/pgdg-redhat-repo-latest.noarch.rpm
 ```
 
 and do the install via
 
 ```
-dnf install -y postgresql17 postgresql17-server postgresql17-contrib
+dnf install -y postgresql18 postgresql18-server postgresql18-contrib
 ```
 
 First, we will update `~/.bashrc` with
@@ -64,7 +64,7 @@ First, we will update `~/.bashrc` with
 ```
 cat >> ~/.bashrc
 export PGHOST=/tmp
-export PATH=/usr/pgsql-17/bin/:$PATH
+export PATH=/usr/pgsql-18/bin/:$PATH
 ```
 
 then Ctrl-d to save, and
@@ -115,6 +115,8 @@ lc_messages = 'en_US.UTF-8'
 lc_monetary = 'en_US.UTF-8'
 lc_numeric = 'en_US.UTF-8'
 lc_time = 'en_US.UTF-8'
+summarize_wal = on
+wal_summary_keep_time = '0'
 ```
 
 Please, check with other sources in order to create a setup for your local setup.

@@ -30,7 +30,7 @@ jobs:
         run: |
           ./clang-format.sh
           if ! git diff --quiet; then
-            git diff --name-only
+            git diff
             echo ""
             echo "Please run './clang-format.sh' and commit the changes."
             exit 1

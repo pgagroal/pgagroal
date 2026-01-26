@@ -15,7 +15,7 @@
 * Enable / disable database access
 * Graceful / fast shutdown
 * Prometheus support
-* Grafana 8 dashboard
+* Grafana 12 dashboard
 * Remote management
 * Authentication query support
 * Failover support
@@ -27,8 +27,7 @@
 
 The supported platforms are
 
-* [Fedora][fedora] 32+
-* [RHEL][rhel] 9 / RockyLinux 9
+* [Fedora][fedora] 42+
 * [RHEL][rhel] 10 / RockyLinux 10
 * [FreeBSD][freebsd]
 * [OpenBSD][openbsd]
@@ -44,7 +43,7 @@ This manual is organized to guide you from initial setup to advanced usage and d
 
 | Chapter                                                           | File                                                              | Description                                                                   |
 |-------------------------------------------------------------------|-------------------------------------------------------------------|-------------------------------------------------------------------------------|
-| [Installation](#installation)                                    | [02-installation.md](02-installation.md)                         | Step-by-step setup for Rocky Linux, PostgreSQL 17, and pgagroal             |
+| [Installation](#installation)                                    | [02-installation.md](02-installation.md)                         | Step-by-step setup for Rocky Linux, PostgreSQL 18, and pgagroal             |
 | [Getting Started](#getting-started)                              | [03-gettingstarted.md](03-gettingstarted.md)                     | Quick introduction to basic pgagroal usage and initial configuration        |
 | [Configuration](#configuration)                                  | [04-configuration.md](04-configuration.md)                       | Comprehensive guide to all configuration files and options                   |
 | [Prefill](#prefill)                                              | [05-prefill.md](05-prefill.md)                                   | How to configure and use connection prefill for better performance          |

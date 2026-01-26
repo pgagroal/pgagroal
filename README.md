@@ -15,7 +15,7 @@ Pronounced: p-g-a-gro-al, named after [A](https://www.visitportugal.com/en/conte
 * Enable / disable database access
 * Graceful / fast shutdown
 * Prometheus support
-* Grafana 8 dashboard
+* Grafana 12 dashboard
 * Remote management
 * Authentication query support
 * Failover support

@@ -121,6 +121,7 @@ This section contains reference links used throughout the manual.
   [pgprtdbg]: https://github.com/jesperpedersen/pgprtdbg
   [ART_paper]: http://www-db.in.tum.de/~leis/papers/ART.pdf
   [libart]: https://github.com/armon/libart
+  [podman]: https://podman.io/
 
 <!-- doc/ -->
 [rpm]: https://github.com/pgagroal/pgagroal/blob/master/doc/RPM.md

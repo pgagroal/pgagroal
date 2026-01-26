@@ -1,3 +1,5 @@
+\newpage
+
 # Prometheus
 
 ## pgagroal
@@ -12,7 +14,7 @@ It is also possible to get an explaination of what is the meaning of each metric
 
 ```
 http://localhost:2346/
-``**
+```
 
 ### Metrics
 
