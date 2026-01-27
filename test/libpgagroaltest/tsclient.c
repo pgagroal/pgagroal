@@ -108,9 +108,23 @@ pgagroal_tsclient_execute_pgbench(char* user, char* database, bool select_only, 
    char* log_file_path = NULL;
    struct main_configuration* config = NULL;
    int ret = EXIT_FAILURE;
+   const char* password = NULL;
+   char* command_with_password = NULL;
 
    config = (struct main_configuration*)shmem;
    log_file_path = get_log_file_path();
+
+   /* Get password from environment variables */
+   /* Priority: PGPASSWORD > PG_USER_PASSWORD > PG_UTF8_USER_PASSWORD */
+   password = getenv("PGPASSWORD");
+   if (password == NULL)
+   {
+      password = getenv("PG_USER_PASSWORD");
+   }
+   if (password == NULL)
+   {
+      password = getenv("PG_UTF8_USER_PASSWORD");
+   }
 
    command = pgagroal_append(NULL, "pgbench ");
 
@@ -159,7 +173,34 @@ pgagroal_tsclient_execute_pgbench(char* user, char* database, bool select_only, 
    command = pgagroal_append(command, log_file_path);
    command = pgagroal_append(command, " 2>&1");
 
-   ret = system(command);
+   /* Prepend PGPASSWORD to command if password is available */
+   if (password != NULL && strlen(password) > 0)
+   {
+      size_t cmd_len = strlen(command);
+      size_t pwd_len = strlen(password);
+      /* Format: "PGPASSWORD=%s %s\0" = 11 + pwd_len + 1 + cmd_len + 1 */
+      size_t total_len = 11 + pwd_len + 1 + cmd_len + 1;
+      
+      command_with_password = (char*)calloc(total_len, sizeof(char));
+      if (command_with_password != NULL)
+      {
+         snprintf(command_with_password, total_len, "PGPASSWORD=%s %s", password, command);
+         ret = system(command_with_password);
+         free(command_with_password);
+      }
+      else
+      {
+         /* Fallback: try to setenv (may not work in all cases) */
+         setenv("PGPASSWORD", password, 1);
+         ret = system(command);
+      }
+   }
+   else
+   {
+      /* No password found - pgbench will prompt (or fail if non-interactive) */
+      ret = system(command);
+   }
+
    if (command != NULL && ret == 0)
    {
       ret = EXIT_SUCCESS;

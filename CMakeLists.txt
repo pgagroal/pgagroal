@@ -69,17 +69,7 @@ if(NOT COMPILER_SUPPORTS_C17)
   message(FATAL_ERROR "The compiler ${CMAKE_C_COMPILER} has no C17 support. Please use a different C compiler.")
 endif()
 
-find_package(Check)
-if (CHECK_FOUND)
-  message(STATUS "check found")
-  add_library(Check::check SHARED IMPORTED)
-  set_target_properties(Check::check PROPERTIES
-    IMPORTED_LOCATION ${CHECK_LIBRARY}
-    INTERFACE_INCLUDE_DIRECTORIES ${CHECK_INCLUDE_DIR})
-else ()
-  message(STATUS "check needed. The testsuite process will be skipped.")
-  set(check FALSE)
-endif()
+message(STATUS "MCTF test framework enabled")
 
 find_program(DOCKER_EXECUTABLE docker)
 find_program(PODMAN_EXECUTABLE podman)

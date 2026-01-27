@@ -28,7 +28,7 @@
  */
 #include <pgagroal.h>
 #include <deque.h>
-#include <tssuite.h>
+#include <mctf.h>
 #include <utils.h>
 #include <value.h>
 
@@ -42,120 +42,127 @@ static void test_obj_create(int idx, struct deque_test_obj** obj);
 static void test_obj_destroy(struct deque_test_obj* obj);
 static void test_obj_destroy_cb(uintptr_t obj);
 
-START_TEST(test_deque_create)
+MCTF_TEST(test_deque_create)
 {
    struct deque* dq = NULL;
 
-   ck_assert(!pgagroal_deque_create(false, &dq));
-   ck_assert_ptr_nonnull(dq);
-   ck_assert_int_eq(dq->size, 0);
+   MCTF_ASSERT(!pgagroal_deque_create(false, &dq), cleanup, "deque creation should succeed");
+   MCTF_ASSERT_PTR_NONNULL(dq, cleanup, "deque should not be NULL");
+   MCTF_ASSERT_INT_EQ(dq->size, 0, cleanup, "deque size should be 0");
 
+cleanup:
    pgagroal_deque_destroy(dq);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_deque_add_poll)
+MCTF_TEST(test_deque_add_poll)
 {
    struct deque* dq = NULL;
+   char* value1 = NULL;
 
    pgagroal_deque_create(false, &dq);
-   ck_assert(!pgagroal_deque_add(dq, NULL, (uintptr_t)-1, ValueInt32));
-   ck_assert(!pgagroal_deque_add(dq, NULL, (uintptr_t)true, ValueBool));
-   ck_assert(!pgagroal_deque_add(dq, NULL, (uintptr_t)"value1", ValueString));
-   ck_assert_int_eq(dq->size, 3);
+   MCTF_ASSERT(!pgagroal_deque_add(dq, NULL, (uintptr_t)-1, ValueInt32), cleanup, "add int should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, NULL, (uintptr_t)true, ValueBool), cleanup, "add bool should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, NULL, (uintptr_t)"value1", ValueString), cleanup, "add string should succeed");
+   MCTF_ASSERT_INT_EQ(dq->size, 3, cleanup, "deque size should be 3");
 
-   ck_assert_int_eq((int)pgagroal_deque_peek(dq, NULL), -1);
+   MCTF_ASSERT_INT_EQ((int)pgagroal_deque_peek(dq, NULL), -1, cleanup, "peek should return -1");
 
-   ck_assert_int_eq((int)pgagroal_deque_poll(dq, NULL), -1);
-   ck_assert_int_eq(dq->size, 2);
+   MCTF_ASSERT_INT_EQ((int)pgagroal_deque_poll(dq, NULL), -1, cleanup, "poll should return -1");
+   MCTF_ASSERT_INT_EQ(dq->size, 2, cleanup, "deque size should be 2");
 
-   ck_assert((bool)pgagroal_deque_poll(dq, NULL));
-   ck_assert_int_eq(dq->size, 1);
+   MCTF_ASSERT((bool)pgagroal_deque_poll(dq, NULL), cleanup, "poll should return true");
+   MCTF_ASSERT_INT_EQ(dq->size, 1, cleanup, "deque size should be 1");
 
-   char* value1 = (char*)pgagroal_deque_poll(dq, NULL);
-   ck_assert_str_eq(value1, "value1");
-   ck_assert_int_eq(dq->size, 0);
+   value1 = (char*)pgagroal_deque_poll(dq, NULL);
+   MCTF_ASSERT_STR_EQ(value1, "value1", cleanup, "polled value should be value1");
+   MCTF_ASSERT_INT_EQ(dq->size, 0, cleanup, "deque size should be 0");
+
+   MCTF_ASSERT_INT_EQ(pgagroal_deque_poll(dq, NULL), 0, cleanup, "poll on empty deque should return 0");
+   MCTF_ASSERT_INT_EQ(dq->size, 0, cleanup, "deque size should remain 0");
+
+cleanup:
    free(value1);
-
-   ck_assert_int_eq(pgagroal_deque_poll(dq, NULL), 0);
-   ck_assert_int_eq(dq->size, 0);
-
    pgagroal_deque_destroy(dq);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_deque_add_poll_last)
+MCTF_TEST(test_deque_add_poll_last)
 {
    struct deque* dq = NULL;
+   char* value1 = NULL;
 
    pgagroal_deque_create(false, &dq);
    pgagroal_deque_add(dq, NULL, 0, ValueNone);
-   ck_assert(!pgagroal_deque_add(dq, NULL, (uintptr_t)"value1", ValueString));
-   ck_assert(!pgagroal_deque_add(dq, NULL, (uintptr_t)true, ValueBool));
-   ck_assert(!pgagroal_deque_add(dq, NULL, (uintptr_t)-1, ValueInt32));
-   ck_assert_int_eq(dq->size, 3);
+   MCTF_ASSERT(!pgagroal_deque_add(dq, NULL, (uintptr_t)"value1", ValueString), cleanup, "add string should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, NULL, (uintptr_t)true, ValueBool), cleanup, "add bool should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, NULL, (uintptr_t)-1, ValueInt32), cleanup, "add int should succeed");
+   MCTF_ASSERT_INT_EQ(dq->size, 3, cleanup, "deque size should be 3");
 
-   ck_assert_int_eq((int)pgagroal_deque_peek_last(dq, NULL), -1);
+   MCTF_ASSERT_INT_EQ((int)pgagroal_deque_peek_last(dq, NULL), -1, cleanup, "peek_last should return -1");
 
-   ck_assert_int_eq((int)pgagroal_deque_poll_last(dq, NULL), -1);
-   ck_assert_int_eq(dq->size, 2);
+   MCTF_ASSERT_INT_EQ((int)pgagroal_deque_poll_last(dq, NULL), -1, cleanup, "poll_last should return -1");
+   MCTF_ASSERT_INT_EQ(dq->size, 2, cleanup, "deque size should be 2");
 
-   ck_assert((bool)pgagroal_deque_poll_last(dq, NULL));
-   ck_assert_int_eq(dq->size, 1);
+   MCTF_ASSERT((bool)pgagroal_deque_poll_last(dq, NULL), cleanup, "poll_last should return true");
+   MCTF_ASSERT_INT_EQ(dq->size, 1, cleanup, "deque size should be 1");
 
-   char* value1 = (char*)pgagroal_deque_poll_last(dq, NULL);
-   ck_assert_str_eq(value1, "value1");
-   ck_assert_int_eq(dq->size, 0);
+   value1 = (char*)pgagroal_deque_poll_last(dq, NULL);
+   MCTF_ASSERT_STR_EQ(value1, "value1", cleanup, "polled value should be value1");
+   MCTF_ASSERT_INT_EQ(dq->size, 0, cleanup, "deque size should be 0");
+
+   MCTF_ASSERT_INT_EQ(pgagroal_deque_poll_last(dq, NULL), 0, cleanup, "poll_last on empty deque should return 0");
+   MCTF_ASSERT_INT_EQ(dq->size, 0, cleanup, "deque size should remain 0");
+
+cleanup:
    free(value1);
-
-   ck_assert_int_eq(pgagroal_deque_poll_last(dq, NULL), 0);
-   ck_assert_int_eq(dq->size, 0);
-
    pgagroal_deque_destroy(dq);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_deque_clear)
+MCTF_TEST(test_deque_clear)
 {
    struct deque* dq = NULL;
 
    pgagroal_deque_create(false, &dq);
-   ck_assert(!pgagroal_deque_add(dq, NULL, (uintptr_t)"value1", ValueString));
-   ck_assert(!pgagroal_deque_add(dq, NULL, (uintptr_t)true, ValueBool));
-   ck_assert(!pgagroal_deque_add(dq, NULL, (uintptr_t)-1, ValueInt32));
-   ck_assert_int_eq(dq->size, 3);
+   MCTF_ASSERT(!pgagroal_deque_add(dq, NULL, (uintptr_t)"value1", ValueString), cleanup, "add string should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, NULL, (uintptr_t)true, ValueBool), cleanup, "add bool should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, NULL, (uintptr_t)-1, ValueInt32), cleanup, "add int should succeed");
+   MCTF_ASSERT_INT_EQ(dq->size, 3, cleanup, "deque size should be 3");
 
    pgagroal_deque_clear(dq);
-   ck_assert_int_eq(dq->size, 0);
-   ck_assert_int_eq(pgagroal_deque_poll(dq, NULL), 0);
+   MCTF_ASSERT_INT_EQ(dq->size, 0, cleanup, "deque size should be 0 after clear");
+   MCTF_ASSERT_INT_EQ(pgagroal_deque_poll(dq, NULL), 0, cleanup, "poll on empty deque should return 0");
 
+cleanup:
    pgagroal_deque_destroy(dq);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_deque_remove)
+MCTF_TEST(test_deque_remove)
 {
    struct deque* dq = NULL;
    char* value1 = NULL;
    char* tag = NULL;
 
    pgagroal_deque_create(false, &dq);
-   ck_assert(!pgagroal_deque_add(dq, "tag1", (uintptr_t)"value1", ValueString));
-   ck_assert(!pgagroal_deque_add(dq, "tag2", (uintptr_t)true, ValueBool));
-   ck_assert(!pgagroal_deque_add(dq, "tag2", (uintptr_t)-1, ValueInt32));
-   ck_assert_int_eq(dq->size, 3);
+   MCTF_ASSERT(!pgagroal_deque_add(dq, "tag1", (uintptr_t)"value1", ValueString), cleanup, "add with tag1 should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, "tag2", (uintptr_t)true, ValueBool), cleanup, "add with tag2 should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, "tag2", (uintptr_t)-1, ValueInt32), cleanup, "add with tag2 should succeed");
+   MCTF_ASSERT_INT_EQ(dq->size, 3, cleanup, "deque size should be 3");
 
-   ck_assert_int_eq(pgagroal_deque_remove(dq, NULL), 0);
-   ck_assert_int_eq(pgagroal_deque_remove(NULL, "tag2"), 0);
-   ck_assert_int_eq(pgagroal_deque_remove(dq, "tag3"), 0);
+   MCTF_ASSERT_INT_EQ(pgagroal_deque_remove(dq, NULL), 0, cleanup, "remove with NULL tag should return 0");
+   MCTF_ASSERT_INT_EQ(pgagroal_deque_remove(NULL, "tag2"), 0, cleanup, "remove with NULL deque should return 0");
+   MCTF_ASSERT_INT_EQ(pgagroal_deque_remove(dq, "tag3"), 0, cleanup, "remove non-existent tag should return 0");
 
-   ck_assert_int_eq(pgagroal_deque_remove(dq, "tag2"), 2);
-   ck_assert_int_eq(dq->size, 1);
+   MCTF_ASSERT_INT_EQ(pgagroal_deque_remove(dq, "tag2"), 2, cleanup, "remove tag2 should return 2");
+   MCTF_ASSERT_INT_EQ(dq->size, 1, cleanup, "deque size should be 1");
 
    value1 = (char*)pgagroal_deque_peek(dq, &tag);
-   ck_assert_str_eq(value1, "value1");
-   ck_assert_str_eq(tag, "tag1");
+   MCTF_ASSERT_STR_EQ(value1, "value1", cleanup, "peeked value should be value1");
+   MCTF_ASSERT_STR_EQ(tag, "tag1", cleanup, "peeked tag should be tag1");
 
+cleanup:
    pgagroal_deque_destroy(dq);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_deque_add_with_config_and_get)
+MCTF_TEST(test_deque_add_with_config_and_get)
 {
    struct deque* dq = NULL;
    struct value_config test_obj_config = {.destroy_data = test_obj_destroy_cb, .to_string = NULL};
@@ -168,24 +175,25 @@ START_TEST(test_deque_add_with_config_and_get)
    test_obj_create(3, &obj3);
 
    pgagroal_deque_create(false, &dq);
-   ck_assert(!pgagroal_deque_add_with_config(dq, "tag1", (uintptr_t)obj1, &test_obj_config));
-   ck_assert(!pgagroal_deque_add_with_config(dq, "tag2", (uintptr_t)obj2, &test_obj_config));
-   ck_assert(!pgagroal_deque_add_with_config(dq, "tag3", (uintptr_t)obj3, &test_obj_config));
-   ck_assert_int_eq(dq->size, 3);
+   MCTF_ASSERT(!pgagroal_deque_add_with_config(dq, "tag1", (uintptr_t)obj1, &test_obj_config), cleanup, "add obj1 should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add_with_config(dq, "tag2", (uintptr_t)obj2, &test_obj_config), cleanup, "add obj2 should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add_with_config(dq, "tag3", (uintptr_t)obj3, &test_obj_config), cleanup, "add obj3 should succeed");
+   MCTF_ASSERT_INT_EQ(dq->size, 3, cleanup, "deque size should be 3");
 
-   ck_assert_int_eq(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag1"))->idx, 1);
-   ck_assert_str_eq(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag1"))->str, "obj1");
+   MCTF_ASSERT_INT_EQ(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag1"))->idx, 1, cleanup, "obj1 idx should be 1");
+   MCTF_ASSERT_STR_EQ(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag1"))->str, "obj1", cleanup, "obj1 str should be obj1");
 
-   ck_assert_int_eq(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag2"))->idx, 2);
-   ck_assert_str_eq(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag2"))->str, "obj2");
+   MCTF_ASSERT_INT_EQ(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag2"))->idx, 2, cleanup, "obj2 idx should be 2");
+   MCTF_ASSERT_STR_EQ(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag2"))->str, "obj2", cleanup, "obj2 str should be obj2");
 
-   ck_assert_int_eq(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag3"))->idx, 3);
-   ck_assert_str_eq(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag3"))->str, "obj3");
+   MCTF_ASSERT_INT_EQ(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag3"))->idx, 3, cleanup, "obj3 idx should be 3");
+   MCTF_ASSERT_STR_EQ(((struct deque_test_obj*)pgagroal_deque_get(dq, "tag3"))->str, "obj3", cleanup, "obj3 str should be obj3");
 
+cleanup:
    pgagroal_deque_destroy(dq);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_deque_iterator_read)
+MCTF_TEST(test_deque_iterator_read)
 {
    struct deque* dq = NULL;
    struct deque_iterator* iter = NULL;
@@ -193,31 +201,32 @@ START_TEST(test_deque_iterator_read)
    char tag[2] = {0};
 
    pgagroal_deque_create(false, &dq);
-   ck_assert(!pgagroal_deque_add(dq, "1", 1, ValueInt32));
-   ck_assert(!pgagroal_deque_add(dq, "2", 2, ValueInt32));
-   ck_assert(!pgagroal_deque_add(dq, "3", 3, ValueInt32));
-   ck_assert_int_eq(dq->size, 3);
+   MCTF_ASSERT(!pgagroal_deque_add(dq, "1", 1, ValueInt32), cleanup, "add 1 should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, "2", 2, ValueInt32), cleanup, "add 2 should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, "3", 3, ValueInt32), cleanup, "add 3 should succeed");
+   MCTF_ASSERT_INT_EQ(dq->size, 3, cleanup, "deque size should be 3");
 
-   ck_assert(pgagroal_deque_iterator_create(NULL, &iter));
-   ck_assert(!pgagroal_deque_iterator_create(dq, &iter));
-   ck_assert_ptr_nonnull(iter);
-   ck_assert(pgagroal_deque_iterator_has_next(iter));
+   MCTF_ASSERT(pgagroal_deque_iterator_create(NULL, &iter), cleanup, "iterator create with NULL deque should fail");
+   MCTF_ASSERT(!pgagroal_deque_iterator_create(dq, &iter), cleanup, "iterator create should succeed");
+   MCTF_ASSERT_PTR_NONNULL(iter, cleanup, "iterator should not be NULL");
+   MCTF_ASSERT(pgagroal_deque_iterator_has_next(iter), cleanup, "iterator should have next");
 
    while (pgagroal_deque_iterator_next(iter))
    {
       cnt++;
-      ck_assert_int_eq(pgagroal_value_data(iter->value), cnt);
+      MCTF_ASSERT_INT_EQ(pgagroal_value_data(iter->value), cnt, cleanup, "iterator value should match count");
       tag[0] = '0' + cnt;
-      ck_assert_str_eq(iter->tag, tag);
+      MCTF_ASSERT_STR_EQ(iter->tag, tag, cleanup, "iterator tag should match count");
    }
-   ck_assert_int_eq(cnt, 3);
-   ck_assert(!pgagroal_deque_iterator_has_next(iter));
+   MCTF_ASSERT_INT_EQ(cnt, 3, cleanup, "count should be 3");
+   MCTF_ASSERT(!pgagroal_deque_iterator_has_next(iter), cleanup, "iterator should not have next");
 
+cleanup:
    pgagroal_deque_iterator_destroy(iter);
    pgagroal_deque_destroy(dq);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_deque_iterator_remove)
+MCTF_TEST(test_deque_iterator_remove)
 {
    struct deque* dq = NULL;
    struct deque_iterator* iter = NULL;
@@ -225,22 +234,22 @@ START_TEST(test_deque_iterator_remove)
    char tag[2] = {0};
 
    pgagroal_deque_create(false, &dq);
-   ck_assert(!pgagroal_deque_add(dq, "1", 1, ValueInt32));
-   ck_assert(!pgagroal_deque_add(dq, "2", 2, ValueInt32));
-   ck_assert(!pgagroal_deque_add(dq, "3", 3, ValueInt32));
-   ck_assert_int_eq(dq->size, 3);
+   MCTF_ASSERT(!pgagroal_deque_add(dq, "1", 1, ValueInt32), cleanup, "add 1 should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, "2", 2, ValueInt32), cleanup, "add 2 should succeed");
+   MCTF_ASSERT(!pgagroal_deque_add(dq, "3", 3, ValueInt32), cleanup, "add 3 should succeed");
+   MCTF_ASSERT_INT_EQ(dq->size, 3, cleanup, "deque size should be 3");
 
-   ck_assert(pgagroal_deque_iterator_create(NULL, &iter));
-   ck_assert(!pgagroal_deque_iterator_create(dq, &iter));
-   ck_assert_ptr_nonnull(iter);
-   ck_assert(pgagroal_deque_iterator_has_next(iter));
+   MCTF_ASSERT(pgagroal_deque_iterator_create(NULL, &iter), cleanup, "iterator create with NULL deque should fail");
+   MCTF_ASSERT(!pgagroal_deque_iterator_create(dq, &iter), cleanup, "iterator create should succeed");
+   MCTF_ASSERT_PTR_NONNULL(iter, cleanup, "iterator should not be NULL");
+   MCTF_ASSERT(pgagroal_deque_iterator_has_next(iter), cleanup, "iterator should have next");
 
    while (pgagroal_deque_iterator_next(iter))
    {
       cnt++;
-      ck_assert_int_eq(pgagroal_value_data(iter->value), cnt);
+      MCTF_ASSERT_INT_EQ(pgagroal_value_data(iter->value), cnt, cleanup, "iterator value should match count");
       tag[0] = '0' + cnt;
-      ck_assert_str_eq(iter->tag, tag);
+      MCTF_ASSERT_STR_EQ(iter->tag, tag, cleanup, "iterator tag should match count");
 
       if (cnt == 2 || cnt == 3)
       {
@@ -251,16 +260,17 @@ START_TEST(test_deque_iterator_remove)
    // should be no-op
    pgagroal_deque_iterator_remove(iter);
 
-   ck_assert_int_eq(dq->size, 1);
-   ck_assert(!pgagroal_deque_iterator_has_next(iter));
+   MCTF_ASSERT_INT_EQ(dq->size, 1, cleanup, "deque size should be 1");
+   MCTF_ASSERT(!pgagroal_deque_iterator_has_next(iter), cleanup, "iterator should not have next");
 
-   ck_assert_int_eq(pgagroal_deque_peek(dq, NULL), 1);
+   MCTF_ASSERT_INT_EQ(pgagroal_deque_peek(dq, NULL), 1, cleanup, "peek should return 1");
 
+cleanup:
    pgagroal_deque_iterator_destroy(iter);
    pgagroal_deque_destroy(dq);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_deque_sort)
+MCTF_TEST(test_deque_sort)
 {
    struct deque* dq = NULL;
    struct deque_iterator* iter = NULL;
@@ -272,49 +282,25 @@ START_TEST(test_deque_sort)
    for (int i = 0; i < 6; i++)
    {
       tag[0] = '0' + index[i];
-      ck_assert(!pgagroal_deque_add(dq, tag, index[i], ValueInt32));
+      MCTF_ASSERT(!pgagroal_deque_add(dq, tag, index[i], ValueInt32), cleanup, "add should succeed");
    }
 
    pgagroal_deque_sort(dq);
 
-   pgagroal_deque_iterator_create(dq, &iter);
+   MCTF_ASSERT(!pgagroal_deque_iterator_create(dq, &iter), cleanup, "iterator create should succeed");
 
    while (pgagroal_deque_iterator_next(iter))
    {
-      ck_assert_int_eq(pgagroal_value_data(iter->value), cnt);
+      MCTF_ASSERT_INT_EQ(pgagroal_value_data(iter->value), cnt, cleanup, "iterator value should match count");
       tag[0] = '0' + cnt;
-      ck_assert_str_eq(iter->tag, tag);
+      MCTF_ASSERT_STR_EQ(iter->tag, tag, cleanup, "iterator tag should match count");
       cnt++;
    }
 
+cleanup:
    pgagroal_deque_iterator_destroy(iter);
    pgagroal_deque_destroy(dq);
-}
-END_TEST
-
-Suite*
-pgagroal_test_deque_suite()
-{
-   Suite* s;
-   TCase* tc_deque_basic;
-
-   s = suite_create("pgagroal_test_deque");
-
-   tc_deque_basic = tcase_create("deque_basic_test");
-   tcase_set_timeout(tc_deque_basic, 60);
-   tcase_add_test(tc_deque_basic, test_deque_create);
-   tcase_add_test(tc_deque_basic, test_deque_add_poll);
-   tcase_add_test(tc_deque_basic, test_deque_add_poll_last);
-   tcase_add_test(tc_deque_basic, test_deque_remove);
-   tcase_add_test(tc_deque_basic, test_deque_add_with_config_and_get);
-   tcase_add_test(tc_deque_basic, test_deque_clear);
-   tcase_add_test(tc_deque_basic, test_deque_iterator_read);
-   tcase_add_test(tc_deque_basic, test_deque_iterator_remove);
-   tcase_add_test(tc_deque_basic, test_deque_sort);
-
-   suite_add_tcase(s, tc_deque_basic);
-
-   return s;
+   MCTF_FINISH();
 }
 
 static void

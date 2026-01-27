@@ -1,89 +1,102 @@
 if (check)
 
-  file(GLOB_RECURSE TEST_SOURCES
-    "libpgagroaltest/*.c"
-    "testcases/*.c")
-  file(GLOB_RECURSE TEST_HEADERS
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
-
-  set(SOURCES ${TEST_SOURCES} ${TEST_HEADERS})
+  # Check for execinfo.h for backtrace support
+  include(CheckIncludeFile)
+  check_include_file(execinfo.h HAVE_EXECINFO_H)
+  if (HAVE_EXECINFO_H)
+    add_compile_definitions(HAVE_EXECINFO_H)
+  endif()
 
   if (CMAKE_BUILD_TYPE MATCHES Debug)
     add_compile_options(-O0)
     add_compile_options(-DDEBUG)
   endif()
 
-  if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    if (NOT ${CMAKE_SYSTEM_NAME} STREQUAL "OpenBSD")
-      if (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
-        if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 3.2)
-          add_compile_options(-fsanitize=address)
-          add_compile_options(-fno-sanitize=null)
-          
-          if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 3.3)
-            add_compile_options(-fsanitize=undefined)
-            add_compile_options(-fsanitize=float-divide-by-zero)
-            add_compile_options(-fsanitize=float-cast-overflow)
-          endif()
-          
-          if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 3.6)
-            add_compile_options(-fno-sanitize-recover=all)
-          endif()
-          
-          if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 3.8)
-            add_compile_options(-fsanitize-recover=address)
-          endif()
-          
-          if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 3.9)
-            add_compile_options(-fsanitize-address-use-after-scope)
-          endif()
-          
-          add_compile_options(-fno-sanitize=alignment)
+  # Build MCTF-based test
+  FILE(GLOB SOURCE_FILES 
+    "libpgagroaltest/*.c"
+    "testcases/*.c"
+  )
+  FILE(GLOB HEADER_FILES 
+    "include/*.h"
+  )
 
-          set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS_DEBUG} -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fno-sanitize=null -fno-sanitize=alignment")
-          set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fno-sanitize=null -fno-sanitize=alignment")        
+
+  set(SOURCES ${SOURCE_FILES} ${HEADER_FILES})
+
+  if (CMAKE_BUILD_TYPE MATCHES Debug)
+    if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+      if (NOT ${CMAKE_SYSTEM_NAME} STREQUAL "OpenBSD")
+        if (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
+          if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 3.2)
+            add_compile_options(-fsanitize=address)
+            add_compile_options(-fno-sanitize=null)
+            
+            if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 3.3)
+              add_compile_options(-fsanitize=undefined)
+              add_compile_options(-fsanitize=float-divide-by-zero)
+              add_compile_options(-fsanitize=float-cast-overflow)
+            endif()
+            
+            if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 3.6)
+              add_compile_options(-fno-sanitize-recover=all)
+            endif()
+            
+            if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 3.8)
+              add_compile_options(-fsanitize-recover=address)
+            endif()
+            
+            if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 3.9)
+              add_compile_options(-fsanitize-address-use-after-scope)
+            endif()
+            
+            add_compile_options(-fno-sanitize=alignment)
+
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS_DEBUG} -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fno-sanitize=null -fno-sanitize=alignment")
+            set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fno-sanitize=null -fno-sanitize=alignment")        
+          endif()
         endif()
       endif()
-    endif()
-  elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    if (NOT ${CMAKE_SYSTEM_NAME} STREQUAL "OpenBSD")
-      if (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
-        if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8)
-          add_compile_options(-fsanitize=address)
-          
-          set(TEMP_EXE_LINKER_FLAGS "-fsanitize=address")
-          set(TEMP_SHARED_LINKER_FLAGS "-fsanitize=address")
-          
-          if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 4.9)
-            add_compile_options(-fsanitize=undefined)
-            set(TEMP_EXE_LINKER_FLAGS "${TEMP_EXE_LINKER_FLAGS} -fsanitize=undefined")
-            set(TEMP_SHARED_LINKER_FLAGS "${TEMP_SHARED_LINKER_FLAGS} -fsanitize=undefined")
-          endif()
-          
-          if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 5.1)
-            add_compile_options(-fno-sanitize=alignment)
-            add_compile_options(-fno-sanitize-recover=all)
-            add_compile_options(-fsanitize=float-cast-overflow)
-            add_compile_options(-fsanitize=float-divide-by-zero)
+    elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+      if (NOT ${CMAKE_SYSTEM_NAME} STREQUAL "OpenBSD")
+        if (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
+          if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8)
+            add_compile_options(-fsanitize=address)
             
-            set(TEMP_EXE_LINKER_FLAGS "${TEMP_EXE_LINKER_FLAGS} -fno-sanitize=alignment -fno-sanitize-recover=all -fsanitize=float-cast-overflow -fsanitize=float-divide-by-zero")
-            set(TEMP_SHARED_LINKER_FLAGS "${TEMP_SHARED_LINKER_FLAGS} -fno-sanitize=alignment -fno-sanitize-recover=all -fsanitize=float-cast-overflow -fsanitize=float-divide-by-zero")
+            set(TEMP_EXE_LINKER_FLAGS "-fsanitize=address")
+            set(TEMP_SHARED_LINKER_FLAGS "-fsanitize=address")
+            
+            if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 4.9)
+              add_compile_options(-fsanitize=undefined)
+              set(TEMP_EXE_LINKER_FLAGS "${TEMP_EXE_LINKER_FLAGS} -fsanitize=undefined")
+              set(TEMP_SHARED_LINKER_FLAGS "${TEMP_SHARED_LINKER_FLAGS} -fsanitize=undefined")
+            endif()
+            
+            if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 5.1)
+              add_compile_options(-fno-sanitize=alignment)
+              add_compile_options(-fno-sanitize-recover=all)
+              add_compile_options(-fsanitize=float-cast-overflow)
+              add_compile_options(-fsanitize=float-divide-by-zero)
+              
+              set(TEMP_EXE_LINKER_FLAGS "${TEMP_EXE_LINKER_FLAGS} -fno-sanitize=alignment -fno-sanitize-recover=all -fsanitize=float-cast-overflow -fsanitize=float-divide-by-zero")
+              set(TEMP_SHARED_LINKER_FLAGS "${TEMP_SHARED_LINKER_FLAGS} -fno-sanitize=alignment -fno-sanitize-recover=all -fsanitize=float-cast-overflow -fsanitize=float-divide-by-zero")
+            endif()
+            
+            if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 6.0)
+              add_compile_options(-fsanitize-recover=address)
+              set(TEMP_EXE_LINKER_FLAGS "${TEMP_EXE_LINKER_FLAGS} -fsanitize-recover=address")
+              set(TEMP_SHARED_LINKER_FLAGS "${TEMP_SHARED_LINKER_FLAGS} -fsanitize-recover=address")
+            endif()
+            
+            if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 7.0)
+              add_compile_options(-fsanitize-address-use-after-scope)
+              set(TEMP_EXE_LINKER_FLAGS "${TEMP_EXE_LINKER_FLAGS} -fsanitize-address-use-after-scope")
+              set(TEMP_SHARED_LINKER_FLAGS "${TEMP_SHARED_LINKER_FLAGS} -fsanitize-address-use-after-scope")
+            endif()
+            
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${TEMP_EXE_LINKER_FLAGS}")
+            set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${TEMP_SHARED_LINKER_FLAGS}")
           endif()
-          
-          if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 6.0)
-            add_compile_options(-fsanitize-recover=address)
-            set(TEMP_EXE_LINKER_FLAGS "${TEMP_EXE_LINKER_FLAGS} -fsanitize-recover=address")
-            set(TEMP_SHARED_LINKER_FLAGS "${TEMP_SHARED_LINKER_FLAGS} -fsanitize-recover=address")
-          endif()
-          
-          if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 7.0)
-            add_compile_options(-fsanitize-address-use-after-scope)
-            set(TEMP_EXE_LINKER_FLAGS "${TEMP_EXE_LINKER_FLAGS} -fsanitize-address-use-after-scope")
-            set(TEMP_SHARED_LINKER_FLAGS "${TEMP_SHARED_LINKER_FLAGS} -fsanitize-address-use-after-scope")
-          endif()
-          
-          set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${TEMP_EXE_LINKER_FLAGS}")
-          set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${TEMP_SHARED_LINKER_FLAGS}")
         endif()
       endif()
     endif()
@@ -93,11 +106,11 @@ if (check)
   target_include_directories(pgagroal_test PRIVATE ${CMAKE_SOURCE_DIR}/src/include ${CMAKE_SOURCE_DIR}/test/include)
 
   if(EXISTS "/etc/debian_version")
-    target_link_libraries(pgagroal_test Check::check subunit pthread rt m pgagroal)
+    target_link_libraries(pgagroal_test pthread rt m pgagroal)
   elseif(APPLE)
-    target_link_libraries(pgagroal_test Check::check m pgagroal)
+    target_link_libraries(pgagroal_test m pgagroal)
   else()
-    target_link_libraries(pgagroal_test Check::check pthread rt m pgagroal)
+    target_link_libraries(pgagroal_test pthread rt m pgagroal)
   endif()
 
   add_custom_target(custom_clean

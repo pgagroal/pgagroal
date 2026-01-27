@@ -252,6 +252,10 @@ cleanup_postgresql_image() {
 }
 
 start_postgresql_container() {
+  # Remove any existing container with the same name before starting
+  $CONTAINER_ENGINE stop $CONTAINER_NAME 2>/dev/null || true
+  $CONTAINER_ENGINE rm -f $CONTAINER_NAME 2>/dev/null || true
+
   $CONTAINER_ENGINE run -p $PORT:5432 -v "$PG_LOG_DIR:/pglog:z" \
   --name $CONTAINER_NAME -d \
   -e PG_DATABASE=$PG_DATABASE \
@@ -396,14 +400,16 @@ export_pgagroal_test_variables() {
 
   echo "export PGAGROAL_TEST_CONF=$CONFIGURATION_DIRECTORY/pgagroal.conf"
   export PGAGROAL_TEST_CONF=$CONFIGURATION_DIRECTORY/pgagroal.conf
+
+  echo "export PGPASSWORD=$PG_USER_PASSWORD"
+  export PGPASSWORD=$PG_USER_PASSWORD
 }
 
 unset_pgagroal_test_variables() {
   unset PGAGROAL_TEST_BASE_DIR
   unset PGAGROAL_TEST_CONF
+  unset PGPASSWORD
   unset LLVM_PROFILE_FILE
-  unset CK_RUN_CASE
-  unset CK_RUN_SUITE
   unset CC
 }
 
@@ -624,8 +630,7 @@ elif [[ $# -eq 1 ]]; then
       libssh libssh-devel \
       libatomic \
       bzip2 bzip2-devel \
-      libarchive libarchive-devel \
-      check check-devel check-static
+      libarchive libarchive-devel
     if [[ $MODE != "gcc" ]]; then
       echo "Installing LLVM coverage tools..."
       sudo dnf install -y \

@@ -27,56 +27,44 @@
  */
 
 #include <tsclient.h>
-#include <tssuite.h>
+#include <mctf.h>
 
 // Test connecting with first database alias
-START_TEST(test_pgagroal_database_alias1)
+MCTF_TEST(test_pgagroal_database_alias1)
 {
    int found = 0;
    found = !pgagroal_tsclient_execute_pgbench(user, "pgalias1", true, 0, 0, 0);
-   ck_assert_msg(found, "Connection to database alias1 failed");
+   MCTF_ASSERT(found, cleanup, "Connection to database alias1 failed");
+cleanup:
+   MCTF_FINISH();
 }
 
 // Test connecting with second database alias
-START_TEST(test_pgagroal_database_alias2)
+MCTF_TEST(test_pgagroal_database_alias2)
 {
    int found = 0;
    found = !pgagroal_tsclient_execute_pgbench(user, "pgalias2", true, 0, 0, 0);
-   ck_assert_msg(found, "Connection to database alias2 failed");
+   MCTF_ASSERT(found, cleanup, "Connection to database alias2 failed");
+cleanup:
+   MCTF_FINISH();
 }
 
 // Test connecting with first database alias
-START_TEST(test_pgagroal_database_alias1_load)
+MCTF_TEST(test_pgagroal_database_alias1_load)
 {
    int found = 0;
    found = !pgagroal_tsclient_execute_pgbench(user, "pgalias1", true, 6, 0, 1000);
-   ck_assert_msg(found, "Connection to database alias1 failed");
+   MCTF_ASSERT(found, cleanup, "Connection to database alias1 failed");
+cleanup:
+   MCTF_FINISH();
 }
 
 // Test connecting with second database alias
-START_TEST(test_pgagroal_database_alias2_load)
+MCTF_TEST(test_pgagroal_database_alias2_load)
 {
    int found = 0;
    found = !pgagroal_tsclient_execute_pgbench(user, "pgalias2", true, 6, 0, 1000);
-   ck_assert_msg(found, "Connection to database alias2 failed");
-}
-
-Suite*
-pgagroal_test_alias_suite()
-{
-   Suite* s;
-   TCase* tc_core;
-
-   s = suite_create("pgagroal_test_alias");
-
-   tc_core = tcase_create("Core");
-
-   tcase_set_timeout(tc_core, 60);
-   tcase_add_test(tc_core, test_pgagroal_database_alias1);
-   tcase_add_test(tc_core, test_pgagroal_database_alias2);
-   tcase_add_test(tc_core, test_pgagroal_database_alias1_load);
-   tcase_add_test(tc_core, test_pgagroal_database_alias2_load);
-   suite_add_tcase(s, tc_core);
-
-   return s;
+   MCTF_ASSERT(found, cleanup, "Connection to database alias2 failed");
+cleanup:
+   MCTF_FINISH();
 }
