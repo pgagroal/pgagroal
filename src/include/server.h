@@ -95,6 +95,15 @@ pgagroal_server_clear(char* server);
 int
 pgagroal_server_switch(char* server);
 
+/**
+ * Test server connectivity
+ * @param server The server index
+ * @param is_available Pointer to store availability status
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_test_server_connectivity(int server, bool* is_available);
+
 #ifdef __cplusplus
 }
 #endif
