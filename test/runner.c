@@ -27,65 +27,315 @@
  */
 
 #include <tsclient.h>
-#include <tssuite.h>
+#include <mctf.h>
+#include <getopt.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <stdbool.h>
+#include <signal.h>
+#include <errno.h>
+
+#ifdef HAVE_EXECINFO_H
+#include <execinfo.h>
+#endif
 
 char* user = NULL;
 char* database = NULL;
 
-int
-main(int argc, char* argv[])
+static void
+usage(const char* progname)
 {
-   if (argc != 4)
+   printf("Usage: %s [OPTIONS] <project_directory> <user> <database>\n", progname);
+   printf("\nOptions:\n");
+   printf("  -t, --test NAME     Run only tests matching NAME (test name pattern)\n");
+   printf("  -m, --module NAME   Run all tests in module NAME\n");
+   printf("  -h, --help          Show this help message\n");
+   printf("\n");
+   printf("Examples:\n");
+   printf("  %s <dir> <user> <db>              Run full test suite\n", progname);
+   printf("  %s -m connection <dir> <user> <db> Run all tests in 'connection' module\n", progname);
+   printf("  %s -t test_pgagroal_connection <dir> <user> <db> Run test matching 'test_pgagroal_connection'\n", progname);
+   printf("\n");
+   printf("Legacy format (for backward compatibility):\n");
+   printf("  %s <project_directory> <user> <database>\n", progname);
+}
+
+/**
+ * Signal handler for SIGABRT (assertion failures)
+ */
+static void
+sigabrt_handler(int sig)
+{
+   char* os = NULL;
+   int kernel_major = 0, kernel_minor = 0, kernel_patch = 0;
+   (void)sig;
+
+   fprintf(stderr, "\n========================================\n");
+   fprintf(stderr, "FATAL: Received SIGABRT (assertion failure)\n");
+   fprintf(stderr, "========================================\n\n");
+
+#ifdef HAVE_EXECINFO_H
+   void* bt[1024];
+   int bt_size = backtrace(bt, 1024);
+   if (bt_size > 0)
    {
-      printf("Usage: %s <project_directory> <user> <database>\n", argv[0]);
+      char** symbols = backtrace_symbols(bt, bt_size);
+      if (symbols != NULL)
+      {
+         fprintf(stderr, "Backtrace:\n");
+         for (int i = 0; i < bt_size; i++)
+         {
+            fprintf(stderr, "  #%d  %s\n", i, symbols[i]);
+         }
+         free(symbols);
+      }
+   }
+#endif
+
+   fprintf(stderr, "\n========================================\n");
+   fflush(stderr);
+
+   signal(SIGABRT, SIG_DFL);
+   abort();
+}
+
+/**
+ * Signal handler for SIGSEGV (segmentation faults)
+ */
+static void
+sigsegv_handler(int sig)
+{
+   char* os = NULL;
+   int kernel_major = 0, kernel_minor = 0, kernel_patch = 0;
+   (void)sig;
+
+   fprintf(stderr, "\n========================================\n");
+   fprintf(stderr, "FATAL: Received SIGSEGV (segmentation fault)\n");
+   fprintf(stderr, "========================================\n\n");
+
+#ifdef HAVE_EXECINFO_H
+   void* bt[1024];
+   int bt_size = backtrace(bt, 1024);
+   if (bt_size > 0)
+   {
+      char** symbols = backtrace_symbols(bt, bt_size);
+      if (symbols != NULL)
+      {
+         fprintf(stderr, "Backtrace:\n");
+         for (int i = 0; i < bt_size; i++)
+         {
+            fprintf(stderr, "  #%d  %s\n", i, symbols[i]);
+         }
+         free(symbols);
+      }
+   }
+#endif
+
+   fprintf(stderr, "\n========================================\n");
+   fflush(stderr);
+
+   signal(SIGSEGV, SIG_DFL);
+   raise(SIGSEGV);
+}
+
+/**
+ * Setup signal handlers for better error reporting
+ */
+static void
+setup_signal_handlers(void)
+{
+   struct sigaction sa_abrt, sa_segv;
+
+   memset(&sa_abrt, 0, sizeof(sa_abrt));
+   sa_abrt.sa_handler = sigabrt_handler;
+   sigemptyset(&sa_abrt.sa_mask);
+   sa_abrt.sa_flags = 0;
+   if (sigaction(SIGABRT, &sa_abrt, NULL) != 0)
+   {
+      fprintf(stderr, "Warning: Failed to setup SIGABRT handler: %s\n", strerror(errno));
+   }
+
+   memset(&sa_segv, 0, sizeof(sa_segv));
+   sa_segv.sa_handler = sigsegv_handler;
+   sigemptyset(&sa_segv.sa_mask);
+   sa_segv.sa_flags = 0;
+   if (sigaction(SIGSEGV, &sa_segv, NULL) != 0)
+   {
+      fprintf(stderr, "Warning: Failed to setup SIGSEGV handler: %s\n", strerror(errno));
+   }
+}
+
+/**
+ * Build MCTF log path from project directory
+ * Format: {project_dir}/pgagroal-testsuite/log/pgagroal-test.log
+ */
+static int
+build_mctf_log_path(const char* project_dir, char* path, size_t size)
+{
+   char* last_slash = NULL;
+   int n;
+
+   if (project_dir == NULL || path == NULL || size == 0)
+   {
       return 1;
    }
 
+   /* Find last slash in project_dir */
+   last_slash = strrchr(project_dir, '/');
+   if (last_slash == NULL)
+   {
+      /* No slash found, use project_dir as base */
+      n = snprintf(path, size, "%s/pgagroal-testsuite/log/pgagroal-test.log", project_dir);
+   }
+   else
+   {
+      /* Build path: {project_dir}/pgagroal-testsuite/log/pgagroal-test.log */
+      n = snprintf(path, size, "%s/pgagroal-testsuite/log/pgagroal-test.log", project_dir);
+   }
+
+   if (n <= 0 || (size_t)n >= size)
+   {
+      return 1;
+   }
+
+   return 0;
+}
+
+int
+main(int argc, char* argv[])
+{
+   mctf_filter_type_t filter_type = MCTF_FILTER_NONE;
+   const char* filter = NULL;
+   const char* project_dir = NULL;
    int number_failed;
-   Suite* connection_suite;
-   Suite* alias_suite;
-   Suite* art_suite;
-   Suite* deque_suite;
-   Suite* json_suite;
-   Suite* utf8_suite;
-   SRunner* sr;
+   int opt;
+   int option_index = 0;
+   char mctf_log_path[512];
 
-   user = strdup(argv[2]);
-   database = strdup(argv[3]);
+   static struct option long_options[] = {
+      {"test", required_argument, 0, 't'},
+      {"module", required_argument, 0, 'm'},
+      {"help", no_argument, 0, 'h'},
+      {0, 0, 0, 0}};
 
-   if (pgagroal_tsclient_init(argv[1]))
+   /* Parse command-line options */
+   while ((opt = getopt_long(argc, argv, "t:m:h", long_options, &option_index)) != -1)
+   {
+      switch (opt)
+      {
+         case 't':
+         case 'm':
+            if (filter_type != MCTF_FILTER_NONE)
+            {
+               fprintf(stderr, "Error: Cannot specify both -t and -m options\n");
+               usage(argv[0]);
+               return EXIT_FAILURE;
+            }
+            filter = optarg;
+            filter_type = (opt == 't') ? MCTF_FILTER_TEST : MCTF_FILTER_MODULE;
+            break;
+         case 'h':
+            usage(argv[0]);
+            return EXIT_SUCCESS;
+         default:
+            usage(argv[0]);
+            return EXIT_FAILURE;
+      }
+   }
+
+   /* Setup signal handlers for better error reporting */
+   setup_signal_handlers();
+
+   /* Handle legacy format: <project_dir> <user> <database> */
+   /* We need exactly 3 positional arguments: project_dir, user, database */
+   /* optind points to first non-option argument after getopt */
+   if (optind + 2 >= argc)
+   {
+      /* Not enough arguments - we need argv[optind], argv[optind+1], argv[optind+2] */
+      fprintf(stderr, "Error: Missing required arguments (project_directory, user, database)\n");
+      usage(argv[0]);
+      return EXIT_FAILURE;
+   }
+   else if (optind + 3 < argc)
+   {
+      /* Too many arguments */
+      fprintf(stderr, "Error: Too many arguments\n");
+      usage(argv[0]);
+      return EXIT_FAILURE;
+   }
+
+   /* Extract the 3 required arguments */
+   project_dir = argv[optind];
+   user = strdup(argv[optind + 1]);
+   database = strdup(argv[optind + 2]);
+
+   if (user == NULL || database == NULL)
+   {
+      fprintf(stderr, "Error: Failed to allocate memory\n");
+      return EXIT_FAILURE;
+   }
+
+   /* Initialize test client */
+   if (pgagroal_tsclient_init((char*)project_dir))
    {
       goto error;
    }
 
-   connection_suite = pgagroal_test_connection_suite();
-   alias_suite = pgagroal_test_alias_suite();
-   utf8_suite = pgagroal_test_utf8_suite();
-   art_suite = pgagroal_test_art_suite();
-   deque_suite = pgagroal_test_deque_suite();
-   json_suite = pgagroal_test_json_suite();
+   /* Initialize MCTF */
+   mctf_init();
 
-   sr = srunner_create(connection_suite);
-   srunner_add_suite(sr, alias_suite);
-   srunner_add_suite(sr, art_suite);
-   srunner_add_suite(sr, deque_suite);
-   srunner_add_suite(sr, json_suite);
-   srunner_add_suite(sr, utf8_suite);
+   /* Build and open log file */
+   if (build_mctf_log_path(project_dir, mctf_log_path, sizeof(mctf_log_path)) == 0)
+   {
+      /* Try to create directory if it doesn't exist */
+      {
+         char log_dir[512];
+         const char* last_slash = strrchr(mctf_log_path, '/');
+         if (last_slash != NULL)
+         {
+            size_t dir_len = (size_t)(last_slash - mctf_log_path);
+            if (dir_len < sizeof(log_dir))
+            {
+               memcpy(log_dir, mctf_log_path, dir_len);
+               log_dir[dir_len] = '\0';
+               /* Create directory (ignore errors if it already exists) */
+               mkdir(log_dir, 0755);
+            }
+         }
+      }
 
-   // Run the tests in verbose mode
-   srunner_run_all(sr, CK_VERBOSE);
-   srunner_set_log(sr, "-");
-   number_failed = srunner_ntests_failed(sr);
-   srunner_free(sr);
+      if (mctf_open_log(mctf_log_path) != 0)
+      {
+         fprintf(stderr, "Warning: Failed to open MCTF log file at '%s'\n", mctf_log_path);
+      }
+   }
+
+   /* Run tests */
+   number_failed = mctf_run_tests(filter_type, filter);
+
+   /* Print summary */
+   mctf_print_summary();
+
+   /* Cleanup */
+   mctf_close_log();
+   mctf_cleanup();
+   pgagroal_tsclient_destroy();
    free(user);
    free(database);
 
-   pgagroal_tsclient_destroy();
    return (number_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
 
 error:
+   if (user)
+   {
+      free(user);
+   }
+   if (database)
+   {
+      free(database);
+   }
    pgagroal_tsclient_destroy();
-   free(user);
-   free(database);
    return EXIT_FAILURE;
 }

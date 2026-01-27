@@ -1,17 +1,29 @@
 if (check)
 
-  file(GLOB_RECURSE TEST_SOURCES
-    "libpgagroaltest/*.c"
-    "testcases/*.c")
-  file(GLOB_RECURSE TEST_HEADERS
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
-
-  set(SOURCES ${TEST_SOURCES} ${TEST_HEADERS})
+  # Check for execinfo.h for backtrace support
+  include(CheckIncludeFile)
+  check_include_file(execinfo.h HAVE_EXECINFO_H)
+  if (HAVE_EXECINFO_H)
+    add_compile_definitions(HAVE_EXECINFO_H)
+  endif()
 
   if (CMAKE_BUILD_TYPE MATCHES Debug)
     add_compile_options(-O0)
     add_compile_options(-DDEBUG)
   endif()
+
+  # Build MCTF-based test
+  FILE(GLOB_RECURSE SOURCE_FILES "libpgagroaltest/*.c" "testcases/*.c")
+  FILE(GLOB_RECURSE HEADER_FILES "include/*.h")
+
+  # TODO: Remove this filter as we migrate more test files to MCTF
+  list(FILTER SOURCE_FILES EXCLUDE REGEX "testcases/test_alias\\.c$")
+  list(FILTER SOURCE_FILES EXCLUDE REGEX "testcases/test_art\\.c$")
+  list(FILTER SOURCE_FILES EXCLUDE REGEX "testcases/test_deque\\.c$")
+  list(FILTER SOURCE_FILES EXCLUDE REGEX "testcases/test_json\\.c$")
+  list(FILTER SOURCE_FILES EXCLUDE REGEX "testcases/test_utf8\\.c$")
+
+  set(SOURCES ${SOURCE_FILES} ${HEADER_FILES})
 
   if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
     if (NOT ${CMAKE_SYSTEM_NAME} STREQUAL "OpenBSD")
@@ -93,11 +105,11 @@ if (check)
   target_include_directories(pgagroal_test PRIVATE ${CMAKE_SOURCE_DIR}/src/include ${CMAKE_SOURCE_DIR}/test/include)
 
   if(EXISTS "/etc/debian_version")
-    target_link_libraries(pgagroal_test Check::check subunit pthread rt m pgagroal)
+    target_link_libraries(pgagroal_test pthread rt m pgagroal)
   elseif(APPLE)
-    target_link_libraries(pgagroal_test Check::check m pgagroal)
+    target_link_libraries(pgagroal_test m pgagroal)
   else()
-    target_link_libraries(pgagroal_test Check::check pthread rt m pgagroal)
+    target_link_libraries(pgagroal_test pthread rt m pgagroal)
   endif()
 
   add_custom_target(custom_clean
