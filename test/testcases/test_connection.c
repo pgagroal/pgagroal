@@ -27,38 +27,24 @@
  */
 
 #include <tsclient.h>
-#include <tssuite.h>
+#include <mctf.h>
 
 // simple
-START_TEST(test_pgagroal_connection)
+MCTF_TEST(test_pgagroal_connection)
 {
    int found = 0;
    found = !pgagroal_tsclient_execute_pgbench(user, database, true, 0, 0, 0);
-   ck_assert_msg(found, "success status not found");
+   MCTF_ASSERT(found, cleanup, "success status not found");
+cleanup:
+   MCTF_FINISH();
 }
 
 // baseline
-START_TEST(test_pgagroal_connection_load)
+MCTF_TEST(test_pgagroal_connection_load)
 {
    int found = 0;
    found = !pgagroal_tsclient_execute_pgbench(user, database, true, 6, 0, 1000);
-   ck_assert_msg(found, "success status not found");
-}
-
-Suite*
-pgagroal_test_connection_suite()
-{
-   Suite* s;
-   TCase* tc_core;
-
-   s = suite_create("pgagroal_test_connection");
-
-   tc_core = tcase_create("Core");
-
-   tcase_set_timeout(tc_core, 60);
-   tcase_add_test(tc_core, test_pgagroal_connection);
-   tcase_add_test(tc_core, test_pgagroal_connection_load);
-   suite_add_tcase(s, tc_core);
-
-   return s;
+   MCTF_ASSERT(found, cleanup, "success status not found");
+cleanup:
+   MCTF_FINISH();
 }
