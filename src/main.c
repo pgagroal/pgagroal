@@ -33,6 +33,7 @@
 #include <json.h>
 #include <ev.h>
 #include <logging.h>
+#include <health.h>
 #include <management.h>
 #include <memory.h>
 #include <network.h>
@@ -1203,6 +1204,11 @@ read_superuser_path:
    start_mgt();
    start_uds();
    start_io();
+
+   if (config->health_check)
+   {
+      pgagroal_start_health_check(0);
+   }
 
    if (config->idle_timeout > 0)
    {
