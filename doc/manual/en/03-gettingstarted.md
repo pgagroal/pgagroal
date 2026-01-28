@@ -6,7 +6,7 @@ First of all, make sure that [**pgagroal**](https://github.com/pgagroal/pgagroal
 using `pgagroal -?`. You should see
 
 ```
-pgagroal 2.0.0
+pgagroal 2.0.1
   High-performance connection pool for PostgreSQL
 
 Usage:
@@ -127,7 +127,7 @@ the `SIGTERM` signal to the process using `kill <pid>`.
 You can see the commands it supports by using `pgagroal-cli -?` which will give
 
 ```
-pgagroal-cli 2.0.0
+pgagroal-cli 2.0.1
   Command line utility for pgagroal
 
 Usage:
@@ -214,7 +214,7 @@ registration with [**pgagroal**](https://github.com/pgagroal/pgagroal).
 You can see the commands it supports by using `pgagroal-admin -?` which will give
 
 ```
-pgagroal-admin 2.0.0
+pgagroal-admin 2.0.1
  Administration utility for pgagroal
 
 Usage:

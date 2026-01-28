@@ -389,7 +389,7 @@ You can also request JSON output for automated parsing or scripting:
 pgagroal-cli conf set max_connections 1000 --format json
 {
   "Header": {
-    "ClientVersion": "2.0.0",
+    "ClientVersion": "2.0.1",
     "Command": 4,
     "Compression": 0,
     "Encryption": 0,
@@ -405,7 +405,7 @@ pgagroal-cli conf set max_connections 1000 --format json
     "ConfigValue": "1000"
   },
   "Response": {
-    "ServerVersion": "2.0.0",
+    "ServerVersion": "2.0.1",
     "config_key": "max_connections",
     "current_value": "5",
     "message": "Configuration change requires restart. Current values preserved.",

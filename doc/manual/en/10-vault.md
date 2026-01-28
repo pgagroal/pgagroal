@@ -150,7 +150,7 @@ This endpoint:
   "status": "ok",
   "timestamp": "2025-01-08T10:30:45Z",
   "vault": {
-    "version": "2.0.0",
+    "version": "2.0.1",
     "pid": 12345
   },
   "configuration": {
