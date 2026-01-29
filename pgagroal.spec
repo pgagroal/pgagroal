@@ -29,9 +29,13 @@ cmake -DCMAKE_BUILD_TYPE=Release -DDOCS=OFF ..
 %{__mkdir} -p %{buildroot}%{_bindir}
 %{__mkdir} -p %{buildroot}%{_libdir}
 %{__mkdir} -p %{buildroot}%{_docdir}/%{name}/grafana
+%{__mkdir} -p %{buildroot}%{_docdir}/%{name}/grafana/provisioning/dashboards
+%{__mkdir} -p %{buildroot}%{_docdir}/%{name}/grafana/provisioning/datasources
 %{__mkdir} -p %{buildroot}%{_docdir}/%{name}/etc
 %{__mkdir} -p %{buildroot}%{_docdir}/%{name}/images
 %{__mkdir} -p %{buildroot}%{_docdir}/%{name}/shell_comp
+%{__mkdir} -p %{buildroot}%{_docdir}/%{name}/prometheus_scrape
+%{__mkdir} -p %{buildroot}%{_docdir}/%{name}/valgrind
 %{__mkdir} -p %{buildroot}%{_docdir}/%{name}/manual/en
 %{__mkdir} -p %{buildroot}%{_mandir}/man1
 %{__mkdir} -p %{buildroot}%{_mandir}/man5
@@ -40,8 +44,14 @@ cmake -DCMAKE_BUILD_TYPE=Release -DDOCS=OFF ..
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/LICENSE %{buildroot}%{_docdir}/%{name}/LICENSE
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/CODE_OF_CONDUCT.md %{buildroot}%{_docdir}/%{name}/CODE_OF_CONDUCT.md
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/README.md %{buildroot}%{_docdir}/%{name}/README.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/grafana/dashboard.json %{buildroot}%{_docdir}/%{name}/grafana/dashboard.json
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/grafana/*.json %{buildroot}%{_docdir}/%{name}/grafana/
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/grafana/README.md %{buildroot}%{_docdir}/%{name}/grafana/README.md
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/grafana/TESTING.md %{buildroot}%{_docdir}/%{name}/grafana/TESTING.md
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/grafana/GETTING_DATA.md %{buildroot}%{_docdir}/%{name}/grafana/GETTING_DATA.md
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/grafana/prometheus.yml %{buildroot}%{_docdir}/%{name}/grafana/prometheus.yml
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/grafana/docker-compose.yml %{buildroot}%{_docdir}/%{name}/grafana/docker-compose.yml
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/grafana/provisioning/dashboards/dashboards.yaml %{buildroot}%{_docdir}/%{name}/grafana/provisioning/dashboards/dashboards.yaml
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/grafana/provisioning/datasources/datasources.yaml %{buildroot}%{_docdir}/%{name}/grafana/provisioning/datasources/datasources.yaml
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/ARCHITECTURE.md %{buildroot}%{_docdir}/%{name}/ARCHITECTURE.md
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/CLI.md %{buildroot}%{_docdir}/%{name}/CLI.md
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/CONFIGURATION.md %{buildroot}%{_docdir}/%{name}/CONFIGURATION.md
@@ -61,37 +71,10 @@ cmake -DCMAKE_BUILD_TYPE=Release -DDOCS=OFF ..
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/perf-simple.png %{buildroot}%{_docdir}/%{name}/images/perf-simple.png
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/shell_comp/pgagroal_comp.bash %{buildroot}%{_docdir}/%{name}/shell_comp/pgagroal_comp.bash
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/shell_comp/pgagroal_comp.zsh %{buildroot}%{_docdir}/%{name}/shell_comp/pgagroal_comp.zsh
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/00-frontpage.md %{buildroot}%{_docdir}/%{name}/manual/en/00-frontpage.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/01-introduction.md %{buildroot}%{_docdir}/%{name}/manual/en/01-introduction.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/02-installation.md %{buildroot}%{_docdir}/%{name}/manual/en/02-installation.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/03-gettingstarted.md %{buildroot}%{_docdir}/%{name}/manual/en/03-gettingstarted.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/04-configuration.md %{buildroot}%{_docdir}/%{name}/manual/en/04-configuration.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/05-prefill.md %{buildroot}%{_docdir}/%{name}/manual/en/05-prefill.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/06-remote_management.md %{buildroot}%{_docdir}/%{name}/manual/en/06-remote_management.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/07-split_security.md %{buildroot}%{_docdir}/%{name}/manual/en/07-split_security.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/08-tls.md %{buildroot}%{_docdir}/%{name}/manual/en/08-tls.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/09-database_alias.md %{buildroot}%{_docdir}/%{name}/manual/en/09-database_alias.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/10-vault.md %{buildroot}%{_docdir}/%{name}/manual/en/10-vault.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/11-prometheus.md %{buildroot}%{_docdir}/%{name}/manual/en/11-prometheus.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/12-docker.md %{buildroot}%{_docdir}/%{name}/manual/en/12-docker.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/13-cli-tools.md %{buildroot}%{_docdir}/%{name}/manual/en/13-cli-tools.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/14-performance.md %{buildroot}%{_docdir}/%{name}/manual/en/14-performance.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/15-failover.md %{buildroot}%{_docdir}/%{name}/manual/en/15-failover.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/16-pipelines.md %{buildroot}%{_docdir}/%{name}/manual/en/16-pipelines.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/17-security.md %{buildroot}%{_docdir}/%{name}/manual/en/17-security.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/70-dev.md %{buildroot}%{_docdir}/%{name}/manual/en/70-dev.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/71-git.md %{buildroot}%{_docdir}/%{name}/manual/en/71-git.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/72-architecture.md %{buildroot}%{_docdir}/%{name}/manual/en/72-architecture.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/73-rpm.md %{buildroot}%{_docdir}/%{name}/manual/en/73-rpm.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/74-building.md %{buildroot}%{_docdir}/%{name}/manual/en/74-building.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/75-codecoverage.md %{buildroot}%{_docdir}/%{name}/manual/en/75-codecoverage.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/76-eventloop.md %{buildroot}%{_docdir}/%{name}/manual/en/76-eventloop.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/77-core_api.md %{buildroot}%{_docdir}/%{name}/manual/en/77-core_api.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/78-test.md %{buildroot}%{_docdir}/%{name}/manual/en/78-test.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/79-distributions.md %{buildroot}%{_docdir}/%{name}/manual/en/79-distributions.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/97-acknowledgement.md %{buildroot}%{_docdir}/%{name}/manual/en/97-acknowledgement.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/98-licenses.md %{buildroot}%{_docdir}/%{name}/manual/en/98-licenses.md
-%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/99-references.md %{buildroot}%{_docdir}/%{name}/manual/en/99-references.md
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/prometheus_scrape/* %{buildroot}%{_docdir}/%{name}/prometheus_scrape/
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/valgrind/pgagroal.supp %{buildroot}%{_docdir}/%{name}/valgrind/pgagroal.supp
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/valgrind/README.md %{buildroot}%{_docdir}/%{name}/valgrind/README.md
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/manual/en/*.md %{buildroot}%{_docdir}/%{name}/manual/en/
 
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/etc/pgagroal.conf %{buildroot}%{_sysconfdir}/pgagroal/pgagroal.conf
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/etc/pgagroal_hba.conf %{buildroot}%{_sysconfdir}/pgagroal/pgagroal_hba.conf
@@ -136,8 +119,14 @@ cd %{buildroot}%{_libdir}/
 %{_docdir}/%{name}/RPM.md
 %{_docdir}/%{name}/SECURITY.md
 %{_docdir}/%{name}/DISTRIBUTIONS.md
-%{_docdir}/%{name}/grafana/dashboard.json
+%{_docdir}/%{name}/grafana/*.json
 %{_docdir}/%{name}/grafana/README.md
+%{_docdir}/%{name}/grafana/TESTING.md
+%{_docdir}/%{name}/grafana/GETTING_DATA.md
+%{_docdir}/%{name}/grafana/prometheus.yml
+%{_docdir}/%{name}/grafana/docker-compose.yml
+%{_docdir}/%{name}/grafana/provisioning/dashboards/dashboards.yaml
+%{_docdir}/%{name}/grafana/provisioning/datasources/datasources.yaml
 %{_docdir}/%{name}/etc/pgagroal.service
 %{_docdir}/%{name}/etc/pgagroal.socket
 %{_docdir}/%{name}/images/perf-extended.png
@@ -146,37 +135,10 @@ cd %{buildroot}%{_libdir}/
 %{_docdir}/%{name}/images/perf-simple.png
 %{_docdir}/%{name}/shell_comp/pgagroal_comp.bash
 %{_docdir}/%{name}/shell_comp/pgagroal_comp.zsh
-%{_docdir}/%{name}/manual/en/00-frontpage.md
-%{_docdir}/%{name}/manual/en/01-introduction.md
-%{_docdir}/%{name}/manual/en/02-installation.md
-%{_docdir}/%{name}/manual/en/03-gettingstarted.md
-%{_docdir}/%{name}/manual/en/04-configuration.md
-%{_docdir}/%{name}/manual/en/05-prefill.md
-%{_docdir}/%{name}/manual/en/06-remote_management.md
-%{_docdir}/%{name}/manual/en/07-split_security.md
-%{_docdir}/%{name}/manual/en/08-tls.md
-%{_docdir}/%{name}/manual/en/09-database_alias.md
-%{_docdir}/%{name}/manual/en/10-vault.md
-%{_docdir}/%{name}/manual/en/11-prometheus.md
-%{_docdir}/%{name}/manual/en/12-docker.md
-%{_docdir}/%{name}/manual/en/13-cli-tools.md
-%{_docdir}/%{name}/manual/en/14-performance.md
-%{_docdir}/%{name}/manual/en/15-failover.md
-%{_docdir}/%{name}/manual/en/16-pipelines.md
-%{_docdir}/%{name}/manual/en/17-security.md
-%{_docdir}/%{name}/manual/en/70-dev.md
-%{_docdir}/%{name}/manual/en/71-git.md
-%{_docdir}/%{name}/manual/en/72-architecture.md
-%{_docdir}/%{name}/manual/en/73-rpm.md
-%{_docdir}/%{name}/manual/en/74-building.md
-%{_docdir}/%{name}/manual/en/75-codecoverage.md
-%{_docdir}/%{name}/manual/en/76-eventloop.md
-%{_docdir}/%{name}/manual/en/77-core_api.md
-%{_docdir}/%{name}/manual/en/78-test.md
-%{_docdir}/%{name}/manual/en/79-distributions.md
-%{_docdir}/%{name}/manual/en/97-acknowledgement.md
-%{_docdir}/%{name}/manual/en/98-licenses.md
-%{_docdir}/%{name}/manual/en/99-references.md
+%{_docdir}/%{name}/prometheus_scrape/*
+%{_docdir}/%{name}/valgrind/pgagroal.supp
+%{_docdir}/%{name}/valgrind/README.md
+%{_docdir}/%{name}/manual/en/*.md
 %{_mandir}/man1/pgagroal.1*
 %{_mandir}/man1/pgagroal-admin.1*
 %{_mandir}/man1/pgagroal-cli.1*
