@@ -382,6 +382,47 @@ pgagroal_server_switch(char* server)
    }
 }
 
+static void
+notify_standbys(int old_primary, int new_primary)
+{
+   (void)old_primary;
+   (void)new_primary;
+
+   pid_t pid;
+   int status;
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
+
+   pid = fork();
+   if (pid == -1)
+   {
+      pgagroal_log_error("Notify: Unable to fork notify script");
+      return;
+   }
+   else if (pid > 0)
+   {
+      waitpid(pid, &status, 0);
+
+      if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
+      {
+         pgagroal_log_info("Notify: Standbys notified successfully");
+      }
+      else
+      {
+         pgagroal_log_error("Notify: Error from notify script");
+      }
+   }
+   else
+   {
+      execl(config->failover_notify_script,
+            "pgagroal_failover_notify_standbys",
+            (char*)NULL);
+
+      exit(1);
+   }
+}
+
 static int
 failover(int old_primary)
 {
@@ -429,6 +470,11 @@ failover(int old_primary)
          pgagroal_log_info("Failover: New primary is %s (%s:%d)", config->servers[new_primary].name, config->servers[new_primary].host, config->servers[new_primary].port);
          atomic_store(&config->servers[old_primary].state, SERVER_FAILED);
          atomic_store(&config->servers[new_primary].state, SERVER_PRIMARY);
+
+         if (config->failover_notify_script[0] != '\0')
+         {
+            notify_standbys(old_primary, new_primary);
+         }
       }
       else
       {

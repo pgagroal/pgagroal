@@ -654,8 +654,9 @@ struct main_configuration
 
    int pipeline; /**< The pipeline type */
 
-   bool failover;                     /**< Is failover enabled */
-   char failover_script[MISC_LENGTH]; /**< The failover script */
+   bool failover;                            /**< Is failover enabled */
+   char failover_script[MISC_LENGTH];        /**< The failover script */
+   char failover_notify_script[MISC_LENGTH]; /**< Failover notify script */
 
    unsigned int update_process_title; /**< Behaviour for updating the process title */
 
