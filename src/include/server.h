@@ -95,6 +95,24 @@ pgagroal_server_clear(char* server);
 int
 pgagroal_server_switch(char* server);
 
+/**
+ * Test server connectivity
+ * @param server The server index
+ * @param is_available Pointer to store availability status
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_test_server_connectivity(int server, bool* is_available);
+
+/**
+ * Get server status string (Running, Recovering, or Down)
+ * @param server The server index
+ * @param status_string Pointer to store status string (must be freed by caller)
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_get_server_status(int server, char** status_string);
+
 #ifdef __cplusplus
 }
 #endif
