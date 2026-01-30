@@ -33,6 +33,7 @@
 #include <management.h>
 #include <memory.h>
 #include <network.h>
+#include <server.h>
 #include <status.h>
 #include <utils.h>
 
@@ -196,15 +197,28 @@ status_details(bool details, struct json* response)
    for (int i = 0; i < config->number_of_servers; i++)
    {
       struct json* js = NULL;
+      char* server_status = NULL;
+
+      if (strlen(config->servers[i].name) == 0)
+      {
+         continue;
+      }
+
+      /* Get server status (Running, Recovering, or Down) */
+      if (pgagroal_get_server_status(i, &server_status))
+      {
+         server_status = strdup("Down");
+      }
 
       pgagroal_json_create(&js);
 
-      pgagroal_json_put(js, MANAGEMENT_ARGUMENT_SERVER, (uintptr_t)config->servers[i].name, ValueString);
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_HOST, (uintptr_t)config->servers[i].host, ValueString);
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_PORT, (uintptr_t)config->servers[i].port, ValueInt32);
-      pgagroal_json_put(js, MANAGEMENT_ARGUMENT_STATE, (uintptr_t)pgagroal_server_state_as_string(config->servers[i].state), ValueString);
+      pgagroal_json_put(js, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t)server_status, ValueString);
 
-      pgagroal_json_append(servers, (uintptr_t)js, ValueJSON);
+      pgagroal_json_put(servers, config->servers[i].name, (uintptr_t)js, ValueJSON);
+
+      free(server_status);
    }
 
    pgagroal_json_put(response, MANAGEMENT_ARGUMENT_SERVERS, (uintptr_t)servers, ValueJSON);

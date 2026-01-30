@@ -71,7 +71,7 @@ flush [mode] [database]
   If no [database] name is specified, applies to all databases.
 
 ping
-  Verifies if pgagroal is up and running
+  Verifies if pgagroal is up and running and checks connectivity to configured PostgreSQL servers
 
 enable [database]
   Enable the specified database, or all databases if not specified

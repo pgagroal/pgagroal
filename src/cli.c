@@ -355,7 +355,7 @@ usage(void)
    printf("                           - 'idle' to flush only idle connections\n");
    printf("                           - 'all' to flush all connections. USE WITH CAUTION!\n");
    printf("                           If no [database] name is specified, applies to all databases.\n");
-   printf("  ping                     Verifies if pgagroal is up and running\n");
+   printf("  ping                     Verifies if pgagroal is up and checks PostgreSQL server connectivity\n");
    printf("  enable   [database]      Enables the specified databases (or all databases)\n");
    printf("  disable  [database]      Disables the specified databases (or all databases)\n");
    printf("  shutdown [mode]          Stops pgagroal pooler. The [mode] can be:\n");
