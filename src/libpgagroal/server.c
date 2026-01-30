@@ -31,6 +31,7 @@
 #include <deque.h>
 #include <logging.h>
 #include <message.h>
+#include <network.h>
 #include <pool.h>
 #include <security.h>
 #include <server.h>
@@ -508,4 +509,48 @@ process_server_parameters(int server, struct deque* server_parameters)
 
    pgagroal_deque_iterator_destroy(iter);
    return status;
+}
+
+int
+pgagroal_test_server_connectivity(int server, bool* is_available)
+{
+   int fd = -1;
+   int ret = 0;
+   struct main_configuration* config = NULL;
+
+   config = (struct main_configuration*)shmem;
+
+   if (server < 0 || server >= config->number_of_servers)
+   {
+      goto error;
+   }
+
+   *is_available = false;
+
+   /* Try to connect to the server */
+   if (config->servers[server].host[0] == '/')
+   {
+      char pgsql[MISC_LENGTH];
+
+      memset(&pgsql, 0, sizeof(pgsql));
+      snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->servers[server].port);
+      ret = pgagroal_connect_unix_socket(config->servers[server].host, &pgsql[0], &fd);
+   }
+   else
+   {
+      ret = pgagroal_connect(config->servers[server].host, config->servers[server].port, &fd, config->keep_alive, config->nodelay);
+   }
+
+   if (ret == 0 && fd >= 0)
+   {
+      *is_available = true;
+      pgagroal_disconnect(fd);
+      return 0;
+   }
+
+error:
+   pgagroal_disconnect(fd);
+
+   *is_available = false;
+   return 1;
 }
