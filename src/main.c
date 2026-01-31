@@ -1823,16 +1823,64 @@ accept_mgt_cb(struct io_watcher* watcher)
    else if (id == MANAGEMENT_PING)
    {
       struct json* response = NULL;
+      struct json* servers_array = NULL;
+      struct json* server_obj = NULL;
+      bool is_available = false;
+      time_t check_time;
 
       pgagroal_log_debug("pgagroal: Management ping");
 
       start_time = time(NULL);
+      check_time = time(NULL);
 
       pgagroal_management_create_response(payload, -1, &response);
+
+      /* pgagroal status as boolean: true when running, false during graceful shutdown */
+      pgagroal_json_put(response, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t)!config->gracefully, ValueBool);
+
+      if (pgagroal_json_create(&servers_array))
+      {
+         goto ping_error;
+      }
+
+      /* Test connectivity for each configured server */
+      for (int i = 0; i < config->number_of_servers; i++)
+      {
+         if (strlen(config->servers[i].name) == 0)
+         {
+            continue;
+         }
+
+         if (pgagroal_test_server_connectivity(i, &is_available))
+         {
+            is_available = false;
+         }
+
+         if (pgagroal_json_create(&server_obj))
+         {
+            goto ping_error;
+         }
+
+         pgagroal_json_put(server_obj, MANAGEMENT_ARGUMENT_HOST, (uintptr_t)config->servers[i].host, ValueString);
+         pgagroal_json_put(server_obj, MANAGEMENT_ARGUMENT_PORT, (uintptr_t)config->servers[i].port, ValueInt32);
+         /* Per-server connectivity as boolean: true when reachable, false otherwise */
+         pgagroal_json_put(server_obj, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t)is_available, ValueBool);
+
+         pgagroal_json_put(servers_array, config->servers[i].name, (uintptr_t)server_obj, ValueJSON);
+      }
+
+      pgagroal_json_put(response, MANAGEMENT_ARGUMENT_SERVERS, (uintptr_t)servers_array, ValueJSON);
+      pgagroal_json_put(response, MANAGEMENT_ARGUMENT_TIMESTAMP, (uintptr_t)check_time, ValueInt64);
 
       end_time = time(NULL);
 
       pgagroal_management_response_ok(NULL, client_fd, start_time, end_time, compression, encryption, payload);
+      return;
+
+ping_error:
+      pgagroal_log_error("pgagroal: Management ping failed");
+      end_time = time(NULL);
+      pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_ALLOCATION, compression, encryption, payload);
    }
    else if (id == MANAGEMENT_CLEAR)
    {
