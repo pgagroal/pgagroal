@@ -90,6 +90,11 @@ The available keys and their accepted values are reported in the table below.
 | track_prepared_statements | off | Bool | No | Track prepared statements (transaction pooling) |
 | pidfile | | String | No | Path to the PID file. If omitted, automatically set to `unix_socket_dir`/pgagroal.`port`.pid . Can interpolate environment variables (e.g., `$HOME`) |
 | update_process_title | `verbose` | String | No | The behavior for updating the operating system process title, mainly related to connection processes. Allowed settings are: `never` (or `off`), does not update the process title; `strict` to set the process title without overriding the existing initial process title length; `minimal` to set the process title to `username/database`; `verbose` (or `full`) to set the process title to `user@host:port/database`. Please note that `strict` and `minimal` are honored only on those systems that do not provide a native way to set the process title (e.g., Linux). On other systems, there is no difference between `strict` and `minimal` and the assumed behaviour is `minimal` even if `strict` is used. `never` and `verbose` are always honored, on every system. On Linux systems the process title is always trimmed to 255 characters, while on system that provide a natve way to set the process title it can be longer. |
+| health_check | `off` | Bool | No | Enable health check. If enabled, pgagroal will periodically check the health of the servers. |
+| health_check_period | 30 | Int | No | The interval in seconds between health check scans. |
+| health_check_timeout | 5 | String | No | The amount of time the process will wait for a response during a health check. If this value is specified without units, it is taken as seconds. It supports the following units as suffixes: 'S' for seconds (default), 'M' for minutes, 'H' for hours, 'D' for days, and 'W' for weeks. |
+| health_check_user | `postgres` | String | No | The user used for connecting to the health check. This user will also be used as the database name. |
+
 
 __Danger zone__
 

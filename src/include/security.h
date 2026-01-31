@@ -40,6 +40,8 @@ extern "C" {
 
 #include <openssl/ssl.h>
 
+struct message;
+
 /**
  * Authenticate a user
  * @param client_fd The descriptor
@@ -92,6 +94,14 @@ pgagroal_remote_management_scram_sha256(char* username, char* password, int serv
  */
 int
 pgagroal_get_master_key(char** masterkey);
+
+/**
+ * Get the password for a user
+ * @param username The user name
+ * @return The password
+ */
+char*
+pgagroal_get_user_password(char* username);
 
 /**
  * MD5 a string
@@ -212,6 +222,29 @@ pgagroal_extract_cert_identity(SSL* ssl);
  */
 bool
 pgagroal_is_cert_authorized(const char* cert_identity, const char* requested_username);
+
+/**
+ * Authenticate using MD5
+ * @param startup_response_msg The startup response message
+ * @param username The user name
+ * @param password The password
+ * @param socket The descriptor
+ * @param server_ssl The SSL context
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_md5_client_auth(struct message* startup_response_msg, char* username, char* password, int socket, SSL* server_ssl, struct message** response_msg);
+
+/**
+ * Perform SCRAM-SHA-256 client authentication
+ * @param username The username
+ * @param password The password
+ * @param socket The socket descriptor
+ * @param server_ssl The SSL context (optional)
+ * @return AUTH_SUCCESS on success, error code otherwise
+ */
+int
+pgagroal_scram_client_auth(char* username, char* password, int socket, SSL* server_ssl, struct message** response_msg);
 
 #ifdef __cplusplus
 }

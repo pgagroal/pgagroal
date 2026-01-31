@@ -90,12 +90,18 @@ static bool is_allowed_address(char* address, char* entry);
 static bool is_disabled(char* database);
 
 static int get_hba_method(int index);
-static char* get_password(char* username);
+
 static char* get_frontend_password(char* username);
 static char* get_admin_password(char* username);
 static int get_salt(void* data, char** salt);
 
+char* pgagroal_get_user_password(char* username);
+
 static int sasl_prep(char* password, char** password_prep);
+
+int pgagroal_md5_client_auth(struct message* startup_response_msg, char* username, char* password, int socket, SSL* server_ssl, struct message** response_msg);
+
+int pgagroal_scram_client_auth(char* username, char* password, int socket, SSL* server_ssl, struct message** response_msg);
 static int generate_nounce(char** nounce);
 static int get_scram_attribute(char attribute, char* input, size_t size, char** value);
 static int client_proof(char* password, char* salt, int salt_length, int iterations,
@@ -128,8 +134,7 @@ static int create_client_tls_connection(int fd, SSL** ssl, char* tls_key_file, c
 
 static int auth_query(SSL* c_ssl, int client_fd, int slot, char* username, char* database, int hba_method);
 static int auth_query_get_connection(char* username, char* password, char* database, int* server_fd, SSL** server_ssl);
-static int auth_query_server_md5(struct message* startup_response_msg, char* username, char* password, int socket, SSL* server_ssl);
-static int auth_query_server_scram256(char* username, char* password, int socket, SSL* server_ssl);
+
 static int auth_query_get_password(int socket, SSL* server_ssl, char* username, char* database, char** password);
 static int auth_query_client_md5(SSL* c_ssl, int client_fd, char* username, char* hash, int slot);
 static int auth_query_client_scram256(SSL* c_ssl, int client_fd, char* username, char* shadow, int slot);
@@ -1356,7 +1361,7 @@ use_pooled_connection(SSL* c_ssl, int client_fd, int slot, char* username, char*
    password = get_frontend_password(username);
    if (password == NULL)
    {
-      password = get_password(username);
+      password = pgagroal_get_user_password(username);
    }
 
    if (hba_method == SECURITY_ALL)
@@ -1525,7 +1530,7 @@ use_unpooled_connection(struct message* request_msg, SSL* c_ssl, int client_fd, 
    password = get_frontend_password(username);
    if (password == NULL)
    {
-      password = get_password(username);
+      password = pgagroal_get_user_password(username);
    }
 
    /* Disallow unknown users */
@@ -1678,7 +1683,7 @@ use_unpooled_connection(struct message* request_msg, SSL* c_ssl, int client_fd, 
          goto error;
       }
 
-      if (server_authenticate(auth_msg, auth_type, username, get_password(username), slot, *server_ssl))
+      if (server_authenticate(auth_msg, auth_type, username, pgagroal_get_user_password(username), slot, *server_ssl))
       {
          if (pgagroal_socket_isvalid(client_fd))
          {
@@ -3230,12 +3235,17 @@ get_hba_method(int index)
    return SECURITY_REJECT;
 }
 
-static char*
-get_password(char* username)
+char*
+pgagroal_get_user_password(char* username)
 {
    struct main_configuration* config;
 
    config = (struct main_configuration*)shmem;
+
+   if (config->superuser.username[0] != 0 && !strcmp(config->superuser.username, username))
+   {
+      return config->superuser.password;
+   }
 
    for (int i = 0; i < config->number_of_users; i++)
    {
@@ -4790,7 +4800,7 @@ retry:
    /*   scram256 (10) */
    if (auth_type == SECURITY_MD5)
    {
-      ret = auth_query_server_md5(startup_response_msg, username, password, *server_fd, *server_ssl);
+      ret = pgagroal_md5_client_auth(startup_response_msg, username, password, *server_fd, *server_ssl, NULL);
       if (ret == AUTH_BAD_PASSWORD)
       {
          goto bad_password;
@@ -4802,7 +4812,7 @@ retry:
    }
    else if (auth_type == SECURITY_SCRAM256)
    {
-      ret = auth_query_server_scram256(username, password, *server_fd, *server_ssl);
+      ret = pgagroal_scram_client_auth(username, password, *server_fd, *server_ssl, NULL);
       if (ret == AUTH_BAD_PASSWORD)
       {
          goto bad_password;
@@ -4890,8 +4900,8 @@ timeout:
    return AUTH_TIMEOUT;
 }
 
-static int
-auth_query_server_md5(struct message* startup_response_msg, char* username, char* password, int socket, SSL* server_ssl)
+int
+pgagroal_md5_client_auth(struct message* startup_response_msg, char* username, char* password, int socket, SSL* server_ssl, struct message** response_msg)
 {
    int status = MESSAGE_STATUS_ERROR;
    int auth_response = -1;
@@ -4905,7 +4915,7 @@ auth_query_server_md5(struct message* startup_response_msg, char* username, char
    struct message* auth_msg = NULL;
    struct message* md5_msg = NULL;
 
-   pgagroal_log_trace("auth_query_server_md5");
+   pgagroal_log_trace("pgagroal_md5_client_auth");
 
    if (get_salt(startup_response_msg->data, &salt))
    {
@@ -4947,6 +4957,11 @@ auth_query_server_md5(struct message* startup_response_msg, char* username, char
    }
 
    status = pgagroal_read_block_message(server_ssl, socket, &auth_msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
    if (auth_msg->length > SECURITY_BUFFER_SIZE)
    {
       pgagroal_log_message(auth_msg);
@@ -4957,18 +4972,18 @@ auth_query_server_md5(struct message* startup_response_msg, char* username, char
    get_auth_type(auth_msg, &auth_response);
    pgagroal_log_trace("authenticate: auth response %d", auth_response);
 
-   if (auth_response == 0)
+   if (auth_response != 0)
    {
-      if (auth_msg->length > SECURITY_BUFFER_SIZE)
-      {
-         pgagroal_log_message(auth_msg);
-         pgagroal_log_error("Security message too large: %ld", auth_msg->length);
-         goto error;
-      }
+      goto bad_password;
+   }
+
+   if (response_msg != NULL)
+   {
+      *response_msg = auth_msg;
    }
    else
    {
-      goto bad_password;
+      pgagroal_clear_message(auth_msg);
    }
 
    free(pwdusr);
@@ -4978,7 +4993,6 @@ auth_query_server_md5(struct message* startup_response_msg, char* username, char
    free(salt);
 
    pgagroal_free_message(md5_msg);
-   pgagroal_clear_message(auth_msg);
 
    return AUTH_SUCCESS;
 
@@ -5011,8 +5025,8 @@ error:
    return AUTH_ERROR;
 }
 
-static int
-auth_query_server_scram256(char* username, char* password, int socket, SSL* server_ssl)
+int
+pgagroal_scram_client_auth(char* username, char* password, int socket, SSL* server_ssl, struct message** response_msg)
 {
    int status = MESSAGE_STATUS_ERROR;
    char* salt = NULL;
@@ -5043,7 +5057,7 @@ auth_query_server_scram256(char* username, char* password, int socket, SSL* serv
    struct message* sasl_final = NULL;
    struct message* msg = NULL;
 
-   pgagroal_log_trace("auth_query_server_scram256");
+   pgagroal_log_trace("pgagroal_scram_client_auth");
 
    status = sasl_prep(password, &password_prep);
    if (status)
@@ -5068,6 +5082,13 @@ auth_query_server_scram256(char* username, char* password, int socket, SSL* serv
    status = pgagroal_read_block_message(server_ssl, socket, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
+      goto error;
+   }
+
+   if (msg->length > SECURITY_BUFFER_SIZE)
+   {
+      pgagroal_log_message(msg);
+      pgagroal_log_error("Security message too large: %ld", msg->length);
       goto error;
    }
 
@@ -5126,6 +5147,13 @@ auth_query_server_scram256(char* username, char* password, int socket, SSL* serv
       goto error;
    }
 
+   if (msg->length > SECURITY_BUFFER_SIZE)
+   {
+      pgagroal_log_message(msg);
+      pgagroal_log_error("Security message too large: %ld", msg->length);
+      goto error;
+   }
+
    if (msg->kind == 'E')
    {
       pgagroal_extract_error_message(msg, &error);
@@ -5149,7 +5177,7 @@ auth_query_server_scram256(char* username, char* password, int socket, SSL* serv
    if (server_signature(password_prep, salt, salt_length, iteration,
                         NULL, 0,
                         client_first_message_bare, sasl_response->length - 26,
-                        server_first_message, sasl_continue_response->length - 9,
+                        server_first_message, sasl_continue->length - 9,
                         &wo_proof[0], strlen(wo_proof),
                         &server_signature_calc, &server_signature_calc_length))
    {
@@ -5175,6 +5203,14 @@ auth_query_server_scram256(char* username, char* password, int socket, SSL* serv
    free(server_signature_received);
    free(server_signature_calc);
 
+   if (response_msg != NULL)
+   {
+      *response_msg = msg;
+   }
+   else
+   {
+      pgagroal_clear_message(msg);
+   }
    pgagroal_free_message(sasl_response);
    pgagroal_free_message(sasl_continue);
    pgagroal_free_message(sasl_continue_response);
@@ -6119,4 +6155,375 @@ resolve_database_alias(char* username, char* database)
 
    // Not an alias, return original name
    return database;
+}
+
+int
+pgagroal_password_client_authenticate(char* username, char* password, int server_fd)
+{
+   int status = MESSAGE_STATUS_ERROR;
+   int auth_response = -1;
+   struct message* password_msg = NULL;
+   struct message* auth_msg = NULL;
+
+   pgagroal_log_trace("pgagroal_password_client_authenticate");
+
+   status = pgagroal_create_auth_password_response(password, &password_msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   status = pgagroal_write_socket_message(server_fd, password_msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   status = pgagroal_read_socket_message(server_fd, &auth_msg);
+
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   get_auth_type(auth_msg, &auth_response);
+   pgagroal_log_trace("authenticate: auth response %d", auth_response);
+
+   if (auth_response == 0)
+   {
+      pgagroal_free_message(password_msg);
+      pgagroal_free_message(auth_msg);
+      return AUTH_SUCCESS;
+   }
+   else
+   {
+      goto bad_password;
+   }
+
+bad_password:
+   pgagroal_log_warn("Wrong password for user: %s", username);
+   pgagroal_free_message(password_msg);
+   pgagroal_free_message(auth_msg);
+   return AUTH_BAD_PASSWORD;
+
+error:
+   pgagroal_free_message(password_msg);
+   pgagroal_free_message(auth_msg);
+   return AUTH_ERROR;
+}
+
+int
+pgagroal_md5_client_authenticate(char* username, char* password, char* salt, int server_fd)
+{
+   int status = MESSAGE_STATUS_ERROR;
+   int auth_response = -1;
+   size_t size;
+   char* pwdusr = NULL;
+   char* shadow = NULL;
+   char* md5_req = NULL;
+   char* md5 = NULL;
+   char md5str[36];
+   struct message* md5_msg = NULL;
+   struct message* auth_msg = NULL;
+
+   pgagroal_log_trace("pgagroal_md5_client_authenticate");
+
+   /* Calculate MD5(password + username) */
+   size = strlen(username) + strlen(password) + 1;
+   pwdusr = calloc(1, size);
+   snprintf(pwdusr, size, "%s%s", password, username);
+
+   if (pgagroal_md5(pwdusr, strlen(pwdusr), &shadow))
+   {
+      goto error;
+   }
+
+   /* Calculate MD5(shadow + salt) */
+   md5_req = calloc(1, 36);
+   memcpy(md5_req, shadow, 32);
+   memcpy(md5_req + 32, salt, 4);
+
+   if (pgagroal_md5(md5_req, 36, &md5))
+   {
+      goto error;
+   }
+
+   memset(&md5str, 0, sizeof(md5str));
+   snprintf(&md5str[0], 36, "md5%s", md5);
+
+   status = pgagroal_create_auth_md5_response(md5str, &md5_msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   status = pgagroal_write_socket_message(server_fd, md5_msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   status = pgagroal_read_socket_message(server_fd, &auth_msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   get_auth_type(auth_msg, &auth_response);
+
+   if (auth_response == 0)
+   {
+      free(pwdusr);
+      free(shadow);
+      free(md5_req);
+      free(md5);
+      pgagroal_free_message(md5_msg);
+      pgagroal_free_message(auth_msg);
+      return AUTH_SUCCESS;
+   }
+   else
+   {
+      goto bad_password;
+   }
+
+bad_password:
+   pgagroal_log_warn("Wrong password for user: %s", username);
+   free(pwdusr);
+   free(shadow);
+   free(md5_req);
+   free(md5);
+   pgagroal_free_message(md5_msg);
+   pgagroal_free_message(auth_msg);
+   return AUTH_BAD_PASSWORD;
+
+error:
+   free(pwdusr);
+   free(shadow);
+   free(md5_req);
+   free(md5);
+   pgagroal_free_message(md5_msg);
+   pgagroal_free_message(auth_msg);
+   return AUTH_ERROR;
+}
+
+int
+pgagroal_scram_client_authenticate(char* username, char* password, int server_fd)
+{
+   int status = MESSAGE_STATUS_ERROR;
+   char* salt = NULL;
+   size_t salt_length = 0;
+   char* password_prep = NULL;
+   char* client_nounce = NULL;
+   char* combined_nounce = NULL;
+   char* base64_salt = NULL;
+   char* iteration_string = NULL;
+   char* err = NULL;
+   int iteration;
+   char* client_first_message_bare = NULL;
+   char* server_first_message = NULL;
+   char wo_proof[58];
+   unsigned char* proof = NULL;
+   int proof_length;
+   char* proof_base = NULL;
+   size_t proof_base_length;
+   char* base64_server_signature = NULL;
+   char* server_signature_received = NULL;
+   size_t server_signature_received_length;
+   unsigned char* server_signature_calc = NULL;
+   size_t server_signature_calc_length;
+   struct message* sasl_response = NULL;
+   struct message* sasl_continue = NULL;
+   struct message* sasl_continue_response = NULL;
+   struct message* sasl_final = NULL;
+   struct message* msg = NULL;
+
+   pgagroal_log_trace("pgagroal_scram_client_authenticate");
+
+   status = sasl_prep(password, &password_prep);
+   if (status)
+   {
+      goto error;
+   }
+
+   generate_nounce(&client_nounce);
+
+   status = pgagroal_create_auth_scram256_response(client_nounce, &sasl_response);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   /* Send ClientFirst */
+   status = pgagroal_write_socket_message(server_fd, sasl_response);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   /* Read ServerFirst */
+   status = pgagroal_read_socket_message(server_fd, &msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   sasl_continue = pgagroal_copy_message(msg);
+   pgagroal_free_message(msg);
+   msg = NULL;
+
+   get_scram_attribute('r', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &combined_nounce);
+   get_scram_attribute('s', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &base64_salt);
+   get_scram_attribute('i', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &iteration_string);
+   get_scram_attribute('e', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &err);
+
+   if (err != NULL)
+   {
+      pgagroal_log_error("SCRAM-SHA-256: %s", err);
+      goto error;
+   }
+
+   pgagroal_base64_decode(base64_salt, strlen(base64_salt), (void**)&salt, &salt_length);
+   iteration = atoi(iteration_string);
+
+   memset(&wo_proof[0], 0, sizeof(wo_proof));
+   snprintf(&wo_proof[0], sizeof(wo_proof), "c=biws,r=%s", combined_nounce);
+
+   client_first_message_bare = (char*)sasl_response->data + 26;
+   server_first_message = (char*)sasl_continue->data + 9;
+
+   if (client_proof(password_prep, salt, salt_length, iteration,
+                    client_first_message_bare, sasl_response->length - 26,
+                    server_first_message, sasl_continue->length - 9,
+                    &wo_proof[0], strlen(wo_proof),
+                    &proof, &proof_length))
+   {
+      goto error;
+   }
+
+   pgagroal_base64_encode((char*)proof, proof_length, &proof_base, &proof_base_length);
+
+   status = pgagroal_create_auth_scram256_continue_response(&wo_proof[0], (char*)proof_base, &sasl_continue_response);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   /* Send ClientFinal */
+   status = pgagroal_write_socket_message(server_fd, sasl_continue_response);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   /* Read ServerFinal */
+   status = pgagroal_read_socket_message(server_fd, &msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   if (pgagroal_extract_message('R', msg, &sasl_final))
+   {
+      base64_server_signature = sasl_final->data + 11;
+
+      pgagroal_base64_decode(base64_server_signature, sasl_final->length - 11,
+                             (void**)&server_signature_received, &server_signature_received_length);
+
+      if (server_signature(password_prep, salt, salt_length, iteration,
+                           NULL, 0,
+                           client_first_message_bare, sasl_response->length - 26,
+                           server_first_message, sasl_continue->length - 9,
+                           &wo_proof[0], strlen(wo_proof),
+                           &server_signature_calc, &server_signature_calc_length))
+      {
+         goto error;
+      }
+
+      if (server_signature_calc_length != server_signature_received_length ||
+          memcmp(server_signature_received, server_signature_calc, server_signature_calc_length) != 0)
+      {
+         goto bad_password;
+      }
+   }
+
+   /* Cleanup */
+   free(salt);
+   free(err);
+   free(password_prep);
+   free(client_nounce);
+   free(combined_nounce);
+   free(base64_salt);
+   free(iteration_string);
+   free(proof);
+   free(proof_base);
+   free(server_signature_received);
+   free(server_signature_calc);
+
+   pgagroal_free_message(sasl_response);
+   pgagroal_free_message(sasl_continue);
+   pgagroal_free_message(sasl_continue_response);
+
+   if (msg != sasl_final)
+   {
+      pgagroal_free_message(sasl_final);
+   }
+   pgagroal_free_message(msg);
+   msg = NULL;
+
+   return AUTH_SUCCESS;
+
+bad_password:
+   pgagroal_log_warn("Wrong password for user: %s", username);
+
+   free(salt);
+   free(err);
+   free(password_prep);
+   free(client_nounce);
+   free(combined_nounce);
+   free(base64_salt);
+   free(iteration_string);
+   free(proof);
+   free(proof_base);
+   free(server_signature_received);
+   free(server_signature_calc);
+
+   pgagroal_free_message(sasl_response);
+   pgagroal_free_message(sasl_continue);
+   pgagroal_free_message(sasl_continue_response);
+
+   if (msg != sasl_final)
+   {
+      pgagroal_free_message(sasl_final);
+   }
+   pgagroal_free_message(msg);
+   msg = NULL;
+
+   return AUTH_BAD_PASSWORD;
+
+error:
+
+   free(salt);
+   free(err);
+   free(password_prep);
+   free(client_nounce);
+   free(combined_nounce);
+   free(base64_salt);
+   free(iteration_string);
+   free(proof);
+   free(proof_base);
+   free(server_signature_received);
+   free(server_signature_calc);
+
+   pgagroal_free_message(sasl_response);
+   pgagroal_free_message(sasl_continue);
+   pgagroal_free_message(sasl_continue_response);
+
+   if (msg != sasl_final)
+   {
+      pgagroal_free_message(sasl_final);
+   }
+   pgagroal_free_message(msg);
+   msg = NULL;
+
+   return AUTH_ERROR;
 }
