@@ -358,5 +358,11 @@ error:
       free(master_key);
    }
 
+   if (*res_buffer)
+   {
+      free(*res_buffer);
+      *res_buffer = NULL;
+   }
+
    return 1;
 }
