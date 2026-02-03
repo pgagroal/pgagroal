@@ -142,6 +142,8 @@ pgagroal_init_configuration(void* shm)
    for (int i = 0; i < NUMBER_OF_SERVERS; i++)
    {
       atomic_init(&config->servers[i].state, SERVER_NOTINIT);
+      atomic_init(&config->servers[i].health_state, SERVER_HEALTH_UP);
+      config->servers[i].failures = 0;
    }
 
    config->failover = false;
@@ -158,6 +160,10 @@ pgagroal_init_configuration(void* shm)
    config->validation = VALIDATION_OFF;
    config->background_interval = DEFAULT_BACKGROUND_INTERVAL;
    config->max_retries = 5;
+   config->health_check = false;
+   config->health_check_period = DEFAULT_HEALTH_CHECK_PERIOD;
+   config->health_check_timeout = DEFAULT_HEALTH_CHECK_TIMEOUT;
+   snprintf(config->health_check_user, MAX_USERNAME_LENGTH, "postgres");
    config->common.authentication_timeout = DEFAULT_AUTHENTICATION_TIMEOUT;
    config->disconnect_client = 0;
    config->disconnect_client_force = false;
@@ -513,6 +519,12 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
    {
       pgagroal_log_warn("pgagroal: max_connections (%d) is greater than allowed (%d)", config->max_connections, MAX_NUMBER_OF_CONNECTIONS);
       config->max_connections = MAX_NUMBER_OF_CONNECTIONS;
+   }
+
+   if (config->health_check && config->health_check_period < 1)
+   {
+      pgagroal_log_warn("pgagroal: health_check_period is invalid (< 1), disabling health check");
+      config->health_check = false;
    }
 
    if (config->number_of_frontend_users > 0 && config->allow_unknown_users)
@@ -5534,6 +5546,37 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
       {
          unknown = true;
       }
+   }
+   else if (key_in_section("health_check", section, key, true, &unknown))
+   {
+      if (as_bool(value, &config->health_check))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("health_check_period", section, key, true, &unknown))
+   {
+      if (as_int(value, (int*)&config->health_check_period))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("health_check_timeout", section, key, true, &unknown))
+   {
+      if (as_seconds(value, &config->health_check_timeout, 5))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("health_check_user", section, key, true, &unknown))
+   {
+      max = strlen(value);
+      if (max > MAX_USERNAME_LENGTH - 1)
+      {
+         max = MAX_USERNAME_LENGTH - 1;
+      }
+      memset(config->health_check_user, 0, MAX_USERNAME_LENGTH);
+      memcpy(config->health_check_user, value, max);
    }
    else if (key_in_section("authentication_timeout", section, key, true, &unknown))
    {
