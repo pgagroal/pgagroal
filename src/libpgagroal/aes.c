@@ -353,10 +353,10 @@ error:
       EVP_CIPHER_CTX_free(ctx);
    }
 
-   if (master_key)
-   {
-      free(master_key);
-   }
+   free(master_key);
+
+   free(*res_buffer);
+   *res_buffer = NULL;
 
    return 1;
 }
