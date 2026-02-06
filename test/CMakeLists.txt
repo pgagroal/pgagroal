@@ -91,12 +91,12 @@ if (check)
 
   add_executable(pgagroal_test runner.c ${SOURCES})
     if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(pgexporter-test PRIVATE
+    target_compile_options(pgagroal-test PRIVATE
       -fprofile-instr-generate
       -fcoverage-mapping
       -O0
     )
-    target_link_options(pgexporter-test PRIVATE
+    target_link_options(pgagroal-test PRIVATE
       -fprofile-instr-generate
       -fcoverage-mapping
     )
