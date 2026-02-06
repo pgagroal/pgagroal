@@ -33,6 +33,7 @@ Sara Nabih <nabihsara8@gmail.com>
 Mahmoud Hamdy (TutTrue) <mahmoud.hamdy5113@gmail.com>
 Ankush Mondal <mondalankush9851@gmail.com>
 Shashank Singh <shashanksgh3@gmail.com>
+Mazen Kamal <mazenkamal212@gmail.com>
 
 ```
 
