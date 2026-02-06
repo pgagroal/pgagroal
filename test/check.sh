@@ -171,41 +171,51 @@ cleanup() {
       
       # Generate LLVM coverage reports
       if [[ $COVERAGE == "YES" ]]; then
-         if ls "$COVERAGE_DIR"/*.profraw >/dev/null 2>&1; then
+         if ls "$COVERAGE_DIR"/*-*.profraw >/dev/null 2>&1; then
           echo "Generating coverage report, expect error when the binary is not covered at all"
-          llvm-profdata merge -sparse $COVERAGE_DIR/*.profraw -o $COVERAGE_DIR/coverage.profdata
+          llvm-profdata merge -sparse $COVERAGE_DIR/*-*.profraw -o $COVERAGE_DIR/coverage.profdata
+  
+         if [[ -f "$EXECUTABLE_DIRECTORY/libpgagroal.so" ]]; then
+             BIN_PATH="$EXECUTABLE_DIRECTORY"
+         elif [[ -f "$EXECUTABLE_DIRECTORY/pgagroal/libpgagroal.so" ]]; then
+             BIN_PATH="$EXECUTABLE_DIRECTORY/pgagroal"
+         else
+             echo "ERROR: Could not find libpgagroal.so in $EXECUTABLE_DIRECTORY or subdirectory."
+             ls -R "$EXECUTABLE_DIRECTORY" # Debug: list files to see where they are
+             exit 1
+         fi
 
           echo "Generating $COVERAGE_DIR/coverage-report-libpgagroal.txt"
-          llvm-cov report $EXECUTABLE_DIRECTORY/libpgagroal.so \
+          llvm-cov report "$BIN_PATH/libpgagroal.so" \
             --instr-profile=$COVERAGE_DIR/coverage.profdata \
-            --format=text > $COVERAGE_DIR/coverage-report-libpgagroal.txt
+            --format=text > $COVERAGE_DIR/coverage-report-libpgagroal.txt 2>&1
           echo "Generating $COVERAGE_DIR/coverage-report-pgagroal.txt"
-          llvm-cov report $EXECUTABLE_DIRECTORY/pgagroal \
+          llvm-cov report "$BIN_PATH/pgagroal" \
             --instr-profile=$COVERAGE_DIR/coverage.profdata \
-            --format=text > $COVERAGE_DIR/coverage-report-pgagroal.txt
+            --format=text > $COVERAGE_DIR/coverage-report-pgagroal.txt 2>&1
          echo "Generating $COVERAGE_DIR/coverage-report-pgagroal-cli.txt"
-         llvm-cov report $EXECUTABLE_DIRECTORY/pgagroal-cli \
+         llvm-cov report "$BIN_PATH/pgagroal-cli" \
             --instr-profile=$COVERAGE_DIR/coverage.profdata \
-            --format=text > $COVERAGE_DIR/coverage-report-pgagroal-cli.txt
+            --format=text > $COVERAGE_DIR/coverage-report-pgagroal-cli.txt 2>&1
          echo "Generating $COVERAGE_DIR/coverage-report-pgagroal-admin.txt"
-         llvm-cov report $EXECUTABLE_DIRECTORY/pgagroal-admin \
+         llvm-cov report "$BIN_PATH/pgagroal-admin" \
             --instr-profile=$COVERAGE_DIR/coverage.profdata \
-            --format=text > $COVERAGE_DIR/coverage-report-pgagroal-admin.txt
+            --format=text > $COVERAGE_DIR/coverage-report-pgagroal-admin.txt 2>&1
 
           echo "Generating $COVERAGE_DIR/coverage-libpgagroal.txt"
-          llvm-cov show $EXECUTABLE_DIRECTORY/libpgagroal.so \
+          llvm-cov show $BIN_PATH/libpgagroal.so \
             --instr-profile=$COVERAGE_DIR/coverage.profdata \
             --format=text > $COVERAGE_DIR/coverage-libpgagroal.txt
           echo "Generating $COVERAGE_DIR/coverage-pgagroal.txt"
-          llvm-cov show $EXECUTABLE_DIRECTORY/pgagroal \
+          llvm-cov show $BIN_PATH/pgagroal \
             --instr-profile=$COVERAGE_DIR/coverage.profdata \
             --format=text > $COVERAGE_DIR/coverage-pgagroal.txt
          echo "Generating $COVERAGE_DIR/coverage-pgagroal-cli.txt"
-         llvm-cov show $EXECUTABLE_DIRECTORY/pgagroal-cli \
+         llvm-cov show $BIN_PATHY/pgagroal-cli \
             --instr-profile=$COVERAGE_DIR/coverage.profdata \
             --format=text > $COVERAGE_DIR/coverage-pgagroal-cli.txt
          echo "Generating $COVERAGE_DIR/coverage-pgagroal-admin.txt"
-         llvm-cov show $EXECUTABLE_DIRECTORY/pgagroal-admin \
+         llvm-cov show $BIN_PATH/pgagroal-admin \
             --instr-profile=$COVERAGE_DIR/coverage.profdata \
             --format=text > $COVERAGE_DIR/coverage-pgagroal-admin.txt
          
