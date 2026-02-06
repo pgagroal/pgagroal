@@ -72,6 +72,23 @@ jobs:
             pandoc texlive texlive-latex-extra texlive-fonts-extra texlive-xetex \
             texlive-luatex texlive-science texlive-extra-utils
 
+      - name: Install LLVM/Clang Toolchain
+        run: |
+          sudo apt update -y
+          sudo apt install -y lsb-release wget software-properties-common gnupg
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/llvm-snapshot.gpg
+          echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot.gpg] http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt update -y
+          sudo apt install -y clang-21 clang-tools-21 llvm-21
+          
+          # Create symlinks for the compiler
+          sudo ln -sf /usr/bin/clang-21 /usr/bin/clang
+          sudo ln -sf /usr/bin/clang++-21 /usr/bin/clang++
+          
+          # Create symlinks for coverage tools
+          sudo ln -sf /usr/bin/llvm-cov-21 /usr/bin/llvm-cov
+          sudo ln -sf /usr/bin/llvm-profdata-21 /usr/bin/llvm-profdata
+          
       - name: Install Eisvogel template for Pandoc
         run: |
           wget https://github.com/Wandmalfarbe/pandoc-latex-template/releases/download/v3.3.0/Eisvogel-3.3.0.tar.gz
@@ -110,6 +127,9 @@ jobs:
       - name: Testsuite
         id: test
         run: |
+          if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.build_type }}" = "Debug" ]; then
+             export LLVM_PROFILE_FILE="/tmp/pgagroal-test/coverage/code-%p.profraw"
+          fi
           if [ "${{ matrix.compiler }}" = "gcc" ] && [ "${{ matrix.build_type }}" = "Debug" ]; then
             ASAN_LIB=$(gcc -print-file-name=libasan.so)
             if [ -n "$ASAN_LIB" ] && [ -f "$ASAN_LIB" ]; then
@@ -122,43 +142,21 @@ jobs:
           $(which bash) ./check.sh run-configs-ci-nonbuild
         working-directory: /home/runner/work/pgagroal/pgagroal/build
 
-      # === Generate coverage reports ===
-      - name: Generate Detailed HTML Coverage Report
-        if: matrix.compiler == 'gcc' && matrix.build_type == 'Debug'
-        uses: threeal/gcovr-action@v1.1.0
-        with:
-          root: /home/runner/work/pgagroal/pgagroal
-          html-details: true
-          html-out: coverage.html
-
-      - name: Generate Cobertura Report
-        if: matrix.compiler == 'gcc' && matrix.build_type == 'Debug'
-        uses: threeal/gcovr-action@v1.1.0
-        with:
-          xml-out: cobertura.xml
-
-      - name: Generate Coveralls JSON Report and Upload
-        if: matrix.compiler == 'gcc' && matrix.build_type == 'Debug'
-        uses: threeal/gcovr-action@v1.1.0
-        with:
-          root: /home/runner/work/pgagroal/pgagroal
-          coveralls-out: coveralls.json
-
-      - name: Bundle All Coverage Reports
-        if: matrix.compiler == 'gcc' && matrix.build_type == 'Debug'
+      - name: Report coverage summary
+        if: matrix.compiler == 'clang' && matrix.build_type == 'Debug'
         run: |
-          mkdir -p coverage-report
-          mv *.html coverage-report/
-          mv cobertura.xml coverage-report/
-          mv coveralls.json coverage-report/
-
+          echo "## Coverage Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat /tmp/pgexporter-test/coverage/coverage-report-*.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload All Coverage Reports as Artifact
-        if: matrix.compiler == 'gcc' && matrix.build_type == 'Debug'
+        if: matrix.compiler == 'clang' && matrix.build_type == 'Debug'
         uses: actions/upload-artifact@v5
         with:
           name: coverage-reports-${{ matrix.compiler }}-${{ matrix.build_type }}
-          path: coverage-report
+          path: /tmp/pgagroal-test/coverage
           retention-days: 90
 
       - name: Upload Build and Run Logs as Artifacts
