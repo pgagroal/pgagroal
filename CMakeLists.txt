@@ -42,6 +42,26 @@ message(STATUS "pgagroal ${VERSION_STRING}")
 set(check TRUE)
 set(container FALSE)
 
+#
+# Enable LLVM coverage when running tests with Clang
+#
+if (check AND CMAKE_C_COMPILER_ID STREQUAL "Clang")
+  message(STATUS "LLVM coverage enabled")
+
+  add_compile_options(
+    -fprofile-instr-generate
+    -fcoverage-mapping
+    -O0
+  )
+
+  add_link_options(
+    -fprofile-instr-generate
+    -fcoverage-mapping
+  )
+
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COVERAGE_FLAGS}")
+endif()
+
 include(CheckCCompilerFlag)
 include(CheckCSourceCompiles)
 include(CheckIncludeFile)
