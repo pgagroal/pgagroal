@@ -1823,16 +1823,74 @@ accept_mgt_cb(struct io_watcher* watcher)
    else if (id == MANAGEMENT_PING)
    {
       struct json* response = NULL;
+      struct json* servers_array = NULL;
+      struct json* server_obj = NULL;
+      time_t check_time;
 
       pgagroal_log_debug("pgagroal: Management ping");
 
       start_time = time(NULL);
+      check_time = time(NULL);
 
       pgagroal_management_create_response(payload, -1, &response);
+
+      /* pgagroal status as string: "Running" when running, "Down" during graceful shutdown */
+      pgagroal_json_put(response, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t)(config->gracefully ? "Down" : "Running"), ValueString);
+
+      if (pgagroal_json_create(&servers_array))
+      {
+         goto ping_error;
+      }
+
+      /* Test connectivity and recovery status for each configured server */
+      pgagroal_log_debug("pgagroal: Ping - number_of_servers = %d", config->number_of_servers);
+      for (int i = 0; i < config->number_of_servers; i++)
+      {
+         char* server_status = NULL;
+
+         pgagroal_log_debug("pgagroal: Ping - checking server %d: name='%s'", i, config->servers[i].name);
+         if (strlen(config->servers[i].name) == 0)
+         {
+            pgagroal_log_debug("pgagroal: Ping - skipping server %d (empty name)", i);
+            continue;
+         }
+
+         /* Get server status (Running, Recovering, or Down) */
+         if (pgagroal_get_server_status(i, &server_status))
+         {
+            server_status = strdup("Down");
+         }
+
+         if (pgagroal_json_create(&server_obj))
+         {
+            free(server_status);
+            goto ping_error;
+         }
+
+         pgagroal_json_put(server_obj, MANAGEMENT_ARGUMENT_HOST, (uintptr_t)config->servers[i].host, ValueString);
+         pgagroal_json_put(server_obj, MANAGEMENT_ARGUMENT_PORT, (uintptr_t)config->servers[i].port, ValueInt32);
+         /* Per-server status as string: "Running", "Recovering", or "Down" */
+         pgagroal_json_put(server_obj, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t)server_status, ValueString);
+
+         pgagroal_json_put(servers_array, config->servers[i].name, (uintptr_t)server_obj, ValueJSON);
+
+         free(server_status);
+      }
+
+      pgagroal_log_debug("pgagroal: Ping - adding servers array to response");
+      pgagroal_json_put(response, MANAGEMENT_ARGUMENT_SERVERS, (uintptr_t)servers_array, ValueJSON);
+      pgagroal_json_put(response, MANAGEMENT_ARGUMENT_TIMESTAMP, (uintptr_t)check_time, ValueInt64);
+      pgagroal_log_debug("pgagroal: Ping - response complete");
 
       end_time = time(NULL);
 
       pgagroal_management_response_ok(NULL, client_fd, start_time, end_time, compression, encryption, payload);
+      return;
+
+ping_error:
+      pgagroal_log_error("pgagroal: Management ping failed");
+      end_time = time(NULL);
+      pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_ALLOCATION, compression, encryption, payload);
    }
    else if (id == MANAGEMENT_CLEAR)
    {

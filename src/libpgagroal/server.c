@@ -31,6 +31,7 @@
 #include <deque.h>
 #include <logging.h>
 #include <message.h>
+#include <network.h>
 #include <pool.h>
 #include <security.h>
 #include <server.h>
@@ -48,6 +49,7 @@
 
 static int failover(int old_primary);
 static int process_server_parameters(int server, struct deque* server_parameters);
+static int check_recovery_status(SSL* ssl, int socket, bool* recovery_state);
 
 int
 pgagroal_get_primary(int* server)
@@ -108,25 +110,25 @@ error:
    return 1;
 }
 
-int
-pgagroal_update_server_state(int slot, int socket, SSL* ssl)
+static int
+check_recovery_status(SSL* ssl, int socket, bool* recovery_state)
 {
    int status;
-   int server;
    size_t size = 40;
-   signed char state;
    char is_recovery[size];
    struct message qmsg;
    struct message* tmsg = NULL;
-   struct deque* server_parameters = NULL;
-   struct main_configuration* config;
+   struct message* dmsg = NULL;
+   int16_t column_count;
+   int32_t column_length;
+   signed char state;
 
-   config = (struct main_configuration*)shmem;
-   server = config->connections[slot].server;
+   *recovery_state = false; 
 
    memset(&qmsg, 0, sizeof(struct message));
    memset(&is_recovery, 0, size);
 
+   /* XXX: Consider streaming replication info for more accurate recovery detection */
    pgagroal_write_byte(&is_recovery, 'Q');
    pgagroal_write_int32(&(is_recovery[1]), size - 1);
    pgagroal_write_string(&(is_recovery[5]), "SELECT * FROM pg_is_in_recovery();");
@@ -138,21 +140,91 @@ pgagroal_update_server_state(int slot, int socket, SSL* ssl)
    status = pgagroal_write_message(ssl, socket, &qmsg);
    if (status != MESSAGE_STATUS_OK)
    {
+      pgagroal_log_debug("check_recovery_status: Failed to write query message");
       goto error;
    }
 
    status = pgagroal_read_block_message(ssl, socket, &tmsg);
    if (status != MESSAGE_STATUS_OK)
    {
+      pgagroal_log_debug("check_recovery_status: Failed to read response message");
       goto error;
    }
 
-   /* Read directly from the D message fragment */
-   state = pgagroal_read_byte(tmsg->data + 54);
+   /* Extract DataRow message ('D') from the response */
+   if (pgagroal_extract_message('D', tmsg, &dmsg))
+   {
+      pgagroal_log_debug("check_recovery_status: Failed to extract DataRow message from response");
+      goto error;
+   }
 
+   if (!dmsg || !dmsg->data || dmsg->length < 11)
+   {
+      pgagroal_log_debug("check_recovery_status: Invalid DataRow message structure");
+      goto error;
+   }
+
+   /* Parse DataRow message structure:
+    * Offset 0: 'D' (message type)
+    * Offset 1-4: message length (int32)
+    * Offset 5-6: column count (int16)
+    * Offset 7-10: column 1 length (int32)
+    * Offset 11: column 1 data ('t' or 'f')
+    */
+   column_count = pgagroal_read_int16(dmsg->data + 5);
+   if (column_count != 1)
+   {
+      pgagroal_log_debug("check_recovery_status: Expected 1 column, got %d", column_count);
+      goto error;
+   }
+
+   column_length = pgagroal_read_int32(dmsg->data + 7);
+   if (column_length != 1)
+   {
+      pgagroal_log_debug("check_recovery_status: Expected column length 1, got %d", column_length);
+      goto error;
+   }
+
+   state = pgagroal_read_byte(dmsg->data + 11);
+   /* Convert 't'/'f' to boolean: 't' means in recovery (true), 'f' means not in recovery (false) */
+   *recovery_state = (state == 't');
+
+   pgagroal_clear_message(dmsg);
    pgagroal_clear_message(tmsg);
 
-   if (state == 'f')
+   return 0;
+
+error:
+   if (dmsg)
+   {
+      pgagroal_clear_message(dmsg);
+   }
+   if (tmsg)
+   {
+      pgagroal_clear_message(tmsg);
+   }
+
+   return 1;
+}
+
+int
+pgagroal_update_server_state(int slot, int socket, SSL* ssl)
+{
+   int server;
+   bool in_recovery = false;
+   struct deque* server_parameters = NULL;
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
+   server = config->connections[slot].server;
+
+   /* Check recovery status using shared helper function */
+   if (check_recovery_status(ssl, socket, &in_recovery))
+   {
+      goto error;
+   }
+
+   if (!in_recovery)
    {
       atomic_store(&config->servers[server].state, SERVER_PRIMARY);
    }
@@ -174,15 +246,13 @@ pgagroal_update_server_state(int slot, int socket, SSL* ssl)
    }
 
    pgagroal_deque_destroy(server_parameters);
-   pgagroal_clear_message(tmsg);
 
    return 0;
 
 error:
-   pgagroal_log_trace("pgagroal_update_server_state: slot (%d) status (%d)", slot, status);
+   pgagroal_log_trace("pgagroal_update_server_state: slot (%d) failed", slot);
 
    pgagroal_deque_destroy(server_parameters);
-   pgagroal_clear_message(tmsg);
 
    return 1;
 }
@@ -508,4 +578,132 @@ process_server_parameters(int server, struct deque* server_parameters)
 
    pgagroal_deque_iterator_destroy(iter);
    return status;
+}
+
+int
+pgagroal_test_server_connectivity(int server, bool* is_available)
+{
+   int fd = -1;
+   int ret = 0;
+   struct main_configuration* config = NULL;
+
+   config = (struct main_configuration*)shmem;
+
+   if (server < 0 || server >= config->number_of_servers)
+   {
+      goto error;
+   }
+
+   *is_available = false;
+
+   /* Try to connect to the server */
+   if (config->servers[server].host[0] == '/')
+   {
+      char pgsql[MISC_LENGTH];
+
+      memset(&pgsql, 0, sizeof(pgsql));
+      snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->servers[server].port);
+      ret = pgagroal_connect_unix_socket(config->servers[server].host, &pgsql[0], &fd);
+   }
+   else
+   {
+      ret = pgagroal_connect(config->servers[server].host, config->servers[server].port, &fd, config->keep_alive, config->nodelay);
+   }
+
+   if (ret == 0 && fd >= 0)
+   {
+      *is_available = true;
+      pgagroal_disconnect(fd);
+      return 0;
+   }
+
+error:
+   if (fd >= 0)
+   {
+      pgagroal_disconnect(fd);
+   }
+
+   *is_available = false;
+   return 1;
+}
+
+int
+pgagroal_get_server_status(int server, char** status_string)
+{
+   bool is_available = false;
+   bool in_recovery = false;
+   int slot = -1;
+   SSL* ssl = NULL;
+   struct main_configuration* config = NULL;
+   char* database = "postgres";
+
+   config = (struct main_configuration*)shmem;
+
+   if (server < 0 || server >= config->number_of_servers)
+   {
+      goto error;
+   }
+
+   *status_string = NULL;
+
+   /* First check basic connectivity - if connection fails or server is unavailable, return "Down" */
+   if (pgagroal_test_server_connectivity(server, &is_available) || !is_available)
+   {
+      *status_string = strdup("Down");
+      return 0;
+   }
+
+   /* Try to authenticate and get a connection slot */
+   if (pgagroal_prefill_auth(config->superuser.username, config->superuser.password, database, &slot, &ssl))
+   {
+      pgagroal_log_debug("pgagroal_get_server_status: Authentication failed for server %d", server);
+      *status_string = strdup("Running");
+      return 0;
+   }
+
+   if (slot < 0 || slot >= config->max_connections)
+   {
+      *status_string = strdup("Running");
+      return 0;
+   }
+
+   /* Check recovery status using shared helper function */
+   if (check_recovery_status(ssl, config->connections[slot].fd, &in_recovery))
+   {
+      goto running_fallback;
+   }
+
+   /* Convert boolean recovery state to status string */
+   if (in_recovery)
+   {
+      *status_string = strdup("Recovering");
+   }
+   else
+   {
+      *status_string = strdup("Running");
+   }
+
+   /* Return the connection to the pool */
+   pgagroal_return_connection(slot, ssl, false);
+
+   return 0;
+
+running_fallback:
+   /* If we can't check recovery status, assume Running if server is reachable */
+   *status_string = strdup("Running");
+   if (slot >= 0 && slot < config->max_connections)
+   {
+      pgagroal_return_connection(slot, ssl, false);
+   }
+
+   return 0;
+
+error:
+   *status_string = strdup("Down");
+   if (slot >= 0 && slot < config->max_connections)
+   {
+      pgagroal_return_connection(slot, ssl, false);
+   }
+
+   return 0;
 }
