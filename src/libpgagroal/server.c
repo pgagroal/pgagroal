@@ -382,6 +382,89 @@ pgagroal_server_switch(char* server)
    }
 }
 
+static void
+notify_standbys(int old_primary, int new_primary, char** standbys_host, int* standbys_port, int standby_count)
+{
+   pid_t pid;
+   int status;
+
+   pid = fork();
+   if (pid == -1)
+   {
+      pgagroal_log_error("Notify: Unable to fork notify script");
+      return;
+   }
+   else if (pid > 0)
+   {
+      waitpid(pid, &status, 0);
+
+      if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
+      {
+         pgagroal_log_info("Notify: Standbys notified successfully");
+      }
+      else
+      {
+         pgagroal_log_error("Notify: Error from notify script");
+      }
+   }
+   else
+   {
+      struct main_configuration* config = (struct main_configuration*)shmem;
+
+      char old_primary_port_str[16];
+      char new_primary_port_str[16];
+
+      snprintf(old_primary_port_str, sizeof(old_primary_port_str), "%d", config->servers[old_primary].port);
+      snprintf(new_primary_port_str, sizeof(new_primary_port_str), "%d", config->servers[new_primary].port);
+
+      char* old_primary_host = config->servers[old_primary].host;
+      char* new_primary_host = config->servers[new_primary].host;
+
+      size_t hosts_len = 1;
+      size_t ports_len = 1;
+
+      for (int i = 0; i < standby_count; i++)
+      {
+         hosts_len += strlen(standbys_host[i]) + 1;
+         ports_len += 12;
+      }
+
+      char* standby_hosts_str = malloc(hosts_len);
+      char* standby_ports_str = malloc(ports_len);
+
+      if (!standby_hosts_str || !standby_ports_str)
+      {
+         pgagroal_log_error("Notify: Out of memory");
+         exit(1);
+      }
+
+      standby_hosts_str[0] = '\0';
+      standby_ports_str[0] = '\0';
+
+      for (int i = 0; i < standby_count; i++)
+      {
+         strcat(standby_hosts_str, standbys_host[i]);
+         strcat(standby_hosts_str, " ");
+
+         char port_buf[16];
+         snprintf(port_buf, sizeof(port_buf), "%d ", standbys_port[i]);
+         strcat(standby_ports_str, port_buf);
+      }
+
+      execl(config->failover_notify_script,
+            "pgagroal_failover_notify_standbys",
+            old_primary_host,
+            old_primary_port_str,
+            new_primary_host,
+            new_primary_port_str,
+            standby_hosts_str,
+            standby_ports_str,
+            (char*)NULL);
+
+      exit(1);
+   }
+}
+
 static int
 failover(int old_primary)
 {
@@ -429,6 +512,51 @@ failover(int old_primary)
          pgagroal_log_info("Failover: New primary is %s (%s:%d)", config->servers[new_primary].name, config->servers[new_primary].host, config->servers[new_primary].port);
          atomic_store(&config->servers[old_primary].state, SERVER_FAILED);
          atomic_store(&config->servers[new_primary].state, SERVER_PRIMARY);
+
+         if (config->failover_notify_script[0] != '\0')
+         {
+            int standby_count = 0;
+            char** standbys_host = NULL;
+            int* standbys_port = NULL;
+
+            for (int i = 0; i < config->number_of_servers; i++)
+            {
+               if (i != old_primary && i != new_primary)
+               {
+                  state = atomic_load(&config->servers[i].state);
+                  if (state == SERVER_REPLICA || state == SERVER_NOTINIT || state == SERVER_NOTINIT_PRIMARY)
+                  {
+                     standby_count++;
+                  }
+               }
+            }
+
+            if (standby_count > 0)
+            {
+               standbys_host = malloc(standby_count * sizeof(char*));
+               standbys_port = malloc(standby_count * sizeof(int));
+
+               int index = 0;
+
+               for (int i = 0; i < config->number_of_servers; i++)
+               {
+                  if (i != old_primary && i != new_primary)
+                  {
+                     state = atomic_load(&config->servers[i].state);
+                     if (state == SERVER_REPLICA || state == SERVER_NOTINIT || state == SERVER_NOTINIT_PRIMARY)
+                     {
+                        standbys_host[index] = config->servers[i].host;
+                        standbys_port[index] = config->servers[i].port;
+                        index++;
+                     }
+                  }
+               }
+
+               notify_standbys(old_primary, new_primary, standbys_host, standbys_port, standby_count);
+               free(standbys_host);
+               free(standbys_port);
+            }
+         }
       }
       else
       {

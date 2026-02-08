@@ -145,6 +145,7 @@ pgagroal_init_configuration(void* shm)
    }
 
    config->failover = false;
+   memset(config->failover_notify_script, 0, MISC_LENGTH);
    config->common.tls = false;
    config->gracefully = false;
    config->keep_running = true;
@@ -3428,6 +3429,7 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
 
    config->failover = reload->failover;
    memcpy(config->failover_script, reload->failover_script, MISC_LENGTH);
+   memcpy(config->failover_notify_script, reload->failover_notify_script, MISC_LENGTH);
 
    /* log_type */
    if (restart_int("log_type", config->common.log_type, reload->common.log_type))
@@ -5406,6 +5408,15 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
          max = MISC_LENGTH - 1;
       }
       memcpy(config->failover_script, value, max);
+   }
+   else if (key_in_section("failover_notify_script", section, key, true, &unknown))
+   {
+      max = strlen(value);
+      if (max > MISC_LENGTH - 1)
+      {
+         fprintf(stderr, "Error: failover_notify_script path too long (max %d characters)\n", MISC_LENGTH - 1);
+      }
+      memcpy(config->failover_notify_script, value, max);
    }
    else if (key_in_section("auth_query", section, key, true, &unknown))
    {
