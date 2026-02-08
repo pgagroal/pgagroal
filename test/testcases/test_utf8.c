@@ -27,41 +27,28 @@
  */
 
 #include <tsclient.h>
-#include <tssuite.h>
+#include <mctf.h>
 #include <stdlib.h>
 
 #define UTF8_USER     "utf8user"
 #define UTF8_DATABASE "utf8db"
 
 // Simple connection test for UTF-8 user
-START_TEST(test_pgagroal_utf8_simple)
+MCTF_TEST(test_pgagroal_utf8_simple)
 {
    int found = 0;
    found = !pgagroal_tsclient_execute_pgbench(UTF8_USER, UTF8_DATABASE, true, 0, 0, 0);
-   ck_assert_msg(found, "Connection to UTF-8 user failed");
+   MCTF_ASSERT(found, cleanup, "Connection to UTF-8 user failed");
+cleanup:
+   MCTF_FINISH();
 }
 
 // Load test for UTF-8 user
-START_TEST(test_pgagroal_utf8_load)
+MCTF_TEST(test_pgagroal_utf8_load)
 {
    int found = 0;
    found = !pgagroal_tsclient_execute_pgbench(UTF8_USER, UTF8_DATABASE, true, 2, 0, 1000);
-   ck_assert_msg(found, "Load test for UTF-8 user failed");
-}
-
-Suite*
-pgagroal_test_utf8_suite()
-{
-   Suite* s;
-   TCase* tc_core;
-
-   s = suite_create("pgagroal_test_utf8");
-   tc_core = tcase_create("Core");
-
-   tcase_set_timeout(tc_core, 60);
-   tcase_add_test(tc_core, test_pgagroal_utf8_simple);
-   tcase_add_test(tc_core, test_pgagroal_utf8_load);
-   suite_add_tcase(s, tc_core);
-
-   return s;
+   MCTF_ASSERT(found, cleanup, "Load test for UTF-8 user failed");
+cleanup:
+   MCTF_FINISH();
 }

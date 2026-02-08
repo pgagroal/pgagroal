@@ -28,61 +28,64 @@
  */
 #include <pgagroal.h>
 #include <json.h>
-#include <tssuite.h>
+#include <mctf.h>
 #include <utils.h>
 
-START_TEST(test_json_create)
+MCTF_TEST(test_json_create)
 {
    struct json* obj = NULL;
 
-   ck_assert(!pgagroal_json_create(&obj));
-   ck_assert_ptr_nonnull(obj);
-   ck_assert_int_eq(obj->type, JSONUnknown);
+   MCTF_ASSERT(!pgagroal_json_create(&obj), cleanup, "json creation should succeed");
+   MCTF_ASSERT_PTR_NONNULL(obj, cleanup, "json object should not be NULL");
+   MCTF_ASSERT_INT_EQ(obj->type, JSONUnknown, cleanup, "json type should be JSONUnknown");
 
+cleanup:
    pgagroal_json_destroy(obj);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_json_put_basic)
+MCTF_TEST(test_json_put_basic)
 {
    struct json* obj = NULL;
 
-   ck_assert(!pgagroal_json_create(&obj));
-   ck_assert_ptr_nonnull(obj);
-   ck_assert_int_eq(obj->type, JSONUnknown);
+   MCTF_ASSERT(!pgagroal_json_create(&obj), cleanup, "json creation should succeed");
+   MCTF_ASSERT_PTR_NONNULL(obj, cleanup, "json object should not be NULL");
+   MCTF_ASSERT_INT_EQ(obj->type, JSONUnknown, cleanup, "json type should be JSONUnknown");
 
-   ck_assert(!pgagroal_json_put(obj, "key1", (uintptr_t)"value1", ValueString));
-   ck_assert(pgagroal_json_contains_key(obj, "key1"));
-   ck_assert_str_eq((char*)pgagroal_json_get(obj, "key1"), "value1");
-   ck_assert_int_eq(obj->type, JSONItem);
+   MCTF_ASSERT(!pgagroal_json_put(obj, "key1", (uintptr_t)"value1", ValueString), cleanup, "put key1 should succeed");
+   MCTF_ASSERT(pgagroal_json_contains_key(obj, "key1"), cleanup, "key1 should be contained");
+   MCTF_ASSERT_STR_EQ((char*)pgagroal_json_get(obj, "key1"), "value1", cleanup, "key1 value should be value1");
+   MCTF_ASSERT_INT_EQ(obj->type, JSONItem, cleanup, "json type should be JSONItem");
 
    // json only takes in certain types of value
-   ck_assert(pgagroal_json_put(obj, "key2", (uintptr_t)"value1", ValueMem));
-   ck_assert(!pgagroal_json_contains_key(obj, "key2"));
+   MCTF_ASSERT(pgagroal_json_put(obj, "key2", (uintptr_t)"value1", ValueMem), cleanup, "put with ValueMem should fail");
+   MCTF_ASSERT(!pgagroal_json_contains_key(obj, "key2"), cleanup, "key2 should not be contained");
 
    // item should not take entry input
-   ck_assert(pgagroal_json_append(obj, (uintptr_t)"entry", ValueString));
+   MCTF_ASSERT(pgagroal_json_append(obj, (uintptr_t)"entry", ValueString), cleanup, "append to item should fail");
 
+cleanup:
    pgagroal_json_destroy(obj);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_json_append_basic)
+MCTF_TEST(test_json_append_basic)
 {
    struct json* obj = NULL;
 
-   ck_assert(!pgagroal_json_create(&obj));
-   ck_assert_ptr_nonnull(obj);
-   ck_assert_int_eq(obj->type, JSONUnknown);
+   MCTF_ASSERT(!pgagroal_json_create(&obj), cleanup, "json creation should succeed");
+   MCTF_ASSERT_PTR_NONNULL(obj, cleanup, "json object should not be NULL");
+   MCTF_ASSERT_INT_EQ(obj->type, JSONUnknown, cleanup, "json type should be JSONUnknown");
 
-   ck_assert(!pgagroal_json_append(obj, (uintptr_t)"value1", ValueString));
-   ck_assert_int_eq(obj->type, JSONArray);
+   MCTF_ASSERT(!pgagroal_json_append(obj, (uintptr_t)"value1", ValueString), cleanup, "append value1 should succeed");
+   MCTF_ASSERT_INT_EQ(obj->type, JSONArray, cleanup, "json type should be JSONArray");
 
-   ck_assert(pgagroal_json_append(obj, (uintptr_t)"value2", ValueMem));
-   ck_assert(pgagroal_json_put(obj, "key", (uintptr_t)"value", ValueString));
+   MCTF_ASSERT(pgagroal_json_append(obj, (uintptr_t)"value2", ValueMem), cleanup, "append with ValueMem should fail");
+   MCTF_ASSERT(pgagroal_json_put(obj, "key", (uintptr_t)"value", ValueString), cleanup, "put to array should fail");
 
+cleanup:
    pgagroal_json_destroy(obj);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_json_parse_to_string)
+MCTF_TEST(test_json_parse_to_string)
 {
    struct json* obj = NULL;
    struct json* obj_parsed = NULL;
@@ -192,11 +195,11 @@ START_TEST(test_json_parse_to_string)
    pgagroal_json_append(json_item_array_nested, (uintptr_t)json_item_nested_item2, ValueJSON);
 
    str_obj = pgagroal_json_to_string(obj, FORMAT_JSON, NULL, 0);
-   ck_assert(!pgagroal_json_parse_string(str_obj, &obj_parsed));
-   ck_assert_ptr_nonnull(obj_parsed);
+   MCTF_ASSERT(!pgagroal_json_parse_string(str_obj, &obj_parsed), cleanup, "parse string should succeed");
+   MCTF_ASSERT_PTR_NONNULL(obj_parsed, cleanup, "parsed object should not be NULL");
 
    str_obj_parsed = pgagroal_json_to_string(obj_parsed, FORMAT_JSON, NULL, 0);
-   ck_assert_str_eq(str_obj, str_obj_parsed);
+   MCTF_ASSERT_STR_EQ(str_obj, str_obj_parsed, cleanup, "parsed JSON string should match original");
 
    free(str_obj);
    str_obj = NULL;
@@ -205,18 +208,16 @@ START_TEST(test_json_parse_to_string)
 
    str_obj = pgagroal_json_to_string(obj, FORMAT_TEXT, NULL, 0);
    str_obj_parsed = pgagroal_json_to_string(obj_parsed, FORMAT_TEXT, NULL, 0);
-   ck_assert_str_eq(str_obj, str_obj_parsed);
+   MCTF_ASSERT_STR_EQ(str_obj, str_obj_parsed, cleanup, "parsed TEXT string should match original");
 
+cleanup:
    free(str_obj);
-   str_obj = NULL;
    free(str_obj_parsed);
-   str_obj_parsed = NULL;
-
    pgagroal_json_destroy(obj);
    pgagroal_json_destroy(obj_parsed);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_json_remove)
+MCTF_TEST(test_json_remove)
 {
    struct json* obj = NULL;
    struct json* array = NULL;
@@ -226,33 +227,34 @@ START_TEST(test_json_remove)
    pgagroal_json_put(obj, "key1", (uintptr_t)"1", ValueString);
    pgagroal_json_put(obj, "key2", 2, ValueInt32);
    pgagroal_json_append(array, (uintptr_t)"key1", ValueString);
-   ck_assert(pgagroal_json_remove(array, "key1"));
-   ck_assert(pgagroal_json_remove(obj, ""));
-   ck_assert(pgagroal_json_remove(obj, NULL));
-   ck_assert(pgagroal_json_remove(NULL, "key1"));
+   MCTF_ASSERT(pgagroal_json_remove(array, "key1"), cleanup, "remove from array should fail");
+   MCTF_ASSERT(pgagroal_json_remove(obj, ""), cleanup, "remove with empty key should fail");
+   MCTF_ASSERT(pgagroal_json_remove(obj, NULL), cleanup, "remove with NULL key should fail");
+   MCTF_ASSERT(pgagroal_json_remove(NULL, "key1"), cleanup, "remove from NULL object should fail");
 
-   ck_assert(pgagroal_json_contains_key(obj, "key1"));
-   ck_assert(!pgagroal_json_remove(obj, "key3"));
-   ck_assert(!pgagroal_json_remove(obj, "key1"));
-   ck_assert(!pgagroal_json_contains_key(obj, "key1"));
-   ck_assert_int_eq(obj->type, JSONItem);
-
-   // double delete
-   ck_assert(!pgagroal_json_remove(obj, "key1"));
-
-   ck_assert(pgagroal_json_contains_key(obj, "key2"));
-   ck_assert(!pgagroal_json_remove(obj, "key2"));
-   ck_assert(!pgagroal_json_contains_key(obj, "key2"));
-   ck_assert_int_eq(obj->type, JSONUnknown);
+   MCTF_ASSERT(pgagroal_json_contains_key(obj, "key1"), cleanup, "key1 should be contained");
+   MCTF_ASSERT(!pgagroal_json_remove(obj, "key3"), cleanup, "remove non-existent key should succeed");
+   MCTF_ASSERT(!pgagroal_json_remove(obj, "key1"), cleanup, "remove key1 should succeed");
+   MCTF_ASSERT(!pgagroal_json_contains_key(obj, "key1"), cleanup, "key1 should not be contained");
+   MCTF_ASSERT_INT_EQ(obj->type, JSONItem, cleanup, "json type should be JSONItem");
 
    // double delete
-   ck_assert(!pgagroal_json_remove(obj, "key2"));
+   MCTF_ASSERT(!pgagroal_json_remove(obj, "key1"), cleanup, "double remove should succeed");
 
+   MCTF_ASSERT(pgagroal_json_contains_key(obj, "key2"), cleanup, "key2 should be contained");
+   MCTF_ASSERT(!pgagroal_json_remove(obj, "key2"), cleanup, "remove key2 should succeed");
+   MCTF_ASSERT(!pgagroal_json_contains_key(obj, "key2"), cleanup, "key2 should not be contained");
+   MCTF_ASSERT_INT_EQ(obj->type, JSONUnknown, cleanup, "json type should be JSONUnknown");
+
+   // double delete
+   MCTF_ASSERT(!pgagroal_json_remove(obj, "key2"), cleanup, "double remove should succeed");
+
+cleanup:
    pgagroal_json_destroy(obj);
    pgagroal_json_destroy(array);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_json_iterator)
+MCTF_TEST(test_json_iterator)
 {
    struct json* item = NULL;
    struct json* array = NULL;
@@ -264,9 +266,8 @@ START_TEST(test_json_iterator)
    pgagroal_json_create(&item);
    pgagroal_json_create(&array);
 
-   ck_assert(pgagroal_json_iterator_create(NULL, &iiter));
-   ck_assert_msg(pgagroal_json_iterator_create(item, &aiter),
-                 "iterator creation should fail if json type is unknown");
+   MCTF_ASSERT(pgagroal_json_iterator_create(NULL, &iiter), cleanup, "iterator create with NULL should fail");
+   MCTF_ASSERT(pgagroal_json_iterator_create(item, &aiter), cleanup, "iterator creation should fail if json type is unknown");
 
    pgagroal_json_put(item, "1", 1, ValueInt32);
    pgagroal_json_put(item, "2", 2, ValueInt32);
@@ -276,17 +277,17 @@ START_TEST(test_json_iterator)
    pgagroal_json_append(array, 2, ValueInt32);
    pgagroal_json_append(array, 3, ValueInt32);
 
-   ck_assert(!pgagroal_json_iterator_create(item, &iiter));
-   ck_assert(!pgagroal_json_iterator_create(array, &aiter));
-   ck_assert(pgagroal_json_iterator_has_next(iiter));
-   ck_assert(pgagroal_json_iterator_has_next(aiter));
+   MCTF_ASSERT(!pgagroal_json_iterator_create(item, &iiter), cleanup, "iterator create for item should succeed");
+   MCTF_ASSERT(!pgagroal_json_iterator_create(array, &aiter), cleanup, "iterator create for array should succeed");
+   MCTF_ASSERT(pgagroal_json_iterator_has_next(iiter), cleanup, "item iterator should have next");
+   MCTF_ASSERT(pgagroal_json_iterator_has_next(aiter), cleanup, "array iterator should have next");
 
    while (pgagroal_json_iterator_next(iiter))
    {
       cnt++;
       key[0] = '0' + cnt;
-      ck_assert_str_eq(iiter->key, key);
-      ck_assert_int_eq(iiter->value->data, cnt);
+      MCTF_ASSERT_STR_EQ(iiter->key, key, cleanup, "iterator key should match count");
+      MCTF_ASSERT_INT_EQ(iiter->value->data, cnt, cleanup, "iterator value should match count");
    }
 
    cnt = 0;
@@ -294,38 +295,16 @@ START_TEST(test_json_iterator)
    while (pgagroal_json_iterator_next(aiter))
    {
       cnt++;
-      ck_assert_int_eq(aiter->value->data, cnt);
+      MCTF_ASSERT_INT_EQ(aiter->value->data, cnt, cleanup, "array iterator value should match count");
    }
 
-   ck_assert(!pgagroal_json_iterator_has_next(iiter));
-   ck_assert(!pgagroal_json_iterator_has_next(aiter));
+   MCTF_ASSERT(!pgagroal_json_iterator_has_next(iiter), cleanup, "item iterator should not have next");
+   MCTF_ASSERT(!pgagroal_json_iterator_has_next(aiter), cleanup, "array iterator should not have next");
 
+cleanup:
    pgagroal_json_iterator_destroy(iiter);
    pgagroal_json_iterator_destroy(aiter);
-
    pgagroal_json_destroy(item);
    pgagroal_json_destroy(array);
-}
-END_TEST
-
-Suite*
-pgagroal_test_json_suite()
-{
-   Suite* s;
-   TCase* tc_json_basic;
-
-   s = suite_create("pgagroal_test_json");
-
-   tc_json_basic = tcase_create("json_basic_test");
-   tcase_set_timeout(tc_json_basic, 60);
-   tcase_add_test(tc_json_basic, test_json_create);
-   tcase_add_test(tc_json_basic, test_json_put_basic);
-   tcase_add_test(tc_json_basic, test_json_append_basic);
-   tcase_add_test(tc_json_basic, test_json_parse_to_string);
-   tcase_add_test(tc_json_basic, test_json_remove);
-   tcase_add_test(tc_json_basic, test_json_iterator);
-
-   suite_add_tcase(s, tc_json_basic);
-
-   return s;
+   MCTF_FINISH();
 }

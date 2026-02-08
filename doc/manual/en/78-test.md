@@ -6,21 +6,9 @@
 
 This document explains how to run the pgagroal test suite, generate code coverage, and use containerized testing. All testing is now performed using the `check.sh` script with containerized PostgreSQL (recommended and default for all development and CI).
 
-**Running Specific Test Cases or Suites**
+**Running Specific Test Cases or Modules**
 
-You can run a specific test case or suite using the following environment variables:
-
-- `CK_RUN_CASE=<test_case_name> ./check.sh` — runs a single test case
-- `CK_RUN_SUITE=<test_suite_name> ./check.sh` — runs a single test suite
-
-Alternatively, you can export the environment variable before running the script:
-
-```sh
-export CK_RUN_CASE=<test_case_name>
-./check.sh
-```
-
-The environment variables will be automatically unset when the test is finished or aborted.
+To run one particular test case or module, use `<PATH_TO_PGAGROAL>/build/test/pgagroal_test -t <test_case_name> <project_directory> <user> <database>` or `<PATH_TO_PGAGROAL>/build/test/pgagroal_test -m <module_name> <project_directory> <user> <database>`. This requires the test environment to already be set up by `check.sh`.
 
 ### Containerized
 
@@ -64,24 +52,64 @@ After running containerized tests, you will find:
 - PostgreSQL logs: `/tmp/pgagroal-test/pg_log/`
 - Coverage reports: `/tmp/pgagroal-test/coverage/`
 
-**Adding New Test Cases**
+It is recommended that you **ALWAYS** run tests before raising PR.
 
-- Add new `.c` and `.h` files in `test/testcases/`.
-- Register your test suite in `test/testcases/runner.c`.
-- Add your test source to `test/CMakeLists.txt`:
+**MCTF Framework Overview**
 
-    ```cmake
-    set(SOURCES
-      testcases/common.c
-      testcases/your_new_test.c
-      testcases/runner.c
-    )
-    ```
+MCTF (Minimal C Test Framework) is pgagroal's custom test framework designed for simplicity and ease of use.
+
+**What MCTF Can Do:**
+- **Automatic test registration** - Tests are automatically registered via constructor attributes
+- **Module organization** - Module names are automatically extracted from file names (e.g., 'test_art.c' -> module 'art')
+- **Flexible assertions** - Assert macros with optional printf-style error messages
+- **Test filtering** - Run tests by name pattern ('-t') or by module ('-m')
+- **Test skipping** - Skip tests conditionally using 'MCTF_SKIP()' when prerequisites aren't met
+- **Cleanup pattern** - Structured cleanup using goto labels for resource management
+- **Error tracking** - Automatic error tracking with line numbers and custom error messages
+- **Multiple assertion types** - Various assertion macros ('MCTF_ASSERT', 'MCTF_ASSERT_PTR_NONNULL', 'MCTF_ASSERT_INT_EQ', 'MCTF_ASSERT_STR_EQ', etc.)
+
+**What MCTF Cannot Do (Limitations):**
+- **No test fixtures** - No automatic setup/teardown per test suite (you must handle setup and cleanup manually in each test)
+- **No parameterized tests** - Tests cannot be parameterized (each variation needs a separate test function)
+- **No parallel or async execution** - Tests run sequentially and synchronously
+- **No built-in timeouts** - No framework-level test timeouts (rely on OS-level signals or manual timeouts)
+- **No test organization beyond modules** - No test suites, groups, tags, or metadata beyond module names extracted from filenames
+
+**Add Testcases**
+
+To add an additional testcase, go to [testcases](https://github.com/pgagroal/pgagroal/tree/main/test/testcases) directory inside the `pgagroal` project.
+
+Create a `.c` file that contains the test and use the `MCTF_TEST()` macro to define your test. Tests are automatically registered and module names are extracted from file names.
+
+Example test structure:
+
+```c
+#include <mctf.h>
+#include <tsclient.h>
+
+MCTF_TEST(test_my_feature)
+{
+   // Your test code here
+   int result = some_function();
+   MCTF_ASSERT(result == 0, cleanup, "function should return 0");
+
+cleanup:
+   MCTF_FINISH();
+}
+```
+
+**MCTF_ASSERT Usage:**
+
+The `MCTF_ASSERT` macro supports optional error messages with printf-style formatting:
+- **Without message:** `MCTF_ASSERT(condition, cleanup);` - No error message displayed
+- **With simple message:** `MCTF_ASSERT(condition, cleanup, "error message");`
+- **With formatted message:** `MCTF_ASSERT(condition, cleanup, "got %d, expected 0", value);`
+- Format arguments (like `value`) are optional and only needed when the message contains format specifiers (`%d`, `%s`, etc.)
+- Multiple format arguments: `MCTF_ASSERT(a == b, cleanup, "expected %d but got %d", expected, actual);`
 
 **Prerequisites**
 
 - **Docker or Podman** installed and running
-- The `check` library installed for C unit tests
 - **LLVM/clang** and **llvm-cov**/**llvm-profdata** installed (for coverage reports)
 
 > **Note:** The `check.sh` script always builds the project with Clang in Debug mode for coverage and testability.

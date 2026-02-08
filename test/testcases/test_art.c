@@ -30,7 +30,7 @@
 #include <pgagroal.h>
 #include <art.h>
 #include <tsclient.h>
-#include <tssuite.h>
+#include <mctf.h>
 #include <utils.h>
 #include <value.h>
 
@@ -47,17 +47,18 @@ static void test_obj_create(int idx, struct art_test_obj** obj);
 static void test_obj_destroy(struct art_test_obj* obj);
 static void test_obj_destroy_cb(uintptr_t obj);
 
-START_TEST(test_art_create)
+MCTF_TEST(test_art_create)
 {
    struct art* t = NULL;
    pgagroal_art_create(&t);
 
-   ck_assert_ptr_nonnull(t);
-   ck_assert_int_eq(t->size, 0);
+   MCTF_ASSERT_PTR_NONNULL(t, cleanup, "art tree should be created");
+   MCTF_ASSERT_INT_EQ(t->size, 0, cleanup, "art tree size should be 0");
+cleanup:
    pgagroal_art_destroy(t);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_art_insert)
+MCTF_TEST(test_art_insert)
 {
    struct art* t = NULL;
    void* mem = NULL;
@@ -67,27 +68,27 @@ START_TEST(test_art_insert)
    mem = malloc(10);
    struct value_config test_obj_config = {.destroy_data = test_obj_destroy_cb, .to_string = NULL};
 
-   ck_assert_ptr_nonnull(t);
+   MCTF_ASSERT_PTR_NONNULL(t, cleanup, "art tree should be created");
 
-   ck_assert(pgagroal_art_insert(t, "key_none", 0, ValueNone));
-   ck_assert(pgagroal_art_insert(t, NULL, 0, ValueInt8));
-   ck_assert(pgagroal_art_insert(NULL, "key_none", 0, ValueInt8));
+   MCTF_ASSERT(pgagroal_art_insert(t, "key_none", 0, ValueNone), cleanup, "insert with ValueNone should fail");
+   MCTF_ASSERT(pgagroal_art_insert(t, NULL, 0, ValueInt8), cleanup, "insert with NULL key should fail");
+   MCTF_ASSERT(pgagroal_art_insert(NULL, "key_none", 0, ValueInt8), cleanup, "insert with NULL tree should fail");
 
-   ck_assert(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString));
-   ck_assert(!pgagroal_art_insert(t, "key_int", 1, ValueInt32));
-   ck_assert(!pgagroal_art_insert(t, "key_bool", true, ValueBool));
-   ck_assert(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat));
-   ck_assert(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble));
-   ck_assert(!pgagroal_art_insert(t, "key_mem", (uintptr_t)mem, ValueMem));
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString), cleanup, "insert key_str should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_int", 1, ValueInt32), cleanup, "insert key_int should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_bool", true, ValueBool), cleanup, "insert key_bool should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat), cleanup, "insert key_float should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble), cleanup, "insert key_double should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_mem", (uintptr_t)mem, ValueMem), cleanup, "insert key_mem should succeed");
 
    test_obj_create(0, &obj);
-   ck_assert(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj, &test_obj_config));
-   ck_assert_int_eq(t->size, 7);
-
+   MCTF_ASSERT(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj, &test_obj_config), cleanup, "insert key_obj should succeed");
+   MCTF_ASSERT_INT_EQ(t->size, 7, cleanup, "art tree size should be 7");
+cleanup:
    pgagroal_art_destroy(t);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_art_search)
+MCTF_TEST(test_art_search)
 {
    struct art* t = NULL;
    struct art_test_obj* obj1 = NULL;
@@ -99,55 +100,59 @@ START_TEST(test_art_search)
    pgagroal_art_create(&t);
    struct value_config test_obj_config = {.destroy_data = test_obj_destroy_cb, .to_string = NULL};
 
-   ck_assert_ptr_nonnull(t);
+   MCTF_ASSERT_PTR_NONNULL(t, cleanup, "art tree should be created");
 
-   ck_assert(pgagroal_art_insert(t, "key_none", 0, ValueNone));
-   ck_assert(!pgagroal_art_contains_key(t, "key_none"));
-   ck_assert_int_eq(pgagroal_art_search(t, "key_none"), 0);
-   ck_assert_int_eq(pgagroal_art_search_typed(t, "key_none", &type), 0);
-   ck_assert_int_eq(type, ValueNone);
+   MCTF_ASSERT(pgagroal_art_insert(t, "key_none", 0, ValueNone), cleanup, "insert with ValueNone should fail");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_none"), cleanup, "key_none should not be contained");
+   MCTF_ASSERT_INT_EQ(pgagroal_art_search(t, "key_none"), 0, cleanup, "search for key_none should return 0");
+   MCTF_ASSERT_INT_EQ(pgagroal_art_search_typed(t, "key_none", &type), 0, cleanup, "search_typed for key_none should return 0");
+   MCTF_ASSERT_INT_EQ(type, ValueNone, cleanup, "type should be ValueNone");
 
-   ck_assert(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString));
-   ck_assert(pgagroal_art_contains_key(t, "key_str"));
-   ck_assert_str_eq((char*)pgagroal_art_search(t, "key_str"), "value1");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString), cleanup, "insert key_str should succeed");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_str"), cleanup, "key_str should be contained");
+   MCTF_ASSERT_STR_EQ((char*)pgagroal_art_search(t, "key_str"), "value1", cleanup, "search for key_str should return value1");
 
    // inserting string makes a copy
    key_str = pgagroal_append(key_str, "key_str");
    value2 = pgagroal_append(value2, "value2");
-   ck_assert(!pgagroal_art_insert(t, key_str, (uintptr_t)value2, ValueString));
-   ck_assert_str_eq((char*)pgagroal_art_search(t, "key_str"), "value2");
+   MCTF_ASSERT(!pgagroal_art_insert(t, key_str, (uintptr_t)value2, ValueString), cleanup, "insert key_str with value2 should succeed");
+   MCTF_ASSERT_STR_EQ((char*)pgagroal_art_search(t, "key_str"), "value2", cleanup, "search for key_str should return value2");
    free(value2);
+   value2 = NULL;
    free(key_str);
+   key_str = NULL;
 
-   ck_assert(!pgagroal_art_insert(t, "key_int", -1, ValueInt32));
-   ck_assert(pgagroal_art_contains_key(t, "key_int"));
-   ck_assert_int_eq((int)pgagroal_art_search(t, "key_int"), -1);
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_int", -1, ValueInt32), cleanup, "insert key_int should succeed");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_int"), cleanup, "key_int should be contained");
+   MCTF_ASSERT_INT_EQ((int)pgagroal_art_search(t, "key_int"), -1, cleanup, "search for key_int should return -1");
 
-   ck_assert(!pgagroal_art_insert(t, "key_bool", true, ValueBool));
-   ck_assert((bool)pgagroal_art_search(t, "key_bool"));
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_bool", true, ValueBool), cleanup, "insert key_bool should succeed");
+   MCTF_ASSERT((bool)pgagroal_art_search(t, "key_bool"), cleanup, "search for key_bool should return true");
 
-   ck_assert(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat));
-   ck_assert(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble));
-   ck_assert_float_eq(pgagroal_value_to_float(pgagroal_art_search(t, "key_float")), 2.5);
-   ck_assert_double_eq(pgagroal_value_to_double(pgagroal_art_search(t, "key_double")), 2.5);
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat), cleanup, "insert key_float should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble), cleanup, "insert key_double should succeed");
+   MCTF_ASSERT_FLOAT_EQ(pgagroal_value_to_float(pgagroal_art_search(t, "key_float")), 2.5, cleanup, "search for key_float should return 2.5");
+   MCTF_ASSERT_DOUBLE_EQ(pgagroal_value_to_double(pgagroal_art_search(t, "key_double")), 2.5, cleanup, "search for key_double should return 2.5");
 
    test_obj_create(1, &obj1);
-   ck_assert(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj1, &test_obj_config));
-   ck_assert_int_eq(((struct art_test_obj*)pgagroal_art_search(t, "key_obj"))->idx, 1);
-   ck_assert_str_eq(((struct art_test_obj*)pgagroal_art_search(t, "key_obj"))->str, "obj1");
+   MCTF_ASSERT(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj1, &test_obj_config), cleanup, "insert key_obj should succeed");
+   MCTF_ASSERT_INT_EQ(((struct art_test_obj*)pgagroal_art_search(t, "key_obj"))->idx, 1, cleanup, "obj1 idx should be 1");
+   MCTF_ASSERT_STR_EQ(((struct art_test_obj*)pgagroal_art_search(t, "key_obj"))->str, "obj1", cleanup, "obj1 str should be obj1");
    pgagroal_art_search_typed(t, "key_obj", &type);
-   ck_assert_int_eq(type, ValueRef);
+   MCTF_ASSERT_INT_EQ(type, ValueRef, cleanup, "type should be ValueRef");
 
    // test obj overwrite with memory free up
    test_obj_create(2, &obj2);
-   ck_assert(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj2, &test_obj_config));
-   ck_assert_int_eq(((struct art_test_obj*)pgagroal_art_search(t, "key_obj"))->idx, 2);
-   ck_assert_str_eq(((struct art_test_obj*)pgagroal_art_search(t, "key_obj"))->str, "obj2");
-
+   MCTF_ASSERT(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj2, &test_obj_config), cleanup, "insert key_obj with obj2 should succeed");
+   MCTF_ASSERT_INT_EQ(((struct art_test_obj*)pgagroal_art_search(t, "key_obj"))->idx, 2, cleanup, "obj2 idx should be 2");
+   MCTF_ASSERT_STR_EQ(((struct art_test_obj*)pgagroal_art_search(t, "key_obj"))->str, "obj2", cleanup, "obj2 str should be obj2");
+cleanup:
    pgagroal_art_destroy(t);
+   free(value2);
+   free(key_str);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_art_basic_delete)
+MCTF_TEST(test_art_basic_delete)
 {
    struct art* t = NULL;
    void* mem = NULL;
@@ -157,85 +162,85 @@ START_TEST(test_art_basic_delete)
    mem = malloc(10);
    struct value_config test_obj_config = {.destroy_data = test_obj_destroy_cb, .to_string = NULL};
 
-   ck_assert_ptr_nonnull(t);
+   MCTF_ASSERT_PTR_NONNULL(t, cleanup, "art tree should be created");
    test_obj_create(0, &obj);
 
-   ck_assert(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString));
-   ck_assert(!pgagroal_art_insert(t, "key_int", 1, ValueInt32));
-   ck_assert(!pgagroal_art_insert(t, "key_bool", true, ValueBool));
-   ck_assert(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat));
-   ck_assert(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble));
-   ck_assert(!pgagroal_art_insert(t, "key_mem", (uintptr_t)mem, ValueMem));
-   ck_assert(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj, &test_obj_config));
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString), cleanup, "insert key_str should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_int", 1, ValueInt32), cleanup, "insert key_int should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_bool", true, ValueBool), cleanup, "insert key_bool should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat), cleanup, "insert key_float should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble), cleanup, "insert key_double should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_mem", (uintptr_t)mem, ValueMem), cleanup, "insert key_mem should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj, &test_obj_config), cleanup, "insert key_obj should succeed");
 
-   ck_assert(pgagroal_art_contains_key(t, "key_str"));
-   ck_assert(pgagroal_art_contains_key(t, "key_int"));
-   ck_assert(pgagroal_art_contains_key(t, "key_bool"));
-   ck_assert(pgagroal_art_contains_key(t, "key_mem"));
-   ck_assert(pgagroal_art_contains_key(t, "key_float"));
-   ck_assert(pgagroal_art_contains_key(t, "key_double"));
-   ck_assert(pgagroal_art_contains_key(t, "key_obj"));
-   ck_assert_int_eq(t->size, 7);
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_str"), cleanup, "key_str should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_int"), cleanup, "key_int should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_bool"), cleanup, "key_bool should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_mem"), cleanup, "key_mem should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_float"), cleanup, "key_float should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_double"), cleanup, "key_double should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_obj"), cleanup, "key_obj should be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 7, cleanup, "art tree size should be 7");
 
-   ck_assert(pgagroal_art_delete(t, NULL));
-   ck_assert(pgagroal_art_delete(NULL, "key_str"));
+   MCTF_ASSERT(pgagroal_art_delete(t, NULL), cleanup, "delete with NULL key should fail");
+   MCTF_ASSERT(pgagroal_art_delete(NULL, "key_str"), cleanup, "delete with NULL tree should fail");
 
-   ck_assert(!pgagroal_art_delete(t, "key_str"));
-   ck_assert(!pgagroal_art_contains_key(t, "key_str"));
-   ck_assert_int_eq(t->size, 6);
+   MCTF_ASSERT(!pgagroal_art_delete(t, "key_str"), cleanup, "delete key_str should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_str"), cleanup, "key_str should not be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 6, cleanup, "art tree size should be 6");
 
-   ck_assert(!pgagroal_art_delete(t, "key_int"));
-   ck_assert(!pgagroal_art_contains_key(t, "key_int"));
-   ck_assert_int_eq(t->size, 5);
+   MCTF_ASSERT(!pgagroal_art_delete(t, "key_int"), cleanup, "delete key_int should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_int"), cleanup, "key_int should not be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 5, cleanup, "art tree size should be 5");
 
-   ck_assert(!pgagroal_art_delete(t, "key_bool"));
-   ck_assert(!pgagroal_art_contains_key(t, "key_bool"));
-   ck_assert_int_eq(t->size, 4);
+   MCTF_ASSERT(!pgagroal_art_delete(t, "key_bool"), cleanup, "delete key_bool should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_bool"), cleanup, "key_bool should not be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 4, cleanup, "art tree size should be 4");
 
-   ck_assert(!pgagroal_art_delete(t, "key_mem"));
-   ck_assert(!pgagroal_art_contains_key(t, "key_mem"));
-   ck_assert_int_eq(t->size, 3);
+   MCTF_ASSERT(!pgagroal_art_delete(t, "key_mem"), cleanup, "delete key_mem should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_mem"), cleanup, "key_mem should not be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 3, cleanup, "art tree size should be 3");
 
-   ck_assert(!pgagroal_art_delete(t, "key_float"));
-   ck_assert(!pgagroal_art_contains_key(t, "key_float"));
-   ck_assert_int_eq(t->size, 2);
+   MCTF_ASSERT(!pgagroal_art_delete(t, "key_float"), cleanup, "delete key_float should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_float"), cleanup, "key_float should not be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 2, cleanup, "art tree size should be 2");
 
-   ck_assert(!pgagroal_art_delete(t, "key_double"));
-   ck_assert(!pgagroal_art_contains_key(t, "key_double"));
-   ck_assert_int_eq(t->size, 1);
+   MCTF_ASSERT(!pgagroal_art_delete(t, "key_double"), cleanup, "delete key_double should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_double"), cleanup, "key_double should not be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 1, cleanup, "art tree size should be 1");
 
-   ck_assert(!pgagroal_art_delete(t, "key_obj"));
-   ck_assert(!pgagroal_art_contains_key(t, "key_obj"));
-   ck_assert_int_eq(t->size, 0);
-
+   MCTF_ASSERT(!pgagroal_art_delete(t, "key_obj"), cleanup, "delete key_obj should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_obj"), cleanup, "key_obj should not be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 0, cleanup, "art tree size should be 0");
+cleanup:
    pgagroal_art_destroy(t);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_art_double_delete)
+MCTF_TEST(test_art_double_delete)
 {
    struct art* t = NULL;
    pgagroal_art_create(&t);
 
-   ck_assert_ptr_nonnull(t);
+   MCTF_ASSERT_PTR_NONNULL(t, cleanup, "art tree should be created");
 
-   ck_assert(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString));
-   ck_assert(!pgagroal_art_insert(t, "key_int", 1, ValueInt32));
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString), cleanup, "insert key_str should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_int", 1, ValueInt32), cleanup, "insert key_int should succeed");
 
-   ck_assert(pgagroal_art_contains_key(t, "key_str"));
-   ck_assert_int_eq(t->size, 2);
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_str"), cleanup, "key_str should be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 2, cleanup, "art tree size should be 2");
 
-   ck_assert(!pgagroal_art_delete(t, "key_str"));
-   ck_assert(!pgagroal_art_contains_key(t, "key_str"));
-   ck_assert_int_eq(t->size, 1);
+   MCTF_ASSERT(!pgagroal_art_delete(t, "key_str"), cleanup, "delete key_str should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_str"), cleanup, "key_str should not be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 1, cleanup, "art tree size should be 1");
 
-   ck_assert(!pgagroal_art_delete(t, "key_str"));
-   ck_assert(!pgagroal_art_contains_key(t, "key_str"));
-   ck_assert_int_eq(t->size, 1);
-
+   MCTF_ASSERT(!pgagroal_art_delete(t, "key_str"), cleanup, "delete key_str again should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_str"), cleanup, "key_str should not be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 1, cleanup, "art tree size should still be 1");
+cleanup:
    pgagroal_art_destroy(t);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_art_clear)
+MCTF_TEST(test_art_clear)
 {
    struct art* t = NULL;
    void* mem = NULL;
@@ -245,34 +250,34 @@ START_TEST(test_art_clear)
    mem = malloc(10);
    struct value_config test_obj_config = {.destroy_data = test_obj_destroy_cb, .to_string = NULL};
 
-   ck_assert_ptr_nonnull(t);
+   MCTF_ASSERT_PTR_NONNULL(t, cleanup, "art tree should be created");
    test_obj_create(0, &obj);
 
-   ck_assert(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString));
-   ck_assert(!pgagroal_art_insert(t, "key_int", 1, ValueInt32));
-   ck_assert(!pgagroal_art_insert(t, "key_bool", true, ValueBool));
-   ck_assert(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat));
-   ck_assert(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble));
-   ck_assert(!pgagroal_art_insert(t, "key_mem", (uintptr_t)mem, ValueMem));
-   ck_assert(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj, &test_obj_config));
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString), cleanup, "insert key_str should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_int", 1, ValueInt32), cleanup, "insert key_int should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_bool", true, ValueBool), cleanup, "insert key_bool should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat), cleanup, "insert key_float should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble), cleanup, "insert key_double should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_mem", (uintptr_t)mem, ValueMem), cleanup, "insert key_mem should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj, &test_obj_config), cleanup, "insert key_obj should succeed");
 
-   ck_assert(pgagroal_art_contains_key(t, "key_str"));
-   ck_assert(pgagroal_art_contains_key(t, "key_int"));
-   ck_assert(pgagroal_art_contains_key(t, "key_bool"));
-   ck_assert(pgagroal_art_contains_key(t, "key_mem"));
-   ck_assert(pgagroal_art_contains_key(t, "key_float"));
-   ck_assert(pgagroal_art_contains_key(t, "key_double"));
-   ck_assert(pgagroal_art_contains_key(t, "key_obj"));
-   ck_assert_int_eq(t->size, 7);
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_str"), cleanup, "key_str should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_int"), cleanup, "key_int should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_bool"), cleanup, "key_bool should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_mem"), cleanup, "key_mem should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_float"), cleanup, "key_float should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_double"), cleanup, "key_double should be contained");
+   MCTF_ASSERT(pgagroal_art_contains_key(t, "key_obj"), cleanup, "key_obj should be contained");
+   MCTF_ASSERT_INT_EQ(t->size, 7, cleanup, "art tree size should be 7");
 
-   ck_assert(!pgagroal_art_clear(t));
-   ck_assert_int_eq(t->size, 0);
-   ck_assert_ptr_null(t->root);
-
+   MCTF_ASSERT(!pgagroal_art_clear(t), cleanup, "clear should succeed");
+   MCTF_ASSERT_INT_EQ(t->size, 0, cleanup, "art tree size should be 0");
+   MCTF_ASSERT_PTR_NULL(t->root, cleanup, "art tree root should be NULL");
+cleanup:
    pgagroal_art_destroy(t);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_art_iterator_read)
+MCTF_TEST(test_art_iterator_read)
 {
    struct art* t = NULL;
    struct art_iterator* iter = NULL;
@@ -283,71 +288,71 @@ START_TEST(test_art_iterator_read)
    mem = malloc(10);
    struct value_config test_obj_config = {.destroy_data = test_obj_destroy_cb, .to_string = NULL};
 
-   ck_assert_ptr_nonnull(t);
+   MCTF_ASSERT_PTR_NONNULL(t, cleanup, "art tree should be created");
    test_obj_create(1, &obj);
 
-   ck_assert(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString));
-   ck_assert(!pgagroal_art_insert(t, "key_int", 1, ValueInt32));
-   ck_assert(!pgagroal_art_insert(t, "key_bool", true, ValueBool));
-   ck_assert(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat));
-   ck_assert(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble));
-   ck_assert(!pgagroal_art_insert(t, "key_mem", (uintptr_t)mem, ValueMem));
-   ck_assert(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj, &test_obj_config));
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString), cleanup, "insert key_str should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_int", 1, ValueInt32), cleanup, "insert key_int should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_bool", true, ValueBool), cleanup, "insert key_bool should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat), cleanup, "insert key_float should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble), cleanup, "insert key_double should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_mem", (uintptr_t)mem, ValueMem), cleanup, "insert key_mem should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj, &test_obj_config), cleanup, "insert key_obj should succeed");
 
-   ck_assert(pgagroal_art_iterator_create(NULL, &iter));
-   ck_assert_ptr_null(iter);
-   ck_assert(!pgagroal_art_iterator_create(t, &iter));
-   ck_assert_ptr_nonnull(iter);
-   ck_assert(pgagroal_art_iterator_has_next(iter));
+   MCTF_ASSERT(pgagroal_art_iterator_create(NULL, &iter), cleanup, "iterator_create with NULL tree should fail");
+   MCTF_ASSERT_PTR_NULL(iter, cleanup, "iterator should be NULL");
+   MCTF_ASSERT(!pgagroal_art_iterator_create(t, &iter), cleanup, "iterator_create should succeed");
+   MCTF_ASSERT_PTR_NONNULL(iter, cleanup, "iterator should be created");
+   MCTF_ASSERT(pgagroal_art_iterator_has_next(iter), cleanup, "iterator should have next");
 
    int cnt = 0;
    while (pgagroal_art_iterator_next(iter))
    {
       if (pgagroal_compare_string(iter->key, "key_str"))
       {
-         ck_assert_str_eq((char*)pgagroal_value_data(iter->value), "value1");
+         MCTF_ASSERT_STR_EQ((char*)pgagroal_value_data(iter->value), "value1", cleanup, "key_str value should be value1");
       }
       else if (pgagroal_compare_string(iter->key, "key_int"))
       {
-         ck_assert_int_eq((int)pgagroal_value_data(iter->value), 1);
+         MCTF_ASSERT_INT_EQ((int)pgagroal_value_data(iter->value), 1, cleanup, "key_int value should be 1");
       }
       else if (pgagroal_compare_string(iter->key, "key_bool"))
       {
-         ck_assert((bool)pgagroal_value_data(iter->value));
+         MCTF_ASSERT((bool)pgagroal_value_data(iter->value), cleanup, "key_bool value should be true");
       }
       else if (pgagroal_compare_string(iter->key, "key_float"))
       {
-         ck_assert_float_eq(pgagroal_value_to_float(pgagroal_value_data(iter->value)), 2.5);
+         MCTF_ASSERT_FLOAT_EQ(pgagroal_value_to_float(pgagroal_value_data(iter->value)), 2.5, cleanup, "key_float value should be 2.5");
       }
       else if (pgagroal_compare_string(iter->key, "key_double"))
       {
-         ck_assert_double_eq(pgagroal_value_to_double(pgagroal_value_data(iter->value)), 2.5);
+         MCTF_ASSERT_DOUBLE_EQ(pgagroal_value_to_double(pgagroal_value_data(iter->value)), 2.5, cleanup, "key_double value should be 2.5");
       }
       else if (pgagroal_compare_string(iter->key, "key_mem"))
       {
          // as long as it exists...
-         ck_assert(true);
+         MCTF_ASSERT(true, cleanup, "key_mem should exist");
       }
       else if (pgagroal_compare_string(iter->key, "key_obj"))
       {
-         ck_assert_int_eq(((struct art_test_obj*)pgagroal_value_data(iter->value))->idx, 1);
-         ck_assert_str_eq(((struct art_test_obj*)pgagroal_value_data(iter->value))->str, "obj1");
+         MCTF_ASSERT_INT_EQ(((struct art_test_obj*)pgagroal_value_data(iter->value))->idx, 1, cleanup, "key_obj idx should be 1");
+         MCTF_ASSERT_STR_EQ(((struct art_test_obj*)pgagroal_value_data(iter->value))->str, "obj1", cleanup, "key_obj str should be obj1");
       }
       else
       {
-         ck_assert_msg(false, "found key not inserted: %s", iter->key);
+         MCTF_ASSERT(false, cleanup, "found key not inserted: %s", iter->key);
       }
 
       cnt++;
    }
-   ck_assert_int_eq(cnt, t->size);
-   ck_assert(!pgagroal_art_iterator_has_next(iter));
-
+   MCTF_ASSERT_INT_EQ(cnt, t->size, cleanup, "iterator count should match tree size");
+   MCTF_ASSERT(!pgagroal_art_iterator_has_next(iter), cleanup, "iterator should not have next");
+cleanup:
    pgagroal_art_iterator_destroy(iter);
    pgagroal_art_destroy(t);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_art_iterator_remove)
+MCTF_TEST(test_art_iterator_remove)
 {
    struct art* t = NULL;
    struct art_iterator* iter = NULL;
@@ -358,22 +363,22 @@ START_TEST(test_art_iterator_remove)
    mem = malloc(10);
    struct value_config test_obj_config = {.destroy_data = test_obj_destroy_cb, .to_string = NULL};
 
-   ck_assert_ptr_nonnull(t);
+   MCTF_ASSERT_PTR_NONNULL(t, cleanup, "art tree should be created");
    test_obj_create(1, &obj);
 
-   ck_assert(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString));
-   ck_assert(!pgagroal_art_insert(t, "key_int", 1, ValueInt32));
-   ck_assert(!pgagroal_art_insert(t, "key_bool", true, ValueBool));
-   ck_assert(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat));
-   ck_assert(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble));
-   ck_assert(!pgagroal_art_insert(t, "key_mem", (uintptr_t)mem, ValueMem));
-   ck_assert(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj, &test_obj_config));
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_str", (uintptr_t)"value1", ValueString), cleanup, "insert key_str should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_int", 1, ValueInt32), cleanup, "insert key_int should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_bool", true, ValueBool), cleanup, "insert key_bool should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_float", pgagroal_value_from_float(2.5), ValueFloat), cleanup, "insert key_float should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_double", pgagroal_value_from_double(2.5), ValueDouble), cleanup, "insert key_double should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, "key_mem", (uintptr_t)mem, ValueMem), cleanup, "insert key_mem should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert_with_config(t, "key_obj", (uintptr_t)obj, &test_obj_config), cleanup, "insert key_obj should succeed");
 
-   ck_assert_int_eq(t->size, 7);
+   MCTF_ASSERT_INT_EQ(t->size, 7, cleanup, "art tree size should be 7");
 
-   ck_assert(!pgagroal_art_iterator_create(t, &iter));
-   ck_assert_ptr_nonnull(iter);
-   ck_assert(pgagroal_art_iterator_has_next(iter));
+   MCTF_ASSERT(!pgagroal_art_iterator_create(t, &iter), cleanup, "iterator_create should succeed");
+   MCTF_ASSERT_PTR_NONNULL(iter, cleanup, "iterator should be created");
+   MCTF_ASSERT(pgagroal_art_iterator_has_next(iter), cleanup, "iterator should have next");
 
    int cnt = 0;
    while (pgagroal_art_iterator_next(iter))
@@ -381,64 +386,64 @@ START_TEST(test_art_iterator_remove)
       cnt++;
       if (pgagroal_compare_string(iter->key, "key_str"))
       {
-         ck_assert_str_eq((char*)pgagroal_value_data(iter->value), "value1");
+         MCTF_ASSERT_STR_EQ((char*)pgagroal_value_data(iter->value), "value1", cleanup, "key_str value should be value1");
          pgagroal_art_iterator_remove(iter);
-         ck_assert(!pgagroal_art_contains_key(t, "key_str"));
+         MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_str"), cleanup, "key_str should not be contained");
       }
       else if (pgagroal_compare_string(iter->key, "key_int"))
       {
-         ck_assert_int_eq((int)pgagroal_value_data(iter->value), 1);
+         MCTF_ASSERT_INT_EQ((int)pgagroal_value_data(iter->value), 1, cleanup, "key_int value should be 1");
          pgagroal_art_iterator_remove(iter);
-         ck_assert(!pgagroal_art_contains_key(t, "key_int"));
+         MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_int"), cleanup, "key_int should not be contained");
       }
       else if (pgagroal_compare_string(iter->key, "key_bool"))
       {
-         ck_assert((bool)pgagroal_value_data(iter->value));
+         MCTF_ASSERT((bool)pgagroal_value_data(iter->value), cleanup, "key_bool value should be true");
          pgagroal_art_iterator_remove(iter);
-         ck_assert(!pgagroal_art_contains_key(t, "key_bool"));
+         MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_bool"), cleanup, "key_bool should not be contained");
       }
       else if (pgagroal_compare_string(iter->key, "key_float"))
       {
-         ck_assert_float_eq(pgagroal_value_to_float(pgagroal_value_data(iter->value)), 2.5);
+         MCTF_ASSERT_FLOAT_EQ(pgagroal_value_to_float(pgagroal_value_data(iter->value)), 2.5, cleanup, "key_float value should be 2.5");
          pgagroal_art_iterator_remove(iter);
-         ck_assert(!pgagroal_art_contains_key(t, "key_float"));
+         MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_float"), cleanup, "key_float should not be contained");
       }
       else if (pgagroal_compare_string(iter->key, "key_double"))
       {
-         ck_assert_double_eq(pgagroal_value_to_double(pgagroal_value_data(iter->value)), 2.5);
+         MCTF_ASSERT_DOUBLE_EQ(pgagroal_value_to_double(pgagroal_value_data(iter->value)), 2.5, cleanup, "key_double value should be 2.5");
          pgagroal_art_iterator_remove(iter);
-         ck_assert(!pgagroal_art_contains_key(t, "key_double"));
+         MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_double"), cleanup, "key_double should not be contained");
       }
       else if (pgagroal_compare_string(iter->key, "key_mem"))
       {
          pgagroal_art_iterator_remove(iter);
-         ck_assert(!pgagroal_art_contains_key(t, "key_mem"));
+         MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_mem"), cleanup, "key_mem should not be contained");
       }
       else if (pgagroal_compare_string(iter->key, "key_obj"))
       {
-         ck_assert_int_eq(((struct art_test_obj*)pgagroal_value_data(iter->value))->idx, 1);
-         ck_assert_str_eq(((struct art_test_obj*)pgagroal_value_data(iter->value))->str, "obj1");
+         MCTF_ASSERT_INT_EQ(((struct art_test_obj*)pgagroal_value_data(iter->value))->idx, 1, cleanup, "key_obj idx should be 1");
+         MCTF_ASSERT_STR_EQ(((struct art_test_obj*)pgagroal_value_data(iter->value))->str, "obj1", cleanup, "key_obj str should be obj1");
          pgagroal_art_iterator_remove(iter);
-         ck_assert(!pgagroal_art_contains_key(t, "key_obj"));
+         MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_obj"), cleanup, "key_obj should not be contained");
       }
       else
       {
-         ck_assert_msg(false, "found key not inserted: %s", iter->key);
+         MCTF_ASSERT(false, cleanup, "found key not inserted: %s", iter->key);
       }
 
-      ck_assert_int_eq(t->size, 7 - cnt);
-      ck_assert_ptr_null(iter->key);
-      ck_assert_ptr_null(iter->value);
+      MCTF_ASSERT_INT_EQ(t->size, 7 - cnt, cleanup, "art tree size should decrease");
+      MCTF_ASSERT_PTR_NULL(iter->key, cleanup, "iterator key should be NULL after remove");
+      MCTF_ASSERT_PTR_NULL(iter->value, cleanup, "iterator value should be NULL after remove");
    }
-   ck_assert_int_eq(cnt, 7);
-   ck_assert_int_eq(t->size, 0);
-   ck_assert(!pgagroal_art_iterator_has_next(iter));
-
+   MCTF_ASSERT_INT_EQ(cnt, 7, cleanup, "iterator count should be 7");
+   MCTF_ASSERT_INT_EQ(t->size, 0, cleanup, "art tree size should be 0");
+   MCTF_ASSERT(!pgagroal_art_iterator_has_next(iter), cleanup, "iterator should not have next");
+cleanup:
    pgagroal_art_iterator_destroy(iter);
    pgagroal_art_destroy(t);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_art_insert_search_extensive)
+MCTF_TEST(test_art_insert_search_extensive)
 {
    struct art* t = NULL;
    char buf[512];
@@ -450,14 +455,14 @@ START_TEST(test_art_insert_search_extensive)
    path = pgagroal_append(path, "/pgagroal-testsuite/resource/art_advanced_test/words.txt");
 
    f = fopen(path, "r");
-   ck_assert_ptr_nonnull(f);
+   MCTF_ASSERT_PTR_NONNULL(f, cleanup, "file should open");
 
    pgagroal_art_create(&t);
    while (fgets(buf, sizeof(buf), f))
    {
       len = strlen(buf);
       buf[len - 1] = '\0';
-      ck_assert(!pgagroal_art_insert(t, buf, line, ValueInt32));
+      MCTF_ASSERT(!pgagroal_art_insert(t, buf, line, ValueInt32), cleanup, "insert should succeed");
       line++;
    }
 
@@ -469,18 +474,21 @@ START_TEST(test_art_insert_search_extensive)
       len = strlen(buf);
       buf[len - 1] = '\0';
       int val = (int)pgagroal_art_search(t, buf);
-      ck_assert_msg(val == line, "test_art_insert_search_advanced Line: %d Val: %d Str: %s\n", (int)line, val, buf);
+      MCTF_ASSERT_INT_EQ(val, (int)line, cleanup, "test_art_insert_search_advanced Line: %d Val: %d Str: %s", (int)line, val, buf);
       line++;
    }
-
-   fclose(f);
+cleanup:
+   if (f != NULL)
+   {
+      fclose(f);
+   }
    free(path);
    pgagroal_art_destroy(t);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_art_insert_very_long)
+MCTF_TEST(test_art_insert_very_long)
 {
-   struct art* t;
+   struct art* t = NULL;
    pgagroal_art_create(&t);
 
    unsigned char key1[300] = {16, 1, 1, 1, 7, 11, 1, 1, 1, 2, 17, 11, 1, 1, 1, 121, 11, 1, 1, 1, 121, 11, 1,
@@ -520,15 +528,15 @@ START_TEST(test_art_insert_very_long)
                               101, 178, 1, 8, 18, 255, 255, 255, 219, 191, 198, 134, 5, 208, 212, 72,
                               44, 208, 251, 180, 14, 1, 1, 1, 8, '\0'};
 
-   ck_assert(!pgagroal_art_insert(t, (char*)key1, (uintptr_t)key1, ValueRef));
-   ck_assert(!pgagroal_art_insert(t, (char*)key2, (uintptr_t)key2, ValueRef));
-   ck_assert(!pgagroal_art_insert(t, (char*)key2, (uintptr_t)key2, ValueRef));
-   ck_assert_int_eq(t->size, 2);
-
+   MCTF_ASSERT(!pgagroal_art_insert(t, (char*)key1, (uintptr_t)key1, ValueRef), cleanup, "insert key1 should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, (char*)key2, (uintptr_t)key2, ValueRef), cleanup, "insert key2 should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, (char*)key2, (uintptr_t)key2, ValueRef), cleanup, "insert key2 again should succeed");
+   MCTF_ASSERT_INT_EQ(t->size, 2, cleanup, "art tree size should be 2");
+cleanup:
    pgagroal_art_destroy(t);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_art_random_delete)
+MCTF_TEST(test_art_random_delete)
 {
    struct art* t = NULL;
    char buf[512];
@@ -540,14 +548,14 @@ START_TEST(test_art_random_delete)
    path = pgagroal_append(path, "/pgagroal-testsuite/resource/art_advanced_test/words.txt");
 
    f = fopen(path, "r");
-   ck_assert_ptr_nonnull(f);
+   MCTF_ASSERT_PTR_NONNULL(f, cleanup, "file should open");
 
    pgagroal_art_create(&t);
    while (fgets(buf, sizeof(buf), f))
    {
       len = strlen(buf);
       buf[len - 1] = '\0';
-      ck_assert(!pgagroal_art_insert(t, buf, line, ValueInt32));
+      MCTF_ASSERT(!pgagroal_art_insert(t, buf, line, ValueInt32), cleanup, "insert should succeed");
       line++;
    }
 
@@ -559,75 +567,46 @@ START_TEST(test_art_random_delete)
       len = strlen(buf);
       buf[len - 1] = '\0';
       int val = (int)pgagroal_art_search(t, buf);
-      ck_assert_msg(val == line, "test_art_insert_search_advanced Line: %d Val: %d Str: %s\n", (int)line, val, buf);
+      MCTF_ASSERT_INT_EQ(val, (int)line, cleanup, "test_art_insert_search_advanced Line: %d Val: %d Str: %s", (int)line, val, buf);
       line++;
    }
 
-   ck_assert(!pgagroal_art_delete(t, "A"));
-   ck_assert(!pgagroal_art_contains_key(t, "A"));
+   MCTF_ASSERT(!pgagroal_art_delete(t, "A"), cleanup, "delete A should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "A"), cleanup, "A should not be contained");
 
-   ck_assert(!pgagroal_art_delete(t, "yard"));
-   ck_assert(!pgagroal_art_contains_key(t, "yard"));
+   MCTF_ASSERT(!pgagroal_art_delete(t, "yard"), cleanup, "delete yard should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "yard"), cleanup, "yard should not be contained");
 
-   ck_assert(!pgagroal_art_delete(t, "Xenarchi"));
-   ck_assert(!pgagroal_art_contains_key(t, "Xenarchi"));
+   MCTF_ASSERT(!pgagroal_art_delete(t, "Xenarchi"), cleanup, "delete Xenarchi should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "Xenarchi"), cleanup, "Xenarchi should not be contained");
 
-   ck_assert(!pgagroal_art_delete(t, "F"));
-   ck_assert(!pgagroal_art_contains_key(t, "F"));
+   MCTF_ASSERT(!pgagroal_art_delete(t, "F"), cleanup, "delete F should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "F"), cleanup, "F should not be contained");
 
-   ck_assert(!pgagroal_art_delete(t, "wirespun"));
-   ck_assert(!pgagroal_art_contains_key(t, "wirespun"));
-
-   fclose(f);
+   MCTF_ASSERT(!pgagroal_art_delete(t, "wirespun"), cleanup, "delete wirespun should succeed");
+   MCTF_ASSERT(!pgagroal_art_contains_key(t, "wirespun"), cleanup, "wirespun should not be contained");
+cleanup:
+   if (f != NULL)
+   {
+      fclose(f);
+   }
    free(path);
    pgagroal_art_destroy(t);
+   MCTF_FINISH();
 }
-END_TEST
-START_TEST(test_art_insert_index_out_of_range)
+MCTF_TEST(test_art_insert_index_out_of_range)
 {
-   struct art* t;
+   struct art* t = NULL;
    pgagroal_art_create(&t);
    char* s1 = "abcdefghijklmnxyz";
    char* s2 = "abcdefghijklmnopqrstuvw";
    char* s3 = "abcdefghijk";
-   ck_assert(!pgagroal_art_insert(t, s1, 1, ValueUInt8));
-   ck_assert(!pgagroal_art_insert(t, s2, 1, ValueUInt8));
-   ck_assert_int_eq(pgagroal_art_search(t, s3), 0);
+   MCTF_ASSERT(!pgagroal_art_insert(t, s1, 1, ValueUInt8), cleanup, "insert s1 should succeed");
+   MCTF_ASSERT(!pgagroal_art_insert(t, s2, 1, ValueUInt8), cleanup, "insert s2 should succeed");
+   MCTF_ASSERT_INT_EQ(pgagroal_art_search(t, s3), 0, cleanup, "search s3 should return 0");
+cleanup:
    pgagroal_art_destroy(t);
-}
-END_TEST
-
-Suite*
-pgagroal_test_art_suite()
-{
-   Suite* s;
-   TCase* tc_art_basic;
-   TCase* tc_art_advanced;
-
-   s = suite_create("pgagroal_test_art");
-
-   tc_art_basic = tcase_create("art_basic_test");
-   tcase_set_timeout(tc_art_basic, 60);
-   tcase_add_test(tc_art_basic, test_art_create);
-   tcase_add_test(tc_art_basic, test_art_insert);
-   tcase_add_test(tc_art_basic, test_art_search);
-   tcase_add_test(tc_art_basic, test_art_basic_delete);
-   tcase_add_test(tc_art_basic, test_art_double_delete);
-   tcase_add_test(tc_art_basic, test_art_clear);
-   tcase_add_test(tc_art_basic, test_art_iterator_read);
-   tcase_add_test(tc_art_basic, test_art_iterator_remove);
-
-   tc_art_advanced = tcase_create("art_advanced_test");
-   tcase_set_timeout(tc_art_advanced, 60);
-   tcase_add_test(tc_art_advanced, test_art_insert_search_extensive);
-   tcase_add_test(tc_art_advanced, test_art_insert_very_long);
-   tcase_add_test(tc_art_advanced, test_art_random_delete);
-   tcase_add_test(tc_art_advanced, test_art_insert_index_out_of_range);
-
-   suite_add_tcase(s, tc_art_basic);
-   suite_add_tcase(s, tc_art_advanced);
-
-   return s;
+   MCTF_FINISH();
 }
 
 static void
