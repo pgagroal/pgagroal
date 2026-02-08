@@ -40,3 +40,24 @@ exit 0
 
 The script is assumed successful if it has an exit code of 0. Otherwise both servers will be
 recorded as failed.
+
+
+#### Notifying remaining standbys
+
+In addition to `failover_script`, pgagroal supports an optional follow-up
+executable that is invoked after a successful failover.
+
+To enable it, configure:
+
+```sh 
+failover_notify_script = /path/to/notify_script.sh
+```
+
+The notify script is executed only if `failover_script` exits with status `0`.
+
+The script receives information about the old primary, promoted primary and remaining
+standby servers, allowing users to reconfigure or attach standbys to the new
+primary.
+
+The executable is fully user-defined and must be executable by the pgagroal
+process.
