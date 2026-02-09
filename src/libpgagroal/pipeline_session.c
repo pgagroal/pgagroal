@@ -388,7 +388,7 @@ client_done:
    }
    else
    {
-      exit_code = WORKER_SERVER_FAILURE;
+      exit_code = WORKER_CLIENT_FAILURE;
    }
 
    pgagroal_event_loop_break();
