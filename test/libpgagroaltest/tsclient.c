@@ -169,7 +169,7 @@ pgagroal_tsclient_execute_pgbench(char* user, char* database, bool select_only, 
    command = pgagroal_append(command, "-d ");
    command = pgagroal_append(command, database);
 
-   command = pgagroal_append(command, " >> ");  // append to the file
+   command = pgagroal_append(command, " >> "); // append to the file
    command = pgagroal_append(command, log_file_path);
    command = pgagroal_append(command, " 2>&1");
 

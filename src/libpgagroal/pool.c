@@ -316,13 +316,13 @@ retry:
          atomic_fetch_sub(&config->active_connections, 1);
       }
 retry2:
-      if (config->blocking_timeout > 0)
+      if (pgagroal_time_is_valid(config->blocking_timeout))
       {
          /* Sleep for 500ms */
          SLEEP(500000000L)
 
          double diff = difftime(time(NULL), start_time);
-         if (diff >= (double)config->blocking_timeout)
+         if (diff >= (double)pgagroal_time_convert(config->blocking_timeout, FORMAT_TIME_S))
          {
             goto timeout;
          }
@@ -406,7 +406,7 @@ pgagroal_return_connection(int slot, SSL* ssl, bool transaction_mode)
    config = (struct main_configuration*)shmem;
 
    /* Kill the connection, if it lives longer than max_connection_age */
-   if (config->max_connection_age > 0)
+   if (pgagroal_time_is_valid(config->max_connection_age))
    {
       now = time(NULL);
       in_use = STATE_IN_USE;
@@ -414,7 +414,7 @@ pgagroal_return_connection(int slot, SSL* ssl, bool transaction_mode)
       if (atomic_compare_exchange_strong(&config->states[slot], &in_use, age_check))
       {
          double age = difftime(now, config->connections[slot].start_time);
-         if ((age >= (double)config->max_connection_age && !config->connections[slot].tx_mode) ||
+         if ((age >= (double)pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S) && !config->connections[slot].tx_mode) ||
              !atomic_compare_exchange_strong(&config->states[slot], &age_check, STATE_IN_USE))
          {
             pgagroal_prometheus_connection_max_connection_age();
@@ -676,7 +676,7 @@ pgagroal_idle_timeout(void)
       if (atomic_compare_exchange_strong(&config->states[i], &free, idle_check))
       {
          double diff = difftime(now, config->connections[i].timestamp);
-         if (diff >= (double)config->idle_timeout && !config->connections[i].tx_mode)
+         if (diff >= (double)pgagroal_time_convert(config->idle_timeout, FORMAT_TIME_S) && !config->connections[i].tx_mode)
          {
             pgagroal_prometheus_connection_idletimeout();
             pgagroal_tracking_event_slot(TRACKER_IDLE_TIMEOUT, i);
@@ -735,7 +735,7 @@ pgagroal_max_connection_age(void)
       if (atomic_compare_exchange_strong(&config->states[i], &free, age_check))
       {
          double age = difftime(now, config->connections[i].start_time);
-         if (age >= (double)config->max_connection_age && !config->connections[i].tx_mode)
+         if (age >= (double)pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S) && !config->connections[i].tx_mode)
          {
             pgagroal_prometheus_connection_max_connection_age();
             pgagroal_tracking_event_slot(TRACKER_MAX_CONNECTION_AGE, i);
@@ -802,20 +802,20 @@ pgagroal_validation(void)
          }
 
          /* While we have the connection in validation may as well check for idle_timeout */
-         if (!kill && config->idle_timeout > 0)
+         if (!kill && pgagroal_time_is_valid(config->idle_timeout))
          {
             diff = difftime(now, config->connections[i].timestamp);
-            if (diff >= (double)config->idle_timeout)
+            if (diff >= (double)pgagroal_time_convert(config->idle_timeout, FORMAT_TIME_S))
             {
                kill = true;
             }
          }
 
          /* Also check for max_connection_age */
-         if (!kill && config->max_connection_age > 0)
+         if (!kill && pgagroal_time_is_valid(config->max_connection_age))
          {
             age = difftime(now, config->connections[i].start_time);
-            if (age >= (double)config->max_connection_age)
+            if (age >= (double)pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S))
             {
                kill = true;
             }

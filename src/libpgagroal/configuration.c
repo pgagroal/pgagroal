@@ -77,7 +77,7 @@ static int extract_value(char* str, int offset, char** value);
 static void extract_hba(char* str, char** type, char** database, char** user, char** address, char** method);
 static void extract_limit(char* str, int server_max, char** database, char** user, int* max_size, int* initial_size, int* min_size, char aliases[MAX_ALIASES][MAX_DATABASE_LENGTH], int* aliases_count);
 static void copy_limit(struct limit* dst, struct limit* src);
-static unsigned int as_seconds(char* str, unsigned int* age, unsigned int default_age);
+static int as_milliseconds(char* str, pgagroal_time_t* result, pgagroal_time_t default_val);
 static unsigned int as_bytes(char* str, unsigned int* bytes, unsigned int default_bytes);
 static int extract_alias_with_space(char* str, int offset, char** db_part);
 
@@ -150,15 +150,15 @@ pgagroal_init_configuration(void* shm)
    config->keep_running = true;
    config->pipeline = PIPELINE_AUTO;
    config->authquery = false;
-   config->blocking_timeout = DEFAULT_BLOCKING_TIMEOUT;
-   config->idle_timeout = DEFAULT_IDLE_TIMEOUT;
-   config->rotate_frontend_password_timeout = DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT;
+   config->blocking_timeout = PGAGROAL_TIME_SEC(DEFAULT_BLOCKING_TIMEOUT);
+   config->idle_timeout = PGAGROAL_TIME_SEC(DEFAULT_IDLE_TIMEOUT);
+   config->rotate_frontend_password_timeout = PGAGROAL_TIME_SEC(DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT);
    config->rotate_frontend_password_length = MIN_PASSWORD_LENGTH;
-   config->max_connection_age = DEFAULT_MAX_CONNECTION_AGE;
+   config->max_connection_age = PGAGROAL_TIME_SEC(DEFAULT_MAX_CONNECTION_AGE);
    config->validation = VALIDATION_OFF;
-   config->background_interval = DEFAULT_BACKGROUND_INTERVAL;
+   config->background_interval = PGAGROAL_TIME_SEC(DEFAULT_BACKGROUND_INTERVAL);
    config->max_retries = 5;
-   config->common.authentication_timeout = DEFAULT_AUTHENTICATION_TIMEOUT;
+   config->common.authentication_timeout = PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT);
    config->disconnect_client = 0;
    config->disconnect_client_force = false;
 
@@ -456,9 +456,9 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
       config->backlog = MAX(config->max_connections / 4, 16);
    }
 
-   if (config->common.authentication_timeout == 0)
+   if (!pgagroal_time_is_valid(config->common.authentication_timeout))
    {
-      config->common.authentication_timeout = DEFAULT_AUTHENTICATION_TIMEOUT;
+      config->common.authentication_timeout = PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT);
    }
 
    if (config->disconnect_client <= 0)
@@ -520,7 +520,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
       pgagroal_log_warn("pgagroal: Frontend users should not be used with allow_unknown_users");
    }
 
-   if (config->number_of_frontend_users == 0 && config->number_of_users == 0 && config->rotate_frontend_password_timeout > 0)
+   if (config->number_of_frontend_users == 0 && config->number_of_users == 0 && pgagroal_time_is_valid(config->rotate_frontend_password_timeout))
    {
       pgagroal_log_fatal("pgagroal: Users must be defined for rotation frontend password to be enabled");
       return 1;
@@ -692,22 +692,22 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
          }
       }
 
-      if (config->blocking_timeout > 0)
+      if (pgagroal_time_is_valid(config->blocking_timeout))
       {
          pgagroal_log_warn("pgagroal: Using blocking_timeout for the transaction pipeline is not recommended");
       }
 
-      if (config->idle_timeout > 0)
+      if (pgagroal_time_is_valid(config->idle_timeout))
       {
          pgagroal_log_warn("pgagroal: Using idle_timeout for the transaction pipeline is not recommended");
       }
 
-      if (config->rotate_frontend_password_timeout > 0)
+      if (pgagroal_time_is_valid(config->rotate_frontend_password_timeout))
       {
          pgagroal_log_warn("pgagroal: Using rotate_frontend_password_timeout for the transaction pipeline is not recommended");
       }
 
-      if (config->max_connection_age > 0)
+      if (pgagroal_time_is_valid(config->max_connection_age))
       {
          pgagroal_log_warn("pgagroal: Using max_connection_age for the transaction pipeline is not recommended");
       }
@@ -823,7 +823,7 @@ pgagroal_vault_init_configuration(void* shm)
    config->vault_server.server.port = 0;
    config->vault_server.server.tls = false;
    config->number_of_users = 0;
-   config->common.authentication_timeout = DEFAULT_AUTHENTICATION_TIMEOUT;
+   config->common.authentication_timeout = PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT);
    config->common.hugepage = HUGEPAGE_TRY;
    config->common.log_type = PGAGROAL_LOGGING_TYPE_CONSOLE;
    config->common.log_level = PGAGROAL_LOGGING_LEVEL_INFO;
@@ -1008,9 +1008,9 @@ pgagroal_vault_validate_configuration(void* shm)
       return 1;
    }
 
-   if (config->common.authentication_timeout == 0)
+   if (config->common.authentication_timeout.ms == 0)
    {
-      config->common.authentication_timeout = DEFAULT_AUTHENTICATION_TIMEOUT;
+      config->common.authentication_timeout = PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT);
    }
 
    if (strlen(config->vault_server.server.host) == 0)
@@ -3439,7 +3439,7 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
    /* log_path */
    // if the log main parameters have changed, we need
    // to restart the logging system
-   if (strncmp(config->common.log_path, reload->common.log_path, MISC_LENGTH) || config->common.log_rotation_size != reload->common.log_rotation_size || config->common.log_rotation_age != reload->common.log_rotation_age || config->common.log_mode != reload->common.log_mode)
+   if (strncmp(config->common.log_path, reload->common.log_path, MISC_LENGTH) || config->common.log_rotation_size != reload->common.log_rotation_size || config->common.log_rotation_age.ms != reload->common.log_rotation_age.ms || config->common.log_mode != reload->common.log_mode)
    {
       pgagroal_log_debug("Log restart triggered!");
       pgagroal_stop_logging();
@@ -4130,14 +4130,14 @@ section_line(char* line, char* section)
  * @param default_age a value to set when the parsing is unsuccesful
 
  */
-static unsigned int
-as_seconds(char* str, unsigned int* age, unsigned int default_age)
+static int
+as_milliseconds(char* str, pgagroal_time_t* age, pgagroal_time_t default_age)
 {
-   int multiplier = 1;
+   int64_t multiplier = 1000;
    int index;
    char value[MISC_LENGTH];
    bool multiplier_set = false;
-   int i_value = default_age;
+   int i_value = 0;
 
    if (is_empty_string(str))
    {
@@ -4146,7 +4146,7 @@ as_seconds(char* str, unsigned int* age, unsigned int default_age)
    }
 
    index = 0;
-   for (unsigned long i = 0; i < strlen(str); i++)
+   for (size_t i = 0; i < strlen(str); i++)
    {
       if (isdigit(str[i]))
       {
@@ -4159,30 +4159,43 @@ as_seconds(char* str, unsigned int* age, unsigned int default_age)
       }
       else if (isalpha(str[i]) && !multiplier_set)
       {
-         if (str[i] == 's' || str[i] == 'S')
+         // Check for 'ms'
+         if ((str[i] == 'm' || str[i] == 'M') &&
+             i + 1 < strlen(str) &&
+             (str[i + 1] == 's' || str[i + 1] == 'S'))
          {
             multiplier = 1;
+            multiplier_set = true;
+            i++; // Skip the 's' in 'ms'
+         }
+         else if (str[i] == 's' || str[i] == 'S')
+         {
+            multiplier = 1000;
             multiplier_set = true;
          }
          else if (str[i] == 'm' || str[i] == 'M')
          {
-            multiplier = 60;
+            multiplier = 60 * 1000;
             multiplier_set = true;
          }
          else if (str[i] == 'h' || str[i] == 'H')
          {
-            multiplier = 3600;
+            multiplier = 3600 * 1000;
             multiplier_set = true;
          }
          else if (str[i] == 'd' || str[i] == 'D')
          {
-            multiplier = 24 * 3600;
+            multiplier = 24 * 3600 * 1000;
             multiplier_set = true;
          }
          else if (str[i] == 'w' || str[i] == 'W')
          {
-            multiplier = 24 * 3600 * 7;
+            multiplier = 7 * 24 * 3600 * 1000;
             multiplier_set = true;
+         }
+         else
+         {
+            goto error;
          }
       }
       else
@@ -4199,7 +4212,7 @@ as_seconds(char* str, unsigned int* age, unsigned int default_age)
       // must be a positive number!
       if (i_value >= 0)
       {
-         *age = i_value * multiplier;
+         *age = PGAGROAL_TIME_MS(i_value * multiplier);
       }
       else
       {
@@ -4482,7 +4495,7 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       }
       else if (!strncmp(key, "log_rotation_age", MISC_LENGTH))
       {
-         return to_int(buffer, config->common.log_rotation_age);
+         return to_int(buffer, (int)pgagroal_time_convert(config->common.log_rotation_age, FORMAT_TIME_S));
       }
       else if (!strncmp(key, "log_connections", MISC_LENGTH))
       {
@@ -4502,7 +4515,7 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       }
       else if (!strncmp(key, "metrics_cache_max_age", MISC_LENGTH))
       {
-         return to_int(buffer, config->common.metrics_cache_max_age);
+         return to_int(buffer, (int)pgagroal_time_convert(config->common.metrics_cache_max_age, FORMAT_TIME_S));
       }
       else if (!strncmp(key, "metrics_cache_max_size", MISC_LENGTH))
       {
@@ -4554,15 +4567,15 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       }
       else if (!strncmp(key, "blocking_timeout", MISC_LENGTH))
       {
-         return to_int(buffer, config->blocking_timeout);
+         return to_int(buffer, (int)pgagroal_time_convert(config->blocking_timeout, FORMAT_TIME_S));
       }
       else if (!strncmp(key, "idle_timeout", MISC_LENGTH))
       {
-         return to_int(buffer, config->idle_timeout);
+         return to_int(buffer, (int)pgagroal_time_convert(config->idle_timeout, FORMAT_TIME_S));
       }
       else if (!strncmp(key, "rotate_frontend_password_timeout", MISC_LENGTH))
       {
-         return to_int(buffer, config->rotate_frontend_password_timeout);
+         return to_int(buffer, (int)pgagroal_time_convert(config->rotate_frontend_password_timeout, FORMAT_TIME_S));
       }
       else if (!strncmp(key, "rotate_frontend_password_length", MISC_LENGTH))
       {
@@ -4570,7 +4583,7 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       }
       else if (!strncmp(key, "max_connection_age", MISC_LENGTH))
       {
-         return to_int(buffer, config->max_connection_age);
+         return to_int(buffer, (int)pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S));
       }
       else if (!strncmp(key, "validation", MISC_LENGTH))
       {
@@ -4582,7 +4595,7 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       }
       else if (!strncmp(key, "background_interval", MISC_LENGTH))
       {
-         return to_int(buffer, config->background_interval);
+         return to_int(buffer, (int)pgagroal_time_convert(config->background_interval, FORMAT_TIME_S));
       }
       else if (!strncmp(key, "max_retries", MISC_LENGTH))
       {
@@ -4590,7 +4603,7 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       }
       else if (!strncmp(key, "authentication_timeout", MISC_LENGTH))
       {
-         return to_int(buffer, config->common.authentication_timeout);
+         return to_int(buffer, (int)pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S));
       }
       else if (!strncmp(key, "disconnect_client", MISC_LENGTH))
       {
@@ -5368,7 +5381,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("metrics_cache_max_age", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.metrics_cache_max_age, PGAGROAL_PROMETHEUS_CACHE_DISABLED))
+      if (as_milliseconds(value, &config->common.metrics_cache_max_age, PGAGROAL_TIME_DISABLED))
       {
          unknown = true;
       }
@@ -5484,21 +5497,21 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("blocking_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->blocking_timeout, DEFAULT_BLOCKING_TIMEOUT))
+      if (as_milliseconds(value, &config->blocking_timeout, PGAGROAL_TIME_SEC(DEFAULT_BLOCKING_TIMEOUT)))
       {
          unknown = true;
       }
    }
    else if (key_in_section("idle_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->idle_timeout, DEFAULT_IDLE_TIMEOUT))
+      if (as_milliseconds(value, &config->idle_timeout, PGAGROAL_TIME_SEC(DEFAULT_IDLE_TIMEOUT)))
       {
          unknown = true;
       }
    }
    else if (key_in_section("rotate_frontend_password_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->rotate_frontend_password_timeout, DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT))
+      if (as_milliseconds(value, &config->rotate_frontend_password_timeout, PGAGROAL_TIME_SEC(DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT)))
       {
          unknown = true;
       }
@@ -5512,7 +5525,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("max_connection_age", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->max_connection_age, DEFAULT_MAX_CONNECTION_AGE))
+      if (as_milliseconds(value, &config->max_connection_age, PGAGROAL_TIME_SEC(DEFAULT_MAX_CONNECTION_AGE)))
       {
          unknown = true;
       }
@@ -5523,7 +5536,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("background_interval", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->background_interval, DEFAULT_BACKGROUND_INTERVAL))
+      if (as_milliseconds(value, &config->background_interval, PGAGROAL_TIME_SEC(DEFAULT_BACKGROUND_INTERVAL)))
       {
          unknown = true;
       }
@@ -5537,7 +5550,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("authentication_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.authentication_timeout, DEFAULT_AUTHENTICATION_TIMEOUT))
+      if (as_milliseconds(value, &config->common.authentication_timeout, PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT)))
       {
          unknown = true;
       }
@@ -5598,7 +5611,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("log_rotation_age", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.log_rotation_age, PGAGROAL_LOGGING_ROTATION_DISABLED))
+      if (as_milliseconds(value, &config->common.log_rotation_age, PGAGROAL_TIME_DISABLED))
       {
          unknown = true;
       }
@@ -5861,7 +5874,7 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("metrics_cache_max_age", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.metrics_cache_max_age, PGAGROAL_PROMETHEUS_CACHE_DISABLED))
+      if (as_milliseconds(value, &config->common.metrics_cache_max_age, PGAGROAL_TIME_DISABLED))
       {
          unknown = true;
       }
@@ -5875,7 +5888,7 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("authentication_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.authentication_timeout, DEFAULT_AUTHENTICATION_TIMEOUT))
+      if (as_milliseconds(value, &config->common.authentication_timeout, PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT)))
       {
          unknown = true;
       }
@@ -5906,7 +5919,7 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("log_rotation_age", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.log_rotation_age, PGAGROAL_LOGGING_ROTATION_DISABLED))
+      if (as_milliseconds(value, &config->common.log_rotation_age, PGAGROAL_TIME_DISABLED))
       {
          unknown = true;
       }
@@ -6248,29 +6261,29 @@ add_configuration_response(struct json* res)
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_PORT, (uintptr_t)config->common.port, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_UNIX_SOCKET_DIR, (uintptr_t)config->unix_socket_dir, ValueString);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS, (uintptr_t)config->common.metrics, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_AGE, (uintptr_t)config->common.metrics_cache_max_age, ValueInt64);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_AGE, (uintptr_t)pgagroal_time_convert(config->common.metrics_cache_max_age, FORMAT_TIME_S), ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, (uintptr_t)config->common.metrics_cache_max_size, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MANAGEMENT, (uintptr_t)config->management, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_TYPE, (uintptr_t)config->common.log_type, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_LEVEL, (uintptr_t)config->common.log_level, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_PATH, (uintptr_t)config->common.log_path, ValueString);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_ROTATION_AGE, (uintptr_t)config->common.log_rotation_age, ValueInt64);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_ROTATION_AGE, (uintptr_t)pgagroal_time_convert(config->common.log_rotation_age, FORMAT_TIME_S), ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_ROTATION_SIZE, (uintptr_t)config->common.log_rotation_size, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_LINE_PREFIX, (uintptr_t)config->common.log_line_prefix, ValueString);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_MODE, (uintptr_t)config->common.log_mode, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_CONNECTIONS, (uintptr_t)config->common.log_connections, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_DISCONNECTIONS, (uintptr_t)config->common.log_disconnections, ValueBool);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, (uintptr_t)config->blocking_timeout, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, (uintptr_t)config->idle_timeout, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_TIMEOUT, (uintptr_t)config->rotate_frontend_password_timeout, ValueInt64);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, (uintptr_t)pgagroal_time_convert(config->blocking_timeout, FORMAT_TIME_S), ValueInt64);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, (uintptr_t)pgagroal_time_convert(config->idle_timeout, FORMAT_TIME_S), ValueInt64);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_TIMEOUT, (uintptr_t)pgagroal_time_convert(config->rotate_frontend_password_timeout, FORMAT_TIME_S), ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_LENGTH, (uintptr_t)config->rotate_frontend_password_length, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_CONNECTION_AGE, (uintptr_t)config->max_connection_age, ValueInt64);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_CONNECTION_AGE, (uintptr_t)pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S), ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_VALIDATION, (uintptr_t)config->validation, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_BACKGROUND_INTERVAL, (uintptr_t)config->background_interval, ValueInt64);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_BACKGROUND_INTERVAL, (uintptr_t)pgagroal_time_convert(config->background_interval, FORMAT_TIME_S), ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_RETRIES, (uintptr_t)config->max_retries, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_CONNECTIONS, (uintptr_t)config->max_connections, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ALLOW_UNKNOWN_USERS, (uintptr_t)config->allow_unknown_users, ValueBool);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_AUTHENTICATION_TIMEOUT, (uintptr_t)config->common.authentication_timeout, ValueInt64);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_AUTHENTICATION_TIMEOUT, (uintptr_t)pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_PIPELINE, (uintptr_t)config->pipeline, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_AUTH_QUERY, (uintptr_t)config->authquery, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_FAILOVER, (uintptr_t)config->failover, ValueBool);

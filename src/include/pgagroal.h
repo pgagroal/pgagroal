@@ -277,6 +277,23 @@ extern "C" {
            __typeof__ (b) _b = (b);  \
            _a < _b ? _a : _b; })
 
+/**
+ * Duration type stored internally as milliseconds.
+ */
+typedef struct pgagroal_time
+{
+   int64_t ms; /**< Internal storage in milliseconds */
+} pgagroal_time_t;
+
+#define PGAGROAL_TIME_MS(v)    ((pgagroal_time_t){.ms = (int64_t)(v)})
+#define PGAGROAL_TIME_SEC(v)   ((pgagroal_time_t){.ms = (int64_t)(v) * 1000LL})
+#define PGAGROAL_TIME_MIN(v)   ((pgagroal_time_t){.ms = (int64_t)(v) * 60000LL})
+#define PGAGROAL_TIME_HOUR(v)  ((pgagroal_time_t){.ms = (int64_t)(v) * 3600000LL})
+#define PGAGROAL_TIME_DAY(v)   ((pgagroal_time_t){.ms = (int64_t)(v) * 86400000LL})
+
+#define PGAGROAL_TIME_DISABLED ((pgagroal_time_t){.ms = 0})
+#define PGAGROAL_TIME_INFINITE ((pgagroal_time_t){.ms = -1})
+
 /*
  * Common piece of code to perform a sleeping.
  *
@@ -586,10 +603,10 @@ struct vault_prometheus
  */
 struct configuration
 {
-   char configuration_path[MAX_PATH];   /**< The configuration path */
-   char host[MISC_LENGTH];              /**< The host */
-   int port;                            /**< The port */
-   unsigned int authentication_timeout; /**< The authentication timeout in seconds */
+   char configuration_path[MAX_PATH];      /**< The configuration path */
+   char host[MISC_LENGTH];                 /**< The host */
+   int port;                               /**< The port */
+   pgagroal_time_t authentication_timeout; /**< The duration of authentication timeout (Default seconds) */
 
    // Logging
    int log_type;                       /**< The logging type */
@@ -599,7 +616,7 @@ struct configuration
    bool log_disconnections;            /**< Log disconnects */
    int log_mode;                       /**< The logging mode */
    unsigned int log_rotation_size;     /**< bytes to force log rotation */
-   unsigned int log_rotation_age;      /**< minutes for log rotation */
+   pgagroal_time_t log_rotation_age;   /**< The duration of log rotation age (Default seconds) */
    char log_line_prefix[MISC_LENGTH];  /**< The logging prefix */
    atomic_schar log_lock;              /**< The logging lock */
    char default_log_path[MISC_LENGTH]; /**< The default logging path */
@@ -610,13 +627,13 @@ struct configuration
    char tls_key_file[MAX_PATH];  /**< TLS key path */
    char tls_ca_file[MAX_PATH];   /**< TLS CA certificate path */
    // Prometheus
-   unsigned char hugepage;              /**< Huge page support */
-   int metrics;                         /**< The metrics port */
-   unsigned int metrics_cache_max_age;  /**< Number of seconds to cache the Prometheus response */
-   unsigned int metrics_cache_max_size; /**< Number of bytes max to cache the Prometheus response */
-   char metrics_cert_file[MAX_PATH];    /**< Metrics TLS certificate path */
-   char metrics_key_file[MAX_PATH];     /**< Metrics TLS key path */
-   char metrics_ca_file[MAX_PATH];      /**< Metrics TLS CA certificate path */
+   unsigned char hugepage;                /**< Huge page support */
+   int metrics;                           /**< The metrics port */
+   pgagroal_time_t metrics_cache_max_age; /**< The duration of metrics cache max age (Default seconds) */
+   unsigned int metrics_cache_max_size;   /**< Number of bytes max to cache the Prometheus response */
+   char metrics_cert_file[MAX_PATH];      /**< Metrics TLS certificate path */
+   char metrics_key_file[MAX_PATH];       /**< Metrics TLS key path */
+   char metrics_ca_file[MAX_PATH];        /**< Metrics TLS CA certificate path */
 };
 
 /** @struct vault_configuration
@@ -665,17 +682,17 @@ struct main_configuration
    int max_connections;              /**< The maximum number of connections */
    bool allow_unknown_users;         /**< Allow unknown users */
 
-   unsigned int blocking_timeout;                 /**< The blocking timeout in seconds */
-   unsigned int idle_timeout;                     /**< The idle timeout in seconds */
-   unsigned int rotate_frontend_password_timeout; /**< The rotation frontend password timeout in seconds */
-   int rotate_frontend_password_length;           /**< Length of randomised passwords */
-   unsigned int max_connection_age;               /**< The max connection age in seconds */
-   int validation;                                /**< Validation mode */
-   unsigned int background_interval;              /**< Background validation timer in seconds */
-   int max_retries;                               /**< The maximum number of retries */
-   int disconnect_client;                         /**< Disconnect client if idle for more than the specified seconds */
-   bool disconnect_client_force;                  /**< Force a disconnect client if active for more than the specified seconds */
-   char pidfile[MAX_PATH];                        /**< File containing the PID */
+   pgagroal_time_t blocking_timeout;                 /**< The duration of blocking timeout (Default seconds) */
+   pgagroal_time_t idle_timeout;                     /**< The duration of idle timeout (Default seconds) */
+   pgagroal_time_t rotate_frontend_password_timeout; /**< The duration of rotate frontend password timeout (Default seconds) */
+   int rotate_frontend_password_length;              /**< Length of randomised passwords */
+   pgagroal_time_t max_connection_age;               /**< The duration of max connection age (Default seconds) */
+   int validation;                                   /**< Validation mode */
+   pgagroal_time_t background_interval;              /**< The duration of background validation interval (Default seconds) */
+   int max_retries;                                  /**< The maximum number of retries */
+   int disconnect_client;                            /**< Disconnect client if idle for more than the specified seconds */
+   bool disconnect_client_force;                     /**< Force a disconnect client if active for more than the specified seconds */
+   char pidfile[MAX_PATH];                           /**< File containing the PID */
 
    int ev_backend;                 /**< Selected ev backend */
    bool keep_alive;                /**< Use keep alive */
