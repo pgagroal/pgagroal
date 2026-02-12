@@ -774,11 +774,8 @@ pgagroal_set_proc_title(int argc, char** argv, char* s1, char* s2)
       size = strlen(title) + 1;
    }
 
-   memcpy(*argv, title, size);
-   memset(*argv + size, 0, 1);
-
-   // keep track of how long is now the title
-   max_process_title_size = size;
+   memcpy(*argv, title, MIN(size, max_process_title_size));
+   memset(*argv + MIN(size, max_process_title_size), 0, 1);
 
 #else
    setproctitle("-pgagroal: %s%s%s",
