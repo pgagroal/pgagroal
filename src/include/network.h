@@ -162,6 +162,17 @@ pgagroal_read_socket(SSL* ssl, int fd, char* buffer, size_t buffer_size);
 int
 pgagroal_write_socket(SSL* ssl, int fd, char* buffer, size_t buffer_size);
 
+/**
+ * Check if two addresses are the same
+ * @param h1 The first host
+ * @param p1 The first port
+ * @param h2 The second host
+ * @param p2 The second port
+ * @return true if they resolve to the same address, otherwise false
+ */
+bool
+pgagroal_address_is_same(char* h1, int p1, char* h2, int p2);
+
 #ifdef __cplusplus
 }
 #endif

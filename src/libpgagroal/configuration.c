@@ -41,6 +41,7 @@
 #include <prometheus.h>
 
 /* system */
+#include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <stdatomic.h>
@@ -579,7 +580,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
       {
          pgagroal_log_fatal("pgagroal: No host defined for server [%s] (%s:%d)",
                             config->servers[i].name,
-                            config->common.configuration_path[0],
+                            config->common.configuration_path,
                             config->servers[i].lineno);
          return 1;
       }
@@ -588,13 +589,13 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
       {
          pgagroal_log_fatal("pgagroal: No port defined for server [%s] (%s:%d)",
                             config->servers[i].name,
-                            config->common.configuration_path[0],
+                            config->common.configuration_path,
                             config->servers[i].lineno);
          return 1;
       }
    }
 
-   // check for duplicated servers
+   // check for duplicated servers (string-based check)
    for (int i = 0; i < config->number_of_servers; i++)
    {
       for (int j = i + 1; j < config->number_of_servers; j++)
@@ -604,8 +605,30 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
             pgagroal_log_fatal("pgagroal: Servers [%s] and [%s] are duplicated! (%s:%d:%d)",
                                config->servers[i].name,
                                config->servers[j].name,
-                               config->common.configuration_path[0],
+                               config->common.configuration_path,
                                config->servers[i].lineno,
+                               config->servers[j].lineno);
+            return 1;
+         }
+
+         // check for duplicates like "localhost" vs "127.0.0.1" that string check misses
+         if (pgagroal_address_is_same(config->servers[i].host, config->servers[i].port,
+                                      config->servers[j].host, config->servers[j].port))
+         {
+            pgagroal_log_fatal("pgagroal: Servers [%s] and [%s] point to the same network address!",
+                               config->servers[i].name,
+                               config->servers[j].name);
+            pgagroal_log_fatal("  Server [%s]: host=%s, port=%d (%s:%d)",
+                               config->servers[i].name,
+                               config->servers[i].host,
+                               config->servers[i].port,
+                               config->common.configuration_path,
+                               config->servers[i].lineno);
+            pgagroal_log_fatal("  Server [%s]: host=%s, port=%d (%s:%d)",
+                               config->servers[j].name,
+                               config->servers[j].host,
+                               config->servers[j].port,
+                               config->common.configuration_path,
                                config->servers[j].lineno);
             return 1;
          }
@@ -3640,6 +3663,9 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
 static bool
 is_same_server(struct server* s1, struct server* s2)
 {
+   assert(s1 != NULL);
+   assert(s2 != NULL);
+
    if (!strncmp(s1->host, s2->host, MISC_LENGTH) && s1->port == s2->port)
    {
       return true;
