@@ -34,6 +34,10 @@ Mahmoud Hamdy (TutTrue) <mahmoud.hamdy5113@gmail.com>
 Ankush Mondal <mondalankush9851@gmail.com>
 Shashank Singh <shashanksgh3@gmail.com>
 Zeyad Daowd <zeyaddaowd@yahoo.com>
+Mazen Kamal <mazenkamal212@gmail.com>
+Shashidhar B M <shashidhar.i.0119@gmail.com>
+Trevor Jacob Mathews <trevorjacobmathews@gmail.com>
+Abdelrhman Sersawy <abdelrhmansersawy@gmail.com>
 ```
 
 ## Committers

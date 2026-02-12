@@ -2028,3 +2028,82 @@ pgagroal_snprintf(char* buf, size_t n, const char* fmt, ...)
 
    return ret;
 }
+
+int64_t
+pgagroal_time_convert(pgagroal_time_t t, enum pgagroal_time_format_t fmt)
+{
+   switch (fmt)
+   {
+      case FORMAT_TIME_S:
+         return t.s;
+      case FORMAT_TIME_MIN:
+         return t.s / 60;
+      case FORMAT_TIME_HOUR:
+         return t.s / 3600;
+      case FORMAT_TIME_DAY:
+         return t.s / 86400;
+      default:
+         return t.s;
+   }
+}
+
+bool
+pgagroal_time_is_valid(pgagroal_time_t t)
+{
+   return t.s > 0;
+}
+
+int
+pgagroal_time_format(pgagroal_time_t t, enum pgagroal_time_format_t fmt, char** output)
+{
+   char* str = NULL;
+   int64_t val;
+
+   if (output == NULL)
+   {
+      return 1;
+   }
+
+   str = malloc(64);
+   if (str == NULL)
+   {
+      return 1;
+   }
+   memset(str, 0, 64);
+
+   if (fmt == FORMAT_TIME_TIMESTAMP)
+   {
+      /* Format as ISO 8601 UTC timestamp */
+      time_t secs = (time_t)t.s;
+      struct tm tm_buf;
+
+      gmtime_r(&secs, &tm_buf);
+      strftime(str, 48, "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
+   }
+   else
+   {
+      val = pgagroal_time_convert(t, fmt);
+
+      switch (fmt)
+      {
+         case FORMAT_TIME_S:
+            sprintf(str, "%" PRId64 "s", val);
+            break;
+         case FORMAT_TIME_MIN:
+            sprintf(str, "%" PRId64 "m", val);
+            break;
+         case FORMAT_TIME_HOUR:
+            sprintf(str, "%" PRId64 "h", val);
+            break;
+         case FORMAT_TIME_DAY:
+            sprintf(str, "%" PRId64 "d", val);
+            break;
+         default:
+            sprintf(str, "%" PRId64, val);
+            break;
+      }
+   }
+
+   *output = str;
+   return 0;
+}

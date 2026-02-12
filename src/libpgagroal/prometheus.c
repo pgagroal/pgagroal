@@ -145,7 +145,7 @@ pgagroal_prometheus(SSL* client_ssl, int client_fd)
          char* path = "/";
          char* base_url = NULL;
 
-         if (pgagroal_read_timeout_message(NULL, client_fd, config->common.authentication_timeout, &msg) != MESSAGE_STATUS_OK)
+         if (pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg) != MESSAGE_STATUS_OK)
          {
             pgagroal_log_error("Failed to read message");
             goto error;
@@ -184,7 +184,7 @@ pgagroal_prometheus(SSL* client_ssl, int client_fd)
       }
    }
 
-   status = pgagroal_read_timeout_message(client_ssl, client_fd, config->common.authentication_timeout, &msg);
+   status = pgagroal_read_timeout_message(client_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
@@ -249,7 +249,7 @@ pgagroal_vault_prometheus(SSL* client_ssl, int client_fd)
 
    config = (struct vault_configuration*)shmem;
 
-   status = pgagroal_read_timeout_message(client_ssl, client_fd, config->common.authentication_timeout, &msg);
+   status = pgagroal_read_timeout_message(client_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
@@ -3141,7 +3141,7 @@ is_metrics_cache_configured(void)
       return false;
    }
 
-   return config->common.metrics_cache_max_age != PGAGROAL_PROMETHEUS_CACHE_DISABLED;
+   return pgagroal_time_is_valid(config->common.metrics_cache_max_age);
 }
 
 /**
@@ -3199,7 +3199,8 @@ pgagroal_init_prometheus_cache(size_t* p_size, void** p_shmem)
 
 error:
    // disable caching
-   config->metrics_cache_max_age = config->metrics_cache_max_size = PGAGROAL_PROMETHEUS_CACHE_DISABLED;
+   config->metrics_cache_max_age = PGAGROAL_TIME_DISABLED;
+   config->metrics_cache_max_size = PGAGROAL_PROMETHEUS_CACHE_DISABLED;
    pgagroal_log_error("Cannot allocate shared memory for the Prometheus cache!");
    *p_size = 0;
    *p_shmem = NULL;
@@ -3334,7 +3335,7 @@ metrics_cache_finalize(void)
    }
 
    now = time(NULL);
-   cache->valid_until = now + config->common.metrics_cache_max_age;
+   cache->valid_until = now + pgagroal_time_convert(config->common.metrics_cache_max_age, FORMAT_TIME_S);
    return cache->valid_until > now;
 }
 

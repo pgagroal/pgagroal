@@ -165,7 +165,7 @@ pgagroal_authenticate(int client_fd, char* address, int* slot, SSL** client_ssl,
    *server_ssl = NULL;
 
    /* Receive client calls - at any point if client exits return AUTH_ERROR */
-   status = pgagroal_read_timeout_message(NULL, client_fd, config->common.authentication_timeout, &msg);
+   status = pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
@@ -231,7 +231,7 @@ pgagroal_authenticate(int client_fd, char* address, int* slot, SSL** client_ssl,
       }
       pgagroal_clear_message(msg);
 
-      status = pgagroal_read_timeout_message(NULL, client_fd, config->common.authentication_timeout, &msg);
+      status = pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
       if (status != MESSAGE_STATUS_OK)
       {
          goto error;
@@ -282,7 +282,7 @@ pgagroal_authenticate(int client_fd, char* address, int* slot, SSL** client_ssl,
             goto error;
          }
 
-         status = pgagroal_read_timeout_message(c_ssl, client_fd, config->common.authentication_timeout, &msg);
+         status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
          if (status != MESSAGE_STATUS_OK)
          {
             goto error;
@@ -298,7 +298,7 @@ pgagroal_authenticate(int client_fd, char* address, int* slot, SSL** client_ssl,
          }
          pgagroal_clear_message(msg);
 
-         status = pgagroal_read_timeout_message(NULL, client_fd, config->common.authentication_timeout, &msg);
+         status = pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
          if (status != MESSAGE_STATUS_OK)
          {
             goto error;
@@ -658,7 +658,7 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
    pgagroal_memory_init();
 
    /* Receive client calls - at any point if client exits return AUTH_ERROR */
-   status = pgagroal_read_timeout_message(NULL, client_fd, config->common.authentication_timeout, &msg);
+   status = pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
@@ -706,7 +706,7 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
             goto error;
          }
 
-         status = pgagroal_read_timeout_message(c_ssl, client_fd, config->common.authentication_timeout, &msg);
+         status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
          if (status != MESSAGE_STATUS_OK)
          {
             goto error;
@@ -722,7 +722,7 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
          }
          pgagroal_clear_message(msg);
 
-         status = pgagroal_read_timeout_message(NULL, client_fd, config->common.authentication_timeout, &msg);
+         status = pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
          if (status != MESSAGE_STATUS_OK)
          {
             goto error;
@@ -1400,7 +1400,7 @@ use_pooled_connection(SSL* c_ssl, int client_fd, int slot, char* username, char*
       /* Password or MD5 */
       if (config->connections[slot].has_security != SECURITY_TRUST)
       {
-         status = pgagroal_read_timeout_message(c_ssl, client_fd, config->common.authentication_timeout, &msg);
+         status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
          if (status != MESSAGE_STATUS_OK)
          {
             goto error;
@@ -1786,7 +1786,7 @@ retry:
    status = pgagroal_read_timeout_message(c_ssl, client_fd, 1, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
-      if (difftime(time(NULL), start_time) < config->common.authentication_timeout)
+      if (difftime(time(NULL), start_time) < pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S))
       {
          if (pgagroal_socket_isvalid(client_fd))
          /* Sleep for 100ms */
@@ -1861,7 +1861,7 @@ retry:
    status = pgagroal_read_timeout_message(c_ssl, client_fd, 1, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
-      if (difftime(time(NULL), start_time) < config->common.authentication_timeout)
+      if (difftime(time(NULL), start_time) < pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S))
       {
          if (pgagroal_socket_isvalid(client_fd))
          /* Sleep for 100ms */
@@ -1980,7 +1980,7 @@ retry:
    status = pgagroal_read_timeout_message(c_ssl, client_fd, 1, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
-      if (difftime(time(NULL), start_time) < config->common.authentication_timeout)
+      if (difftime(time(NULL), start_time) < pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S))
       {
          if (pgagroal_socket_isvalid(client_fd))
          /* Sleep for 100ms */
@@ -2025,7 +2025,7 @@ retry:
       goto error;
    }
 
-   status = pgagroal_read_timeout_message(c_ssl, client_fd, config->common.authentication_timeout, &msg);
+   status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
@@ -2259,7 +2259,7 @@ server_passthrough(struct message* msg, int auth_type, SSL* c_ssl, SSL* s_ssl, i
    if (auth_type != SECURITY_TRUST)
    {
       /* Receive client response, keep it, and send it to PostgreSQL */
-      status = pgagroal_read_timeout_message(c_ssl, client_fd, config->common.authentication_timeout, &msg);
+      status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
       if (status != MESSAGE_STATUS_OK)
       {
          goto error;
@@ -2309,7 +2309,7 @@ server_passthrough(struct message* msg, int auth_type, SSL* c_ssl, SSL* s_ssl, i
          }
          pgagroal_clear_message(msg);
 
-         status = pgagroal_read_timeout_message(c_ssl, client_fd, config->common.authentication_timeout, &msg);
+         status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
          if (status != MESSAGE_STATUS_OK)
          {
             goto error;
@@ -4739,13 +4739,13 @@ retry:
    }
    else
    {
-      if (config->blocking_timeout > 0)
+      if (pgagroal_time_is_valid(config->blocking_timeout))
       {
          /* Sleep for 100ms */
          SLEEP(100000000L)
 
          double diff = difftime(time(NULL), start_time);
-         if (diff >= (double)config->blocking_timeout)
+         if (diff >= (double)pgagroal_time_convert(config->blocking_timeout, FORMAT_TIME_S))
          {
             goto timeout;
          }
@@ -5343,7 +5343,7 @@ retry:
    status = pgagroal_read_timeout_message(c_ssl, client_fd, 1, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
-      if (difftime(time(NULL), start_time) < config->common.authentication_timeout)
+      if (difftime(time(NULL), start_time) < pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S))
       {
          if (pgagroal_socket_isvalid(client_fd))
          /* Sleep for 100ms */
@@ -5453,7 +5453,7 @@ retry:
    status = pgagroal_read_timeout_message(c_ssl, client_fd, 1, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
-      if (difftime(time(NULL), start_time) < config->common.authentication_timeout)
+      if (difftime(time(NULL), start_time) < pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S))
       {
          if (pgagroal_socket_isvalid(client_fd))
          /* Sleep for 100ms */
@@ -5521,7 +5521,7 @@ retry:
       goto error;
    }
 
-   status = pgagroal_read_timeout_message(c_ssl, client_fd, config->common.authentication_timeout, &msg);
+   status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
