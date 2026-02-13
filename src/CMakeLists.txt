@@ -6,6 +6,46 @@ FILE(GLOB HEADER_FILES "include/*.h")
 
 set(SOURCES ${SOURCE_FILES} ${HEADER_FILES})
 
+function(pgagroal_require_shared_libs)
+  foreach(lib_var IN LISTS ARGN)
+    if (NOT DEFINED ${lib_var})
+      continue()
+    endif()
+
+    set(updated_libs "")
+    foreach(lib IN LISTS ${lib_var})
+      if (IS_ABSOLUTE "${lib}" AND lib MATCHES "\\.a$")
+        get_filename_component(lib_dir "${lib}" DIRECTORY)
+        get_filename_component(lib_name "${lib}" NAME_WE)
+        string(REGEX REPLACE "^lib" "" lib_base "${lib_name}")
+        set(shared_lib "")
+        if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+          file(GLOB shared_candidates
+            "${lib_dir}/${lib_name}.dylib*"
+            "${lib_dir}/${lib_base}.dylib*")
+        else()
+          file(GLOB shared_candidates
+            "${lib_dir}/${lib_name}.so*"
+            "${lib_dir}/${lib_base}.so*")
+        endif()
+
+        if (shared_candidates)
+          list(GET shared_candidates 0 shared_lib)
+        endif()
+
+        if (shared_lib)
+          list(APPEND updated_libs "${shared_lib}")
+        else()
+          message(FATAL_ERROR "Static library detected: ${lib}. Shared libraries are required.")
+        endif()
+      else()
+        list(APPEND updated_libs "${lib}")
+      endif()
+    endforeach()
+    set(${lib_var} "${updated_libs}" PARENT_SCOPE)
+  endforeach()
+endfunction()
+
 #
 # OS
 #
@@ -28,6 +68,27 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
   )
 
   #
+  # Event library backend
+  #
+  if (NOT LIBURING_FOUND)
+    message(FATAL_ERROR "liburing was not found")
+  endif()
+
+  include_directories(${LIBURING_INCLUDE_DIRS})
+
+  pgagroal_require_shared_libs(
+    OPENSSL_CRYPTO_LIBRARY
+    OPENSSL_SSL_LIBRARY
+    LIBATOMIC_LIBRARY
+    THREAD_LIBRARY
+    ZLIB_LIBRARIES
+    BZIP2_LIBRARIES
+    ZSTD_LIBRARIES
+    LZ4_LIBRARIES
+    LIBURING_LIBRARY
+  )
+
+  #
   # Library directories
   #
   link_libraries(
@@ -39,17 +100,8 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     ${BZIP2_LIBRARIES}
     ${ZSTD_LIBRARIES}
     ${LZ4_LIBRARIES}
+    ${LIBURING_LIBRARY}
   )
-
-  #
-  # Event library backend
-  #
-  if (NOT LIBURING_FOUND)
-    message(FATAL_ERROR "liburing was not found")
-  endif()
-
-  include_directories(${LIBURING_INCLUDE_DIRS})
-  link_libraries(${LIBURING_LIBRARY})
 
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
@@ -89,6 +141,15 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     ${BZIP2_INCLUDE_DIRS}
     ${ZSTD_INCLUDE_DIRS}
     ${LZ4_INCLUDE_DIRS}
+  )
+
+  pgagroal_require_shared_libs(
+    OPENSSL_LIBRARIES
+    THREAD_LIBRARY
+    ZLIB_LIBRARIES
+    BZIP2_LIBRARIES
+    ZSTD_LIBRARIES
+    LZ4_LIBRARIES
   )
 
   #
@@ -133,6 +194,16 @@ else()
     ${BZIP2_INCLUDE_DIRS}
     ${ZSTD_INCLUDE_DIRS}
     ${LZ4_INCLUDE_DIRS}
+  )
+
+  pgagroal_require_shared_libs(
+    SYSTEMD_LIBRARIES
+    OPENSSL_LIBRARIES
+    THREAD_LIBRARY
+    ZLIB_LIBRARIES
+    BZIP2_LIBRARIES
+    ZSTD_LIBRARIES
+    LZ4_LIBRARIES
   )
 
   #
@@ -459,5 +530,3 @@ endif()
 target_link_libraries(pgagroal-vault-bin pgagroal)
 
 install(TARGETS pgagroal-vault-bin DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-
