@@ -8,7 +8,16 @@ find_path(THREAD_INCLUDE_DIR
 )
 find_library(THREAD_LIBRARY
   NAMES
-    pthread
+    pthread pthread.so.0 libpthread.so.0
+  HINTS
+    /usr/local/lib64
+    /usr/local/lib
+    /opt/local/lib64
+    /opt/local/lib
+    /usr/lib64
+    /usr/lib
+    /lib64
+    /lib
 )
 
 include(FindPackageHandleStandardArgs)
