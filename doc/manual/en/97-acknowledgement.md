@@ -36,6 +36,7 @@ Ankush Mondal <mondalankush9851@gmail.com>
 Shashank Singh <shashanksgh3@gmail.com>
 Mazen Kamal <mazenkamal212@gmail.com>
 Shashidhar B M <shashidhar.i.0119@gmail.com>
+Trevor Jacob Mathews <trevorjacobmathews@gmail.com>
 
 ```
 

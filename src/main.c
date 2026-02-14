@@ -33,6 +33,7 @@
 #include <json.h>
 #include <ev.h>
 #include <logging.h>
+#include <health.h>
 #include <management.h>
 #include <memory.h>
 #include <network.h>
@@ -102,6 +103,8 @@ static void remove_pidfile(void);
 static void shutdown_ports(void);
 
 static char** argv_ptr;
+static int main_argc;
+static char** main_argv;
 static struct event_loop* main_loop = NULL;
 static struct accept_io io_main[MAX_FDS];
 static struct accept_io io_mgt;
@@ -316,6 +319,8 @@ usage(void)
 int
 main(int argc, char** argv)
 {
+   main_argc = argc;
+   main_argv = argv;
    char* configuration_path = NULL;
    char* hba_path = NULL;
    char* limit_path = NULL;
@@ -1203,6 +1208,11 @@ read_superuser_path:
    start_mgt();
    start_uds();
    start_io();
+
+   if (config->health_check)
+   {
+      pgagroal_health_check(argv);
+   }
 
    if (config->idle_timeout > 0)
    {
@@ -2444,6 +2454,7 @@ shutdown_cb(void)
    pgagroal_log_debug("pgagroal: shutdown requested");
    config->keep_running = false;
    pgagroal_pool_status();
+   pgagroal_health_check_stop();
    pgagroal_event_loop_break();
 }
 
@@ -2679,12 +2690,18 @@ reload_configuration(void)
 
    config = (struct main_configuration*)shmem;
 
+   pgagroal_health_check_stop();
    shutdown_io();
    shutdown_uds();
    shutdown_metrics();
    shutdown_management();
 
    pgagroal_reload_configuration(&restart);
+
+   if (config->health_check)
+   {
+      pgagroal_health_check(main_argv);
+   }
 
    memset(&pgsql, 0, sizeof(pgsql));
    snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->common.port);
