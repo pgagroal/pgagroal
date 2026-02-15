@@ -669,3 +669,52 @@ bind_host(const char* hostname, int port, int** fds, int* length, int* buffer_si
 
    return 0;
 }
+
+bool
+pgagroal_address_is_same(char* h1, int p1, char* h2, int p2)
+{
+   struct addrinfo hints, *res1 = NULL, *res2 = NULL;
+   int status;
+   char port1[6], port2[6];
+   bool same = false;
+
+   if (p1 != p2)
+      return false;
+
+   memset(&hints, 0, sizeof(hints));
+   hints.ai_family = AF_INET;
+   hints.ai_socktype = SOCK_STREAM;
+
+   snprintf(port1, sizeof(port1), "%d", p1);
+   snprintf(port2, sizeof(port2), "%d", p2);
+
+   if ((status = getaddrinfo(h1, port1, &hints, &res1)) != 0)
+   {
+      pgagroal_log_warn("getaddrinfo failed for %s: %s", h1, gai_strerror(status));
+      goto done;
+   }
+
+   if ((status = getaddrinfo(h2, port2, &hints, &res2)) != 0)
+   {
+      pgagroal_log_warn("getaddrinfo failed for %s: %s", h2, gai_strerror(status));
+      goto done;
+   }
+
+   if (res1 != NULL && res2 != NULL)
+   {
+      struct sockaddr_in* ipv4_1 = (struct sockaddr_in*)res1->ai_addr;
+      struct sockaddr_in* ipv4_2 = (struct sockaddr_in*)res2->ai_addr;
+      if (memcmp(&ipv4_1->sin_addr, &ipv4_2->sin_addr, sizeof(struct in_addr)) == 0)
+      {
+         same = true;
+      }
+   }
+
+done:
+   if (res1)
+      freeaddrinfo(res1);
+   if (res2)
+      freeaddrinfo(res2);
+
+   return same;
+}
