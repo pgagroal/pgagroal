@@ -1204,24 +1204,24 @@ read_superuser_path:
    start_uds();
    start_io();
 
-   if (config->idle_timeout > 0)
+   if (pgagroal_time_is_valid(config->idle_timeout))
    {
       pgagroal_periodic_init(&idle_timeout, idle_timeout_cb,
-                             1000 * MAX(1. * config->idle_timeout / 2., 5.));
+                             1000 * MAX(1. * pgagroal_time_convert(config->idle_timeout, FORMAT_TIME_S) / 2., 5.));
       pgagroal_periodic_start(&idle_timeout);
    }
 
-   if (config->max_connection_age > 0)
+   if (pgagroal_time_is_valid(config->max_connection_age))
    {
       pgagroal_periodic_init(&max_connection_age, max_connection_age_cb,
-                             1000 * MAX(1. * config->max_connection_age / 2., 5.));
+                             1000 * MAX(1. * pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S) / 2., 5.));
       pgagroal_periodic_start(&max_connection_age);
    }
 
    if (config->validation == VALIDATION_BACKGROUND)
    {
       pgagroal_periodic_init(&validation, validation_cb,
-                             1000 * MAX(1. * config->background_interval, 5.));
+                             1000 * MAX(1. * pgagroal_time_convert(config->background_interval, FORMAT_TIME_S), 5.));
       pgagroal_periodic_start(&validation);
    }
 
@@ -1232,10 +1232,10 @@ read_superuser_path:
       pgagroal_periodic_start(&disconnect_client);
    }
 
-   if (config->rotate_frontend_password_timeout > 0)
+   if (pgagroal_time_is_valid(config->rotate_frontend_password_timeout))
    {
       pgagroal_periodic_init(&rotate_frontend_password, rotate_frontend_password_cb,
-                             1000 * config->rotate_frontend_password_timeout);
+                             config->rotate_frontend_password_timeout.ms);
       pgagroal_periodic_start(&rotate_frontend_password);
    }
 
@@ -2589,7 +2589,7 @@ frontend_user_password_startup(struct main_configuration* config)
 {
    char* pwd = NULL;
 
-   if (config->number_of_frontend_users == 0 && config->rotate_frontend_password_timeout > 0)
+   if (config->number_of_frontend_users == 0 && pgagroal_time_is_valid(config->rotate_frontend_password_timeout))
    {
       for (int i = 0; i < config->number_of_users; i++)
       {

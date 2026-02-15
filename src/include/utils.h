@@ -660,6 +660,45 @@ pgagroal_remove_all_whitespace(char* orig);
 int
 pgagroal_normalize_path(char* directory_path, char* filename, char* default_path, char* path_buffer, size_t buffer_size);
 
+/**
+ * Time format specifiers for pgagroal_time_convert / pgagroal_time_format.
+ */
+enum pgagroal_time_format_t {
+   FORMAT_TIME_MS = 0,   /**< Milliseconds */
+   FORMAT_TIME_S,        /**< Seconds */
+   FORMAT_TIME_MIN,      /**< Minutes */
+   FORMAT_TIME_HOUR,     /**< Hours */
+   FORMAT_TIME_DAY,      /**< Days */
+   FORMAT_TIME_TIMESTAMP /**< ISO 8601 timestamp */
+};
+
+/**
+ * Convert a pgagroal_time_t to a numeric value in the given unit.
+ * @param t  The time value
+ * @param fmt  The target unit
+ * @return The value expressed in the target unit
+ */
+int64_t
+pgagroal_time_convert(pgagroal_time_t t, enum pgagroal_time_format_t fmt);
+
+/**
+ * Check whether a pgagroal_time_t represents a valid (positive) duration.
+ * @param t  The time value
+ * @return true if ms > 0
+ */
+bool
+pgagroal_time_is_valid(pgagroal_time_t t);
+
+/**
+ * Format a pgagroal_time_t into a human-readable string.
+ * @param t       The time value
+ * @param fmt     The target format
+ * @param output  Receives a malloc'd string (caller must free)
+ * @return 0 on success, 1 on error
+ */
+int
+pgagroal_time_format(pgagroal_time_t t, enum pgagroal_time_format_t fmt, char** output);
+
 #ifdef __cplusplus
 }
 #endif
