@@ -51,7 +51,9 @@ extern "C" {
 #include <unistd.h>
 
 #if HAVE_LINUX
+#if HAVE_IO_URING
 #include <liburing.h>
+#endif
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
 #endif /* HAVE_LINUX */
@@ -84,8 +86,10 @@ typedef enum ev_backend {
    PGAGROAL_EVENT_BACKEND_KQUEUE,
 } ev_backend_t;
 
-#if HAVE_LINUX
+#if HAVE_LINUX && HAVE_IO_URING
 #define DEFAULT_EVENT_BACKEND PGAGROAL_EVENT_BACKEND_IO_URING
+#elif HAVE_LINUX
+#define DEFAULT_EVENT_BACKEND PGAGROAL_EVENT_BACKEND_EPOLL
 #else
 #define DEFAULT_EVENT_BACKEND PGAGROAL_EVENT_BACKEND_KQUEUE
 #endif
@@ -168,9 +172,11 @@ struct signal_watcher
 struct periodic_watcher
 {
    event_watcher_t event_watcher; /**< First member. Pointer to the event watcher in the loop */
-#if HAVE_LINUX
+#if HAVE_LINUX && HAVE_IO_URING
    struct __kernel_timespec ts; /**< Timespec struct for io_uring loop. */
-   int fd;                      /**< File descriptor for epoll-based periodic watcher. */
+#endif
+#if HAVE_LINUX
+   int fd; /**< File descriptor for epoll-based periodic watcher. */
 #else
    int interval; /**< Interval for kqueue timer. */
 #endif               /* HAVE_LINUX */
@@ -191,6 +197,7 @@ struct event_loop
    event_watcher_t* events[MAX_EVENTS]; /**< List of events */
    int events_nr;                       /**< Size of list of events */
 
+#if HAVE_LINUX && HAVE_IO_URING
    struct
    {
       struct io_uring_buf_ring* br; /**< Buffer ring used internally by io_uring */
@@ -199,7 +206,6 @@ struct event_loop
       int cnt;                      /**< The number of buffers */
    } br;                            /**< The buffer ring struct */
 
-#if HAVE_LINUX
    struct io_uring ring_rcv; /**< io_uring ring for receive operations */
    struct io_uring ring_snd; /**< io_uring ring for send operations (separate to avoid CQE mixing) */
    int bid;                  /**< Next buffer id */
@@ -207,7 +213,9 @@ struct event_loop
    /* XXX: Test with iovecs for send/recv io_uring */
    int iovecs_nr;
    struct iovec* iovecs;
-#endif          /* EXPERIMENTAL_FEATURE_IOVECS */
+#endif /* EXPERIMENTAL_FEATURE_IOVECS */
+#endif /* HAVE_LINUX && HAVE_IO_URING */
+#if HAVE_LINUX
    int epollfd; /**< File descriptor for the epoll instance (used with epoll backend). */
 #else
    int kqueuefd; /**< File descriptor for the kqueue instance (used with kqueue backend). */

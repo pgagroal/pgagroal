@@ -666,9 +666,17 @@ pgagroal_log_postgres(struct message* msg)
    size_t remaining = 0;
    uint8_t* buf = NULL;
    void* new_buf = NULL;
+   struct configuration* config;
 
    uint32_t msg_len = 0;
    uint8_t msg_type = ' ';
+
+   config = (struct configuration*)shmem;
+
+   if (!config || config->log_level > PGAGROAL_LOGGING_LEVEL_DEBUG5)
+   {
+      return;
+   }
 
    if (!msg)
    {

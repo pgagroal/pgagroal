@@ -52,7 +52,9 @@
 #include <unistd.h>
 
 #if HAVE_LINUX
+#if HAVE_IO_URING
 #include <liburing.h>
+#endif
 #include <netdb.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
@@ -79,6 +81,7 @@ static int (*periodic_stop)(struct periodic_watcher*);
 
 #if HAVE_LINUX
 
+#if HAVE_IO_URING
 static int ev_io_uring_init(void);
 static int ev_io_uring_destroy(void);
 static int ev_io_uring_loop(void);
@@ -94,6 +97,7 @@ static int ev_io_uring_io_stop(struct io_watcher*);
 static int ev_io_uring_periodic_init(struct periodic_watcher*, int);
 static int ev_io_uring_periodic_start(struct periodic_watcher*);
 static int ev_io_uring_periodic_stop(struct periodic_watcher*);
+#endif /* HAVE_IO_URING */
 
 static int ev_epoll_init(void);
 static int ev_epoll_destroy(void);
@@ -139,11 +143,14 @@ static void init_watcher_message(struct io_watcher* watcher);
 
 static struct event_loop* loop = NULL;
 static _Atomic(struct signal_watcher*) signal_watchers[PGAGROAL_NSIG] = {0};
+static _Atomic(signal_cb) signal_callbacks[PGAGROAL_NSIG] = {0};
 
 #if HAVE_LINUX
 
+#if HAVE_IO_URING
 static struct io_uring_params params; /* io_uring argument params */
 static int ring_size;                 /* io_uring sqe ring_size */
+#endif
 
 static int epoll_flags; /* Flags for epoll instance creation */
 
@@ -190,6 +197,7 @@ setup_ops(void)
    }
 
 #if HAVE_LINUX
+#if HAVE_IO_URING
    if (backend_type == PGAGROAL_EVENT_BACKEND_IO_URING)
    {
       loop_init = ev_io_uring_init;
@@ -203,7 +211,14 @@ setup_ops(void)
       periodic_stop = ev_io_uring_periodic_stop;
       return PGAGROAL_EVENT_RC_OK;
    }
-   else if (backend_type == PGAGROAL_EVENT_BACKEND_EPOLL)
+#else
+   if (backend_type == PGAGROAL_EVENT_BACKEND_IO_URING)
+   {
+      pgagroal_log_warn("io_uring backend not available; falling back to epoll");
+      backend_type = PGAGROAL_EVENT_BACKEND_EPOLL;
+   }
+#endif /* HAVE_IO_URING */
+   if (backend_type == PGAGROAL_EVENT_BACKEND_EPOLL)
    {
       loop_init = ev_epoll_init;
       loop_fork = ev_epoll_fork;
@@ -250,6 +265,7 @@ pgagroal_event_loop_init(void)
    if (!context_is_set)
    {
 #if HAVE_LINUX
+#if HAVE_IO_URING
       /* io_uring context */
 
 #if EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED
@@ -272,6 +288,7 @@ pgagroal_event_loop_init(void)
       /* XXX: Maybe this could be interesting if we cache the rings and the buffers? */
       params.flags |= IORING_SETUP_NO_MMAP;
 #endif /* EXPERIMENTAL_FEATURE_USE_HUGE_ENABLED */
+#endif /* HAVE_IO_URING */
 
       /* epoll context */
       epoll_flags = 0;
@@ -428,6 +445,10 @@ int
 pgagroal_io_start(struct io_watcher* watcher)
 {
    assert(loop != NULL && watcher != NULL);
+   if (unlikely(loop == NULL || watcher == NULL))
+   {
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
 
    if (loop->events_nr >= MAX_EVENTS)
    {
@@ -471,11 +492,12 @@ pgagroal_io_stop(struct io_watcher* watcher)
       return rc;
    }
 
-   loop->events_nr--;
-   if (i != loop->events_nr)
+   for (int j = i; j < loop->events_nr - 1; j++)
    {
-      loop->events[i] = loop->events[loop->events_nr];
+      loop->events[j] = loop->events[j + 1];
    }
+   loop->events_nr--;
+   loop->events[loop->events_nr] = NULL;
 
    return PGAGROAL_EVENT_RC_OK;
 }
@@ -497,6 +519,10 @@ int
 pgagroal_periodic_start(struct periodic_watcher* watcher)
 {
    assert(loop != NULL && watcher != NULL);
+   if (unlikely(loop == NULL || watcher == NULL))
+   {
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
 
    if (loop->events_nr >= MAX_EVENTS)
    {
@@ -538,11 +564,12 @@ pgagroal_periodic_stop(struct periodic_watcher* watcher)
       return rc;
    }
 
-   loop->events_nr--;
-   if (i != loop->events_nr)
+   for (int j = i; j < loop->events_nr - 1; j++)
    {
-      loop->events[i] = loop->events[loop->events_nr];
+      loop->events[j] = loop->events[j + 1];
    }
+   loop->events_nr--;
+   loop->events[loop->events_nr] = NULL;
 
    return PGAGROAL_EVENT_RC_OK;
 }
@@ -551,7 +578,7 @@ int
 pgagroal_event_prep_submit_send(struct io_watcher* watcher, struct message* msg)
 {
    int sent_bytes = 0;
-#if HAVE_LINUX
+#if HAVE_LINUX && HAVE_IO_URING
    struct io_uring_sqe* sqe = NULL;
    struct io_uring_cqe* cqe = NULL;
    int send_flags = 0;
@@ -560,9 +587,9 @@ pgagroal_event_prep_submit_send(struct io_watcher* watcher, struct message* msg)
 
 #if EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED
    int bid = loop->bid;
-   if (bid < 0 || bid >= 2)
+   if (loop->br.cnt <= 0 || loop->br.buf == NULL || bid < 0 || bid >= loop->br.cnt)
    {
-      pgagroal_log_fatal("invalid buffer id: %d", bid);
+      pgagroal_log_fatal("invalid buffer id: %d (count=%d)", bid, loop->br.cnt);
       return -1;
    }
    void* data = loop->br.buf + bid * DEFAULT_BUFFER_SIZE;
@@ -638,6 +665,11 @@ pgagroal_event_prep_submit_send(struct io_watcher* watcher, struct message* msg)
          break;
       }
 
+      if (cqe_res > INT_MAX || total_sent > (ssize_t)(INT_MAX - cqe_res))
+      {
+         pgagroal_log_error("io_uring send overflow: total=%zd cqe_res=%d", total_sent, cqe_res);
+         return -EOVERFLOW;
+      }
       total_sent += cqe_res;
    }
 
@@ -660,8 +692,12 @@ pgagroal_event_prep_submit_send(struct io_watcher* watcher, struct message* msg)
                          1);
    io_uring_buf_ring_advance(loop->br.br, 1);
 #endif /* EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED */
-
-#endif /* HAVE_LINUX */
+#else
+   (void)watcher;
+   (void)msg;
+   pgagroal_log_error("io_uring backend disabled");
+   sent_bytes = -1;
+#endif /* HAVE_LINUX && HAVE_IO_URING */
    return sent_bytes;
 }
 
@@ -669,7 +705,7 @@ int
 pgagroal_wait_recv(void)
 {
    int recv_bytes = 0;
-#if HAVE_LINUX
+#if HAVE_LINUX && HAVE_IO_URING
    struct io_uring_cqe* rcv_cqe = NULL;
    int rc = io_uring_wait_cqe(&loop->ring_rcv, &rcv_cqe);
    if (rc < 0)
@@ -684,16 +720,25 @@ pgagroal_wait_recv(void)
    }
    recv_bytes = rcv_cqe->res;
    io_uring_cqe_seen(&loop->ring_rcv, rcv_cqe);
+#else
+   pgagroal_log_error("io_uring backend disabled");
+   recv_bytes = -1;
 #endif
    return recv_bytes;
 }
 
 #if HAVE_LINUX
+#if HAVE_IO_URING
 
 static inline void __attribute__((unused))
 ev_io_uring_rearm_receive(struct event_loop* loop, struct io_watcher* watcher)
 {
    struct io_uring_sqe* sqe = io_uring_get_sqe(&loop->ring_rcv);
+   if (!sqe)
+   {
+      pgagroal_log_error("io_uring: no SQE available for rearm");
+      return;
+   }
    io_uring_sqe_set_data(sqe, watcher);
    io_uring_prep_recv_multishot(sqe, watcher->fds.worker.rcv_fd, NULL, 0, 0);
 }
@@ -852,6 +897,11 @@ static int
 ev_io_uring_periodic_start(struct periodic_watcher* watcher)
 {
    struct io_uring_sqe* sqe = io_uring_get_sqe(&loop->ring_rcv);
+   if (!sqe)
+   {
+      pgagroal_log_error("io_uring: no SQE available for periodic start");
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
    io_uring_sqe_set_data(sqe, watcher);
    io_uring_prep_timeout(sqe, &watcher->ts, 0, IORING_TIMEOUT_MULTISHOT);
    return PGAGROAL_EVENT_RC_OK;
@@ -862,6 +912,11 @@ ev_io_uring_periodic_stop(struct periodic_watcher* watcher)
 {
    struct io_uring_sqe* sqe;
    sqe = io_uring_get_sqe(&loop->ring_rcv);
+   if (!sqe)
+   {
+      pgagroal_log_error("io_uring: no SQE available for periodic stop");
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
    io_uring_prep_cancel64(sqe, (uint64_t)watcher, 0);
    return PGAGROAL_EVENT_RC_OK;
 }
@@ -1141,6 +1196,8 @@ ev_io_uring_setup_buffers(void)
 }
 #endif /* EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED */
 
+#endif /* HAVE_IO_URING */
+
 int
 ev_epoll_loop(void)
 {
@@ -1194,6 +1251,7 @@ ev_epoll_loop(void)
 static int
 ev_epoll_init(void)
 {
+   loop->epollfd = -1;
    loop->epollfd = epoll_create1(epoll_flags);
    if (loop->epollfd == -1)
    {
@@ -1206,22 +1264,34 @@ ev_epoll_init(void)
 static int
 ev_epoll_fork(void)
 {
+   if (loop->epollfd < 0)
+   {
+      return PGAGROAL_EVENT_RC_OK;
+   }
+
    if (close(loop->epollfd) < 0)
    {
       pgagroal_log_error("close error: %s", strerror(errno));
       return PGAGROAL_EVENT_RC_ERROR;
    }
+   loop->epollfd = -1;
    return PGAGROAL_EVENT_RC_OK;
 }
 
 static int
 ev_epoll_destroy(void)
 {
+   if (loop->epollfd < 0)
+   {
+      return PGAGROAL_EVENT_RC_OK;
+   }
+
    if (close(loop->epollfd) < 0)
    {
       pgagroal_log_error("close error: %s", strerror(errno));
       return PGAGROAL_EVENT_RC_ERROR;
    }
+   loop->epollfd = -1;
    return PGAGROAL_EVENT_RC_OK;
 }
 
@@ -1475,6 +1545,7 @@ ev_kqueue_loop(void)
 static int
 ev_kqueue_init(void)
 {
+   loop->kqueuefd = -1;
    loop->kqueuefd = kqueue();
    if (loop->kqueuefd == -1)
    {
@@ -1487,14 +1558,22 @@ ev_kqueue_init(void)
 static int
 ev_kqueue_fork(void)
 {
-   close(loop->kqueuefd);
+   if (loop->kqueuefd >= 0)
+   {
+      close(loop->kqueuefd);
+      loop->kqueuefd = -1;
+   }
    return PGAGROAL_EVENT_RC_OK;
 }
 
 static int
 ev_kqueue_destroy(void)
 {
-   close(loop->kqueuefd);
+   if (loop->kqueuefd >= 0)
+   {
+      close(loop->kqueuefd);
+      loop->kqueuefd = -1;
+   }
    return PGAGROAL_EVENT_RC_OK;
 }
 
@@ -1734,6 +1813,7 @@ int
 pgagroal_signal_start(struct signal_watcher* watcher)
 {
    struct sigaction act;
+   int signum = watcher->signum;
 
    if (!loop)
    {
@@ -1741,23 +1821,24 @@ pgagroal_signal_start(struct signal_watcher* watcher)
       return PGAGROAL_EVENT_RC_ERROR;
    }
 
-   if (watcher->signum <= 0 || watcher->signum >= PGAGROAL_NSIG)
+   if (signum <= 0 || signum >= PGAGROAL_NSIG)
    {
-      pgagroal_log_error("signal_start: invalid signum %d", watcher->signum);
+      pgagroal_log_error("signal_start: invalid signum %d", signum);
       return PGAGROAL_EVENT_RC_ERROR;
    }
 
-   atomic_store_explicit(&signal_watchers[watcher->signum], watcher, memory_order_release);
+   atomic_store_explicit(&signal_watchers[signum], watcher, memory_order_release);
+   atomic_store_explicit(&signal_callbacks[signum], watcher->cb, memory_order_release);
 
    sigemptyset(&act.sa_mask);
    act.sa_sigaction = &signal_handler;
    act.sa_flags = SA_SIGINFO | SA_RESTART;
-   if (sigaction(watcher->signum, &act, NULL) == -1)
+   if (sigaction(signum, &act, NULL) == -1)
    {
-      pgagroal_log_fatal("sigaction failed for signum %d", watcher->signum);
+      pgagroal_log_fatal("sigaction failed for signum %d", signum);
       return PGAGROAL_EVENT_RC_ERROR;
    }
-   if (sigaddset(&loop->sigset, watcher->signum) == -1)
+   if (sigaddset(&loop->sigset, signum) == -1)
    {
       pgagroal_log_error("sigaddset error: %s", strerror(errno));
       return PGAGROAL_EVENT_RC_ERROR;
@@ -1790,6 +1871,7 @@ pgagroal_signal_stop(struct signal_watcher* target)
    }
    if (target->signum > 0 && target->signum < PGAGROAL_NSIG)
    {
+      atomic_store_explicit(&signal_callbacks[target->signum], NULL, memory_order_release);
       atomic_store_explicit(&signal_watchers[target->signum], NULL, memory_order_release);
    }
 #if !HAVE_LINUX
@@ -1813,15 +1895,17 @@ pgagroal_signal_stop(struct signal_watcher* target)
 static void
 signal_handler(int signum, siginfo_t* si __attribute__((unused)), void* p __attribute__((unused)))
 {
+   signal_cb cb;
+
    if (signum < 0 || signum >= PGAGROAL_NSIG)
    {
       return;
    }
 
-   struct signal_watcher* watcher = atomic_load_explicit(&signal_watchers[signum], memory_order_acquire);
-   if (watcher && watcher->cb)
+   cb = atomic_load_explicit(&signal_callbacks[signum], memory_order_acquire);
+   if (cb)
    {
-      watcher->cb();
+      cb();
    }
 }
 
@@ -1840,6 +1924,8 @@ init_watcher_message(struct io_watcher* watcher)
       if (watcher->msg->data == NULL)
       {
          pgagroal_log_fatal("failed to allocate message buffer");
+         free(watcher->msg);
+         watcher->msg = NULL;
          exit(1);
       }
       watcher->msg->length = 0;

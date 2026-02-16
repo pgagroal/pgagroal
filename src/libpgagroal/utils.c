@@ -54,14 +54,6 @@
 #include <errno.h>
 #include <inttypes.h>
 
-#ifndef EVBACKEND_LINUXAIO
-#define EVBACKEND_LINUXAIO 0x00000040U
-#endif
-
-#ifndef EVBACKEND_IOURING
-#define EVBACKEND_IOURING 0x00000080U
-#endif
-
 extern char** environ;
 #if defined(HAVE_LINUX) || defined(HAVE_OSX)
 static bool env_changed = false;

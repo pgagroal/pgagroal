@@ -408,10 +408,10 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
    bool tls;
    struct stat st;
    struct main_configuration* config;
-#if HAVE_LINUX
+#if HAVE_LINUX && HAVE_IO_URING
    int fd;
    char rval;
-#endif /* HAVE_LINUX */
+#endif /* HAVE_LINUX && HAVE_IO_URING */
 
    tls = false;
 
@@ -760,7 +760,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
       config->ev_backend = DEFAULT_EVENT_BACKEND;
    }
 
-#if HAVE_LINUX
+#if HAVE_LINUX && HAVE_IO_URING
    if (config->ev_backend == PGAGROAL_EVENT_BACKEND_IO_URING)
    {
       /* check if io_uring is enabled or works for supported configuration, else fallback to next backend */
@@ -796,7 +796,7 @@ fallback:
          config->ev_backend = PGAGROAL_EVENT_BACKEND_EPOLL;
       }
    }
-#endif /* HAVE_LINUX */
+#endif /* HAVE_LINUX && HAVE_IO_URING */
    pgagroal_log_debug("Selected backend '%s'", to_backend_str(config->ev_backend));
 
    // do some last initialization here, since the configuration
@@ -1071,7 +1071,7 @@ pgagroal_vault_validate_configuration(void* shm)
       }
    }
 
-#if HAVE_LINUX
+#if HAVE_LINUX && HAVE_IO_URING
    if (config->ev_backend == PGAGROAL_EVENT_BACKEND_IO_URING)
    {
       int fd;
@@ -1110,7 +1110,7 @@ fallback:
          config->ev_backend = PGAGROAL_EVENT_BACKEND_EPOLL;
       }
    }
-#endif /* HAVE_LINUX */
+#endif /* HAVE_LINUX && HAVE_IO_URING */
 
    pgagroal_log_debug("pgagroal-vault: Selected backend '%s'", to_backend_str(config->ev_backend));
 
@@ -3680,7 +3680,9 @@ is_supported_backend(ev_backend_t backend)
    int bi, backends;
    ev_backend_t supported_backends[] = {
 #if HAVE_LINUX
+#if HAVE_IO_URING
       PGAGROAL_EVENT_BACKEND_IO_URING,
+#endif
       PGAGROAL_EVENT_BACKEND_EPOLL,
 #else
       PGAGROAL_EVENT_BACKEND_KQUEUE,

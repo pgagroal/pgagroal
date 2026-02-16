@@ -74,7 +74,49 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     message(FATAL_ERROR "liburing was not found")
   endif()
 
-  include_directories(${LIBURING_INCLUDE_DIRS})
+  set(IO_URING_CONSTANTS_TEST "
+#include <liburing.h>
+#ifndef IORING_SETUP_CQSIZE
+#error \"IORING_SETUP_CQSIZE missing\"
+#endif
+#ifndef IORING_SETUP_DEFER_TASKRUN
+#error \"IORING_SETUP_DEFER_TASKRUN missing\"
+#endif
+#ifndef IORING_SETUP_SINGLE_ISSUER
+#error \"IORING_SETUP_SINGLE_ISSUER missing\"
+#endif
+#ifndef IORING_FEAT_FAST_POLL
+#error \"IORING_FEAT_FAST_POLL missing\"
+#endif
+#ifndef IORING_SETUP_NO_MMAP
+#error \"IORING_SETUP_NO_MMAP missing\"
+#endif
+#ifndef IORING_TIMEOUT_MULTISHOT
+#error \"IORING_TIMEOUT_MULTISHOT missing\"
+#endif
+#ifndef IORING_SQ_CQ_OVERFLOW
+#error \"IORING_SQ_CQ_OVERFLOW missing\"
+#endif
+#ifndef IORING_CQE_BUFFER_SHIFT
+#error \"IORING_CQE_BUFFER_SHIFT missing\"
+#endif
+#ifndef IORING_CQE_F_MORE
+#error \"IORING_CQE_F_MORE missing\"
+#endif
+int main(void) { return 0; }
+")
+
+  set(CMAKE_REQUIRED_INCLUDES "${LIBURING_INCLUDE_DIRS}")
+  check_c_source_compiles("${IO_URING_CONSTANTS_TEST}" HAVE_IO_URING_CONSTANTS)
+  set(CMAKE_REQUIRED_INCLUDES "")
+
+  if (HAVE_IO_URING_CONSTANTS)
+    add_compile_options(-DHAVE_IO_URING)
+    include_directories(${LIBURING_INCLUDE_DIRS})
+    set(PGAGROAL_IO_URING_LIBRARIES ${LIBURING_LIBRARY})
+  else()
+    message(STATUS "io_uring constants missing; disabling io_uring backend")
+  endif()
 
   pgagroal_require_shared_libs(
     OPENSSL_CRYPTO_LIBRARY
@@ -85,7 +127,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     BZIP2_LIBRARIES
     ZSTD_LIBRARIES
     LZ4_LIBRARIES
-    LIBURING_LIBRARY
+    PGAGROAL_IO_URING_LIBRARIES
   )
 
   #
@@ -100,7 +142,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     ${BZIP2_LIBRARIES}
     ${ZSTD_LIBRARIES}
     ${LZ4_LIBRARIES}
-    ${LIBURING_LIBRARY}
+    ${PGAGROAL_IO_URING_LIBRARIES}
   )
 
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
