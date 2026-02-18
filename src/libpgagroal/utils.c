@@ -706,6 +706,34 @@ pgagroal_set_proc_title(int argc, char** argv, char* s1, char* s2)
       return;
    }
 
+   // compute how long was the command line
+   // when the application was started
+   if (max_process_title_size == 0)
+   {
+      char* end_of_area = NULL;
+
+      for (int i = 0; i < argc; i++)
+      {
+         if (i == 0 || end_of_area + 1 == argv[i])
+         {
+            end_of_area = argv[i] + strlen(argv[i]);
+         }
+      }
+
+      if (end_of_area != NULL)
+      {
+         for (int i = 0; env[i] != NULL; i++)
+         {
+            if (end_of_area + 1 == env[i])
+            {
+               end_of_area = env[i] + strlen(env[i]);
+            }
+         }
+
+         max_process_title_size = end_of_area - argv[0];
+      }
+   }
+
    if (!env_changed)
    {
       for (int i = 0; env[i] != NULL; i++)
@@ -732,16 +760,6 @@ pgagroal_set_proc_title(int argc, char** argv, char* s1, char* s2)
       }
       environ[es] = NULL;
       env_changed = true;
-   }
-
-   // compute how long was the command line
-   // when the application was started
-   if (max_process_title_size == 0)
-   {
-      for (int i = 0; i < argc; i++)
-      {
-         max_process_title_size += strlen(argv[i]) + 1;
-      }
    }
 
    // compose the new title
