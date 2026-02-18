@@ -31,6 +31,8 @@
 #include <logging.h>
 #include <security.h>
 
+#include <string.h>
+
 static int derive_key_iv(char* password, unsigned char* key, unsigned char* iv, int mode);
 static int aes_encrypt(char* plaintext, unsigned char* key, unsigned char* iv, char** ciphertext, int* ciphertext_length, int mode);
 static int aes_decrypt(char* ciphertext, int ciphertext_length, unsigned char* key, unsigned char* iv, char** plaintext, int mode);
