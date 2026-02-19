@@ -45,6 +45,7 @@
 #include <signal.h>
 #include <stdatomic.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <netinet/in.h>
 #include <sys/types.h>
