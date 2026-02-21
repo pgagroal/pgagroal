@@ -64,6 +64,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+static char CHARS[] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+                       'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+                       '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+                       '!', '@', '$', '%', '^', '&', '*', '(', ')', '-', '_', '=', '+', '[', '{', ']', '}', '\\', '|', ':',
+                       '\'', '\"', ',', '<', '.', '>', '/', '?'};
+
 static int get_auth_type(struct message* msg, int* auth_type);
 static int compare_auth_response(struct message* orig, struct message* response, int auth_type);
 
@@ -5752,47 +5758,45 @@ error:
    return AUTH_ERROR;
 }
 
-void
-pgagroal_initialize_random()
-{
-   time_t t;
-   srand((unsigned)time(&t));
-}
-
 int
 pgagroal_generate_password(int pwd_length, char** password)
 {
-   char* pwd;
+   char* pwd = NULL;
+   unsigned char* random_bytes = NULL;
 
-   pwd = (char*)malloc((pwd_length + 1) * sizeof(char));
-   if (!pwd)
+   pwd = malloc(pwd_length + 1);
+   if (pwd == NULL)
    {
       pgagroal_log_fatal("Couldn't allocate memory while generating password");
+      return 1;
+   }
+   memset(pwd, 0, pwd_length + 1);
+
+   random_bytes = malloc(pwd_length);
+   if (random_bytes == NULL)
+   {
+      pgagroal_log_fatal("Couldn't allocate memory while generating password");
+      free(pwd);
+      return 1;
+   }
+
+   if (RAND_bytes(random_bytes, pwd_length) != 1)
+   {
+      pgagroal_log_fatal("OpenSSL RAND_bytes failed to gather entropy for password generation");
+      free(pwd);
+      free(random_bytes);
       return 1;
    }
 
    for (int i = 0; i < pwd_length; i++)
    {
-      pwd[i] = (char)(32 + rand() % (126 - 32 + 1));
+      pwd[i] = CHARS[random_bytes[i] % sizeof(CHARS)];
    }
    pwd[pwd_length] = '\0';
 
-   // avoid leading/trailing/consecutive spaces.
-   if (pwd[0] == ' ')
-   {
-      pwd[0] = (char)(33 + rand() % (126 - 33 + 1));
-   }
-   if (pwd[pwd_length - 1] == ' ')
-   {
-      pwd[pwd_length - 1] = (char)(33 + rand() % (126 - 33 + 1));
-   }
-   for (int i = 2; i < pwd_length - 1; i++)
-   {
-      if (pwd[i] == ' ' && pwd[i - 1] == ' ')
-      {
-         pwd[i] = (char)(33 + rand() % (126 - 33 + 1));
-      }
-   }
+   memset(random_bytes, 0, pwd_length);
+   free(random_bytes);
+
    *password = pwd;
    return 0;
 }

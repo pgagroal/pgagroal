@@ -197,8 +197,19 @@ main(int argc, char** argv)
             generate_pwd = true;
             break;
          case 'l':
-            pwd_length = atoi(optarg);
+         {
+            char* endptr = NULL;
+            long val;
+            errno = 0;
+            val = strtol(optarg, &endptr, 10);
+            if (errno != 0 || endptr == optarg || *endptr != '\0' || val <= 0 || val > 1024)
+            {
+               warnx("pgagroal-admin: Invalid password length: %s", optarg);
+               exit(1);
+            }
+            pwd_length = (int)val;
             break;
+         }
          case 'V':
             version();
             break;

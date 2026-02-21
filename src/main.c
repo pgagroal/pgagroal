@@ -1062,7 +1062,6 @@ read_superuser_path:
    create_pidfile_or_exit();
 
    pgagroal_pool_init();
-   pgagroal_initialize_random();
 
    pgagroal_set_proc_title(argc, argv, "main", NULL);
 

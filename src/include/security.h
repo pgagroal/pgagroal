@@ -144,13 +144,6 @@ int
 accept_ssl_vault(struct vault_configuration* config, int client_fd, SSL** c_ssl);
 
 /**
- * @brief Initialize RNG
- *
- */
-void
-pgagroal_initialize_random(void);
-
-/**
  * Create a SSL context
  * @param client True if client, false if server
  * @param ctx The SSL context
