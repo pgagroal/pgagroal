@@ -36,6 +36,7 @@
 #include <server.h>
 #include <utils.h>
 #include <value.h>
+#include <network.h>
 
 /* system */
 #include <errno.h>
@@ -106,6 +107,26 @@ error:
    *server = -1;
 
    return 1;
+}
+
+bool
+pgagroal_server_is_alive(int server)
+{
+   int fd;
+   int ret;
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
+   ret = pgagroal_connect(config->servers[server].host, config->servers[server].port, &fd, true, true);
+
+   if (ret)
+   {
+      return false;
+   }
+
+   pgagroal_disconnect(fd);
+
+   return true;
 }
 
 int
