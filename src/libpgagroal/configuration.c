@@ -87,6 +87,7 @@ static void copy_hba(struct hba* dst, struct hba* src);
 static void copy_user(struct user* dst, struct user* src);
 static int restart_int(char* name, int e, int n);
 static int restart_bool(char* name, bool e, bool n);
+static int restart_time(char* name, pgagroal_time_t e, pgagroal_time_t n, bool requires_restart);
 static int restart_string(char* name, char* e, char* n, bool skip_non_existing);
 static int restart_limit(char* name, struct main_configuration* config, struct main_configuration* reload);
 static int restart_server(struct server* src, struct server* dst);
@@ -3480,15 +3481,54 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
    }
    config->allow_unknown_users = reload->allow_unknown_users;
 
-   config->blocking_timeout = reload->blocking_timeout;
-   config->idle_timeout = reload->idle_timeout;
-   config->rotate_frontend_password_timeout = reload->rotate_frontend_password_timeout;
+   if (restart_time("blocking_timeout", config->blocking_timeout, reload->blocking_timeout, false))
+   {
+      changed = true;
+   }
+
+   memcpy(&config->blocking_timeout, &reload->blocking_timeout, sizeof(config->blocking_timeout));
+
+   if (restart_time("idle_timeout", config->idle_timeout, reload->idle_timeout, false))
+   {
+      changed = true;
+   }
+
+   memcpy(&config->idle_timeout, &reload->idle_timeout, sizeof(config->idle_timeout));
+
+   if (restart_time("rotate_frontend_password_timeout", config->rotate_frontend_password_timeout, reload->rotate_frontend_password_timeout, false))
+   {
+      changed = true;
+   }
+
+   memcpy(&config->rotate_frontend_password_timeout, &reload->rotate_frontend_password_timeout, sizeof(config->rotate_frontend_password_timeout));
+
    config->rotate_frontend_password_length = reload->rotate_frontend_password_length;
-   config->max_connection_age = reload->max_connection_age;
+
+   if (restart_time("max_connection_age", config->max_connection_age, reload->max_connection_age, false))
+   {
+      changed = true;
+   }
+
+   memcpy(&config->max_connection_age, &reload->max_connection_age, sizeof(config->max_connection_age));
+
    config->validation = reload->validation;
-   config->background_interval = reload->background_interval;
+
+   if (restart_time("background_interval", config->background_interval, reload->background_interval, false))
+   {
+      changed = true;
+   }
+
+   memcpy(&config->background_interval, &reload->background_interval, sizeof(config->background_interval));
+
    config->max_retries = reload->max_retries;
-   config->common.authentication_timeout = reload->common.authentication_timeout;
+
+   if (restart_time("authentication_timeout", config->common.authentication_timeout, reload->common.authentication_timeout, false))
+   {
+      changed = true;
+   }
+
+   memcpy(&config->common.authentication_timeout, &reload->common.authentication_timeout, sizeof(config->common.authentication_timeout));
+
    config->disconnect_client = reload->disconnect_client;
    config->disconnect_client_force = reload->disconnect_client_force;
    /* pidfile */
@@ -3773,6 +3813,29 @@ restart_int(char* name, int e, int n)
    {
       pgagroal_log_info("Restart required for %s - Existing %d New %d", name, e, n);
       return 1;
+   }
+
+   return 0;
+}
+
+static int
+restart_time(char* name, pgagroal_time_t e, pgagroal_time_t n, bool requires_restart)
+{
+   int64_t old_time = pgagroal_time_convert(e, FORMAT_TIME_S);
+   int64_t new_time = pgagroal_time_convert(n, FORMAT_TIME_S);
+
+   if (old_time != new_time)
+   {
+      if (requires_restart)
+      {
+         pgagroal_log_info("Restart required for %s - Existing %" PRId64 " New %" PRId64, name, old_time, new_time);
+         return 1;
+      }
+      else
+      {
+         pgagroal_log_debug("Reloaded %s - Existing %" PRId64 " New %" PRId64, name, old_time, new_time);
+         return 0;
+      }
    }
 
    return 0;
