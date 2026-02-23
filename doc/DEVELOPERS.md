@@ -65,10 +65,10 @@ This process is optional. If you choose not to generate the PDF and HTML files, 
     Download the `Eisvogel` template for `pandoc`, please visit the [pandoc-latex-template](https://github.com/Wandmalfarbe/pandoc-latex-template) repository. For a standard installation, you can follow the steps outlined below.
 
     ```sh
-    wget https://github.com/Wandmalfarbe/pandoc-latex-template/releases/download/v3.3.0/Eisvogel-3.3.0.tar.gz
-    tar -xzf Eisvogel-3.3.0.tar.gz
+    wget https://github.com/Wandmalfarbe/pandoc-latex-template/releases/download/v3.4.0/Eisvogel-3.4.0.tar.gz
+    tar -xzf Eisvogel-3.4.0.tar.gz
     mkdir -p ~/.local/share/pandoc/templates
-    mv Eisvogel-3.3.0/eisvogel.latex ~/.local/share/pandoc/templates/
+    mv Eisvogel-3.4.0/eisvogel.latex ~/.local/share/pandoc/templates/
     ```
 
 3. Add package for LaTeX
