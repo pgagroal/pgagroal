@@ -4023,12 +4023,8 @@ salted_password(char* password, char* salt, int salt_length, int iterations, uns
 
    for (int i = 2; i <= iterations; i++)
    {
-      if (HMAC_CTX_reset(ctx) != 1)
-      {
-         goto error;
-      }
-
-      if (HMAC_Init_ex(ctx, password, password_length, EVP_sha256(), NULL) != 1)
+      /* passing nulls cause function to reuse the same key / password in the context */
+      if (HMAC_Init_ex(ctx, NULL, 0, NULL, NULL) != 1)
       {
          goto error;
       }
