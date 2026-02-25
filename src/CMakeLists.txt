@@ -145,6 +145,13 @@ int main(void) { return 0; }
     ${PGAGROAL_IO_URING_LIBRARIES}
   )
 
+  if (SYSTEMD_FOUND)
+    add_compile_options(-DHAVE_SYSTEMD)
+
+    include_directories(${SYSTEMD_INCLUDE_DIRS})
+    link_libraries(${SYSTEMD_LIBRARIES})
+  endif()
+
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
   find_program(HOMEBREW_EXECUTABLE brew)
@@ -218,12 +225,6 @@ else()
      add_compile_options(-DHAVE_FREEBSD)
   endif()
 
-  if (SYSTEMD_FOUND)
-  add_compile_options(-DHAVE_SYSTEMD)
-
-  include_directories(${SYSTEMD_INCLUDE_DIRS})
-  link_libraries(${SYSTEMD_LIBRARIES})
-  endif()
 
   #
   # Include directories

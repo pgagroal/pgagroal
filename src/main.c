@@ -99,7 +99,7 @@ static bool reload_services_only(void);
 static void reload_set_configuration(SSL* ssl, int client_fd, uint8_t compression, uint8_t encryption, struct json* payload);
 static void create_pidfile_or_exit(void);
 static void remove_pidfile(void);
-static void shutdown_ports(void);
+static void shutdown_ports(bool remove);
 
 static char** argv_ptr;
 static struct event_loop* main_loop = NULL;
@@ -133,7 +133,7 @@ start_mgt(void)
 }
 
 static void
-shutdown_mgt(void)
+shutdown_mgt(bool remove)
 {
    struct main_configuration* config;
 
@@ -141,7 +141,10 @@ shutdown_mgt(void)
 
    pgagroal_disconnect(unix_management_socket);
    errno = 0;
-   pgagroal_remove_unix_socket(config->unix_socket_dir, MAIN_UDS);
+   if (remove)
+   {
+      pgagroal_remove_unix_socket(config->unix_socket_dir, MAIN_UDS);
+   }
    errno = 0;
 }
 
@@ -156,7 +159,7 @@ start_transfer(void)
 }
 
 static void
-shutdown_transfer(void)
+shutdown_transfer(bool remove)
 {
    struct main_configuration* config;
 
@@ -164,7 +167,10 @@ shutdown_transfer(void)
 
    pgagroal_disconnect(unix_transfer_socket);
    errno = 0;
-   pgagroal_remove_unix_socket(config->unix_socket_dir, TRANSFER_UDS);
+   if (remove)
+   {
+      pgagroal_remove_unix_socket(config->unix_socket_dir, TRANSFER_UDS);
+   }
    errno = 0;
 }
 
@@ -179,7 +185,7 @@ start_uds(void)
 }
 
 static void
-shutdown_uds(void)
+shutdown_uds(bool remove)
 {
    char pgsql[MISC_LENGTH];
    struct main_configuration* config;
@@ -191,7 +197,10 @@ shutdown_uds(void)
 
    pgagroal_disconnect(unix_pgsql_socket);
    errno = 0;
-   pgagroal_remove_unix_socket(config->unix_socket_dir, &pgsql[0]);
+   if (remove)
+   {
+      pgagroal_remove_unix_socket(config->unix_socket_dir, &pgsql[0]);
+   }
    errno = 0;
 }
 
@@ -261,7 +270,7 @@ start_management(void)
 }
 
 static void
-shutdown_management(void)
+shutdown_management(bool remove __attribute__((unused)))
 {
    for (int i = 0; i < management_fds_length; i++)
    {
@@ -476,7 +485,7 @@ main(int argc, char** argv)
       if (access(directory_path, F_OK) != 0)
       {
 #ifdef HAVE_SYSTEMD
-         sd_notify(0, "STATUS=Configuration directory not found: %s", directory_path);
+         sd_notifyf(0, "STATUS=Configuration directory not found: %s", directory_path);
 #endif
          pgagroal_log_error("Configuration directory not found: %s", directory_path);
          exit(1);
@@ -487,7 +496,7 @@ main(int argc, char** argv)
          if (!S_ISDIR(path_stat.st_mode))
          {
 #ifdef HAVE_SYSTEMD
-            sd_notify(0, "STATUS=Path is not a directory: %s", directory_path);
+            sd_notifyf(0, "STATUS=Path is not a directory: %s", directory_path);
 #endif
             pgagroal_log_error("Path is not a directory: %s", directory_path);
             exit(1);
@@ -896,7 +905,7 @@ read_superuser_path:
          }
          else if (sd_is_socket(fd, AF_INET, 0, -1) || sd_is_socket(fd, AF_INET6, 0, -1))
          {
-            *(main_fds + (m * sizeof(int))) = fd;
+            main_fds[m] = fd;
             has_main_sockets = true;
             m++;
          }
@@ -1329,7 +1338,7 @@ read_superuser_path:
       if (!fork())
       {
          pgagroal_event_loop_fork();
-         shutdown_ports();
+         shutdown_ports(false);
          pgagroal_prefill_if_can(false, true);
       }
    }
@@ -1363,12 +1372,12 @@ read_superuser_path:
       }
    }
 
-   shutdown_management();
+   shutdown_management(true);
    shutdown_metrics();
-   shutdown_mgt();
-   shutdown_transfer();
+   shutdown_mgt(true);
+   shutdown_transfer(true);
    shutdown_io();
-   shutdown_uds();
+   shutdown_uds(true);
 
    pgagroal_event_loop_destroy();
 
@@ -1424,7 +1433,7 @@ accept_main_cb(struct io_watcher* watcher)
          pgagroal_log_warn("Restarting listening port due to: %s (%d)", strerror(errno), client_fd);
 
          shutdown_io();
-         shutdown_uds();
+         shutdown_uds(true);
 
          memset(&pgsql, 0, sizeof(pgsql));
          snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->common.port);
@@ -1453,7 +1462,7 @@ accept_main_cb(struct io_watcher* watcher)
 
          if (!fork())
          {
-            shutdown_ports();
+            shutdown_ports(false);
             pgagroal_flush(FLUSH_GRACEFULLY, "*");
             exit(0);
          }
@@ -1511,7 +1520,7 @@ accept_main_cb(struct io_watcher* watcher)
       }
 
       pgagroal_event_loop_fork();
-      shutdown_ports();
+      shutdown_ports(false);
       /* We are leaving the socket descriptor valid such that the client won't reuse it */
       pgagroal_worker(client_fd, addr, ai->argv);
    }
@@ -1549,7 +1558,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       {
          pgagroal_log_warn("Restarting management due to: %s (%d)", strerror(errno), client_fd);
 
-         shutdown_mgt();
+         shutdown_mgt(false);
 
          if (pgagroal_bind_unix_socket(config->unix_socket_dir, MAIN_UDS, &unix_management_socket))
          {
@@ -1598,7 +1607,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       {
          struct json* pyl = NULL;
 
-         shutdown_ports();
+         shutdown_ports(true);
 
          pgagroal_json_clone(payload, &pyl);
 
@@ -1787,7 +1796,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       {
          struct json* pyl = NULL;
 
-         shutdown_ports();
+         shutdown_ports(true);
 
          pgagroal_json_clone(payload, &pyl);
 
@@ -1811,7 +1820,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       {
          struct json* pyl = NULL;
 
-         shutdown_ports();
+         shutdown_ports(true);
 
          pgagroal_json_clone(payload, &pyl);
 
@@ -1891,7 +1900,7 @@ accept_mgt_cb(struct io_watcher* watcher)
          pgagroal_log_info("pgagroal: Successfully switched to server: %s", server);
          if (!fork())
          {
-            shutdown_ports();
+            shutdown_ports(false);
             if (old_primary != -1)
             {
                pgagroal_flush_server(old_primary);
@@ -1965,7 +1974,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       {
          struct json* pyl = NULL;
 
-         shutdown_ports();
+         shutdown_ports(true);
 
          pgagroal_json_clone(payload, &pyl);
 
@@ -1986,7 +1995,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       {
          struct json* pyl = NULL;
 
-         shutdown_ports();
+         shutdown_ports(true);
 
          pgagroal_json_clone(payload, &pyl);
 
@@ -2007,7 +2016,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       {
          struct json* pyl = NULL;
 
-         shutdown_ports();
+         shutdown_ports(true);
 
          pgagroal_json_clone(payload, &pyl);
 
@@ -2122,7 +2131,7 @@ accept_transfer_cb(struct io_watcher* watcher)
       {
          pgagroal_log_warn("Restarting transfer due to: %s (%d)", strerror(errno), client_fd);
 
-         shutdown_mgt();
+         shutdown_mgt(false);
 
          if (pgagroal_bind_unix_socket(config->unix_socket_dir, TRANSFER_UDS, &unix_transfer_socket))
          {
@@ -2332,7 +2341,7 @@ accept_metrics_cb(struct io_watcher* watcher)
    if (!fork())
    {
       pgagroal_event_loop_fork();
-      shutdown_ports();
+      shutdown_ports(false);
       if (strlen(config->common.metrics_cert_file) > 0 && strlen(config->common.metrics_key_file) > 0)
       {
          if (pgagroal_create_ssl_ctx(false, &ctx))
@@ -2380,7 +2389,7 @@ accept_management_cb(struct io_watcher* watcher)
       {
          pgagroal_log_warn("Restarting listening port due to: %s (%d)", strerror(errno), client_fd);
 
-         shutdown_management();
+         shutdown_management(false);
 
          free(management_fds);
          management_fds = NULL;
@@ -2426,7 +2435,7 @@ accept_management_cb(struct io_watcher* watcher)
       memcpy(addr, address, strlen(address));
 
       pgagroal_event_loop_fork();
-      shutdown_ports();
+      shutdown_ports(false);
       /* We are leaving the socket descriptor valid such that the client won't reuse it */
       pgagroal_remote_management(client_fd, addr);
    }
@@ -2498,7 +2507,7 @@ idle_timeout_cb(void)
    if (!fork())
    {
       pgagroal_event_loop_fork();
-      shutdown_ports();
+      shutdown_ports(false);
       pgagroal_idle_timeout();
    }
 }
@@ -2510,7 +2519,7 @@ max_connection_age_cb(void)
    if (!fork())
    {
       pgagroal_event_loop_fork();
-      shutdown_ports();
+      shutdown_ports(false);
       pgagroal_max_connection_age();
    }
 }
@@ -2522,7 +2531,7 @@ validation_cb(void)
    if (!fork())
    {
       pgagroal_event_loop_fork();
-      shutdown_ports();
+      shutdown_ports(false);
       pgagroal_validation();
    }
 }
@@ -2534,7 +2543,7 @@ disconnect_client_cb(void)
    if (!fork())
    {
       pgagroal_event_loop_fork();
-      shutdown_ports();
+      shutdown_ports(false);
       main_pipeline.periodic();
    }
 }
@@ -2679,9 +2688,9 @@ reload_configuration(void)
    config = (struct main_configuration*)shmem;
 
    shutdown_io();
-   shutdown_uds();
+   shutdown_uds(true);
    shutdown_metrics();
-   shutdown_management();
+   shutdown_management(true);
 
    pgagroal_reload_configuration(&restart);
 
@@ -2794,9 +2803,9 @@ reload_services_only(void)
 
    // Shutdown services
    shutdown_io();
-   shutdown_uds();
+   shutdown_uds(true);
    shutdown_metrics();
-   shutdown_management();
+   shutdown_management(true);
 
    // Instead, restart services with current memory configuration
    pgagroal_log_debug("conf set: unix socket Bound to %s/.s.PGSQL.%d", config->unix_socket_dir, config->common.port);
@@ -2982,13 +2991,13 @@ remove_pidfile(void)
 }
 
 static void
-shutdown_ports(void)
+shutdown_ports(bool remove)
 {
    struct main_configuration* config;
 
    config = (struct main_configuration*)shmem;
 
-   shutdown_io();
+   shutdown_uds(remove);
 
    if (config->common.metrics > 0)
    {
@@ -2997,6 +3006,6 @@ shutdown_ports(void)
 
    if (config->management > 0)
    {
-      shutdown_management();
+      shutdown_management(remove);
    }
 }
