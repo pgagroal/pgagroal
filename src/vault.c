@@ -1063,6 +1063,11 @@ accept_vault_cb(struct io_watcher* watcher)
    }
 
    pgagroal_prometheus_client_sockets_add();
+
+   memset(&client_addr, 0, sizeof(struct sockaddr_in6));
+   socklen_t client_addr_length = sizeof(struct sockaddr_in6);
+   getpeername(client_fd, (struct sockaddr*)&client_addr, &client_addr_length);
+
    pgagroal_get_address((struct sockaddr*)&client_addr, (char*)&address, sizeof(address));
 
    pgagroal_log_trace("accept_vault_cb: client address: %s", address);
