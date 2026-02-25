@@ -896,7 +896,7 @@ read_superuser_path:
          }
          else if (sd_is_socket(fd, AF_INET, 0, -1) || sd_is_socket(fd, AF_INET6, 0, -1))
          {
-            *(main_fds + (m * sizeof(int))) = fd;
+            main_fds[m] = fd;
             has_main_sockets = true;
             m++;
          }
