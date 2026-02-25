@@ -908,18 +908,13 @@ read_superuser_path:
          {
             unix_pgsql_socket = fd;
             has_unix_socket = true;
+            pgagroal_socket_nonblocking(fd);
          }
          else if (sd_is_socket(fd, AF_INET, 0, -1) || sd_is_socket(fd, AF_INET6, 0, -1))
          {
-            int flags = fcntl(fd, F_GETFL, 0);
-
-            if (flags != -1)
-            {
-               fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-            }
-
             main_fds[m] = fd;
             has_main_sockets = true;
+            pgagroal_socket_nonblocking(fd);
             m++;
          }
       }
