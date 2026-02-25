@@ -1515,10 +1515,14 @@ use_unpooled_connection(struct message* request_msg, SSL* c_ssl, int client_fd, 
    int status = MESSAGE_STATUS_ERROR;
    int server_fd;
    int auth_type = -1;
+   int sec_idx = -1;
+   bool error_forwarded = false;
    char* password;
    signed char server_state;
    struct message* msg = NULL;
    struct message* auth_msg = NULL;
+   struct message* smsg_err = NULL;
+   struct message* emsg_err = NULL;
    struct main_configuration* config = NULL;
    char* client_username = NULL;
    char* client_database = NULL;
@@ -1688,8 +1692,47 @@ use_unpooled_connection(struct message* request_msg, SSL* c_ssl, int client_fd, 
       {
          if (pgagroal_socket_isvalid(client_fd))
          {
-            pgagroal_write_connection_refused(c_ssl, client_fd);
-            pgagroal_write_empty(c_ssl, client_fd);
+            error_forwarded = false;
+            sec_idx = -1;
+
+            if (auth_type == SECURITY_TRUST)
+            {
+               sec_idx = 0;
+            }
+            else if (auth_type == SECURITY_PASSWORD || auth_type == SECURITY_MD5)
+            {
+               sec_idx = 2;
+            }
+            else if (auth_type == SECURITY_SCRAM256)
+            {
+               sec_idx = 4;
+            }
+
+            if (sec_idx >= 0 && config->connections[slot].security_lengths[sec_idx] > 0)
+            {
+               pgagroal_create_message(&config->connections[slot].security_messages[sec_idx],
+                                       config->connections[slot].security_lengths[sec_idx],
+                                       &smsg_err);
+               if (smsg_err != NULL)
+               {
+                  pgagroal_extract_message('E', smsg_err, &emsg_err);
+                  if (emsg_err != NULL)
+                  {
+                     pgagroal_write_auth_success(c_ssl, client_fd);
+                     pgagroal_write_message(c_ssl, client_fd, emsg_err);
+                     pgagroal_write_empty(c_ssl, client_fd);
+                     error_forwarded = true;
+                     pgagroal_free_message(emsg_err);
+                  }
+                  pgagroal_free_message(smsg_err);
+               }
+            }
+
+            if (!error_forwarded)
+            {
+               pgagroal_write_connection_refused(c_ssl, client_fd);
+               pgagroal_write_empty(c_ssl, client_fd);
+            }
          }
          goto error;
       }
@@ -2398,6 +2441,17 @@ server_passthrough(struct message* msg, int auth_type, SSL* c_ssl, SSL* s_ssl, i
 
    if (smsg != NULL)
    {
+      /* Check for post-auth ErrorResponse (e.g., database does not exist) */
+      struct message* emsg = NULL;
+      pgagroal_extract_message('E', smsg, &emsg);
+      if (emsg != NULL)
+      {
+         pgagroal_log_warn("server_passthrough: server sent ErrorResponse after auth for slot %d", slot);
+         config->connections[slot].has_security = SECURITY_INVALID;
+         pgagroal_free_message(emsg);
+         goto error;
+      }
+
       pgagroal_extract_message('K', smsg, &kmsg);
 
       if (kmsg != NULL)
@@ -2483,6 +2537,17 @@ server_authenticate(struct message* msg, int auth_type, char* username, char* pa
 
    if (smsg != NULL)
    {
+      /* Check for post-auth ErrorResponse (e.g., database does not exist) */
+      struct message* emsg = NULL;
+      pgagroal_extract_message('E', smsg, &emsg);
+      if (emsg != NULL)
+      {
+         pgagroal_log_warn("server_authenticate: server sent ErrorResponse after auth for slot %d", slot);
+         config->connections[slot].has_security = SECURITY_INVALID;
+         pgagroal_free_message(emsg);
+         goto error;
+      }
+
       pgagroal_extract_message('K', smsg, &kmsg);
 
       if (kmsg != NULL)
