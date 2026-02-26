@@ -47,6 +47,7 @@
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #ifdef HAVE_EXECINFO_H
 #include <execinfo.h>
@@ -1032,58 +1033,106 @@ pgagroal_backtrace(void)
       uint64_t addr = (uint64_t)bt[i];
       uint64_t offset;
       char* filepath = NULL;
-      char cmd[256], buffer[256], log_buffer[64];
+      char buffer[256], log_buffer[64];
       bool found_main = false;
-      FILE* pipe;
+      int p[2];
+      pid_t pid;
 
       if (calculate_offset(addr, &offset, &filepath))
       {
          continue;
       }
 
-      snprintf(cmd, sizeof(cmd), "addr2line -e %s -fC 0x%" PRIx64, filepath, offset);
-      free(filepath);
-      filepath = NULL;
-
-      pipe = popen(cmd, "r");
-      if (pipe == NULL)
+      if (pipe(p) < 0)
       {
-         pgagroal_log_debug("Failed to run command: %s, reason: %s", cmd, strerror(errno));
+         pgagroal_log_debug("Failed to create pipe: %s", strerror(errno));
+         free(filepath);
          continue;
       }
 
-      if (fgets(buffer, sizeof(buffer), pipe) == NULL)
+      pid = fork();
+      if (pid == -1)
       {
-         pgagroal_log_debug("Failed to read from command output: %s", strerror(errno));
-         pclose(pipe);
+         pgagroal_log_debug("Failed to fork: %s", strerror(errno));
+         close(p[0]);
+         close(p[1]);
+         free(filepath);
          continue;
       }
-      buffer[strlen(buffer) - 1] = '\0'; // Remove trailing newline
-      if (strcmp(buffer, "main") == 0)
+      else if (pid == 0)
       {
-         found_main = true;
-      }
-      snprintf(log_buffer, sizeof(log_buffer), "#%d  0x%" PRIx64 " in ", i - 1, addr);
-      log_str = pgagroal_append(log_str, log_buffer);
-      log_str = pgagroal_append(log_str, buffer);
-      log_str = pgagroal_append(log_str, "\n");
+         // Child process
+         char addr_hex[32];
 
-      if (fgets(buffer, sizeof(buffer), pipe) == NULL)
-      {
-         log_str = pgagroal_append(log_str, "\tat ???:??\n");
+         close(p[0]);
+         if (dup2(p[1], STDOUT_FILENO) == -1)
+         {
+            _exit(1);
+         }
+         close(p[1]);
+
+         memset(&addr_hex[0], 0, sizeof(addr_hex));
+         snprintf(&addr_hex[0], sizeof(addr_hex), "0x%" PRIx64, offset);
+
+         char* args[] = {"addr2line", "-e", filepath, "-fC", &addr_hex[0], NULL};
+         execvp("addr2line", args);
+         _exit(1);
       }
       else
       {
+         // Parent process
+         FILE* fp;
+
+         close(p[1]);
+         fp = fdopen(p[0], "r");
+         if (fp == NULL)
+         {
+            pgagroal_log_debug("Failed to open pipe for reading: %s", strerror(errno));
+            close(p[0]);
+            waitpid(pid, NULL, 0);
+            free(filepath);
+            continue;
+         }
+
+         if (fgets(buffer, sizeof(buffer), fp) == NULL)
+         {
+            pgagroal_log_debug("Failed to read from command output: %s", strerror(errno));
+            fclose(fp);
+            waitpid(pid, NULL, 0);
+            free(filepath);
+            continue;
+         }
+
          buffer[strlen(buffer) - 1] = '\0'; // Remove trailing newline
-         log_str = pgagroal_append(log_str, "\tat ");
+         if (strcmp(buffer, "main") == 0)
+         {
+            found_main = true;
+         }
+         snprintf(log_buffer, sizeof(log_buffer), "#%d  0x%" PRIx64 " in ", i - 1, addr);
+         log_str = pgagroal_append(log_str, log_buffer);
          log_str = pgagroal_append(log_str, buffer);
          log_str = pgagroal_append(log_str, "\n");
-      }
 
-      pclose(pipe);
-      if (found_main)
-      {
-         break;
+         if (fgets(buffer, sizeof(buffer), fp) == NULL)
+         {
+            log_str = pgagroal_append(log_str, "\tat ???:??\n");
+         }
+         else
+         {
+            buffer[strlen(buffer) - 1] = '\0'; // Remove trailing newline
+            log_str = pgagroal_append(log_str, "\tat ");
+            log_str = pgagroal_append(log_str, buffer);
+            log_str = pgagroal_append(log_str, "\n");
+         }
+
+         fclose(fp);
+         waitpid(pid, NULL, 0);
+         free(filepath);
+
+         if (found_main)
+         {
+            break;
+         }
       }
    }
 
