@@ -32,6 +32,7 @@
 #include <configuration.h>
 #include <logging.h>
 #include <management.h>
+#include <memory.h>
 #include <network.h>
 #include <pipeline.h>
 #include <security.h>
@@ -6527,6 +6528,7 @@ pgagroal_conf_get(SSL* ssl __attribute__((unused)), int client_fd, uint8_t compr
    int total_seconds;
 
    pgagroal_start_logging();
+   pgagroal_memory_init();
 
    start_time = time(NULL);
 
@@ -6560,6 +6562,7 @@ pgagroal_conf_get(SSL* ssl __attribute__((unused)), int client_fd, uint8_t compr
 
    pgagroal_disconnect(client_fd);
 
+   pgagroal_memory_destroy();
    pgagroal_stop_logging();
 
    exit(0);
@@ -6569,6 +6572,7 @@ error:
 
    pgagroal_disconnect(client_fd);
 
+   pgagroal_memory_destroy();
    pgagroal_stop_logging();
 
    exit(1);
@@ -6590,6 +6594,7 @@ pgagroal_conf_set(SSL* ssl __attribute__((unused)), int client_fd, uint8_t compr
    struct config_key_info key_info;
 
    pgagroal_start_logging();
+   pgagroal_memory_init();
    start_time = time(NULL);
 
    // Initialize output parameters
@@ -6696,6 +6701,7 @@ pgagroal_conf_set(SSL* ssl __attribute__((unused)), int client_fd, uint8_t compr
    free(elapsed);
 
    pgagroal_disconnect(client_fd);
+   pgagroal_memory_destroy();
    pgagroal_stop_logging();
 
    return;
@@ -6708,6 +6714,7 @@ error:
    }
 
    pgagroal_disconnect(client_fd);
+   pgagroal_memory_destroy();
    pgagroal_stop_logging();
 
    return;
