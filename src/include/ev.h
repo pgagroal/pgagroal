@@ -221,6 +221,7 @@ struct event_loop
    int kqueuefd; /**< File descriptor for the kqueue instance (used with kqueue backend). */
 #endif           /* HAVE_LINUX */
    void* buffer; /**< Pointer to a buffer used to read in bytes. */
+   pid_t pid;    /**< PID of the process that created the loop. */
 };
 
 /**

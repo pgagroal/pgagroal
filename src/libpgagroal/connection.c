@@ -461,6 +461,10 @@ read:
 
       goto error;
    }
+   else if (r == 0)
+   {
+      goto error;
+   }
    else if (r < (ssize_t)needs)
    {
       /* Sleep for 10ms */

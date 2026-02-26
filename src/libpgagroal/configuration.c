@@ -1372,14 +1372,14 @@ pgagroal_read_limit_configuration(void* shm, char* filename)
             {
                warnx("Invalid LIMIT entry /%s:%d)", config->limit_path, lineno);
             }
-
-            free(database);
-            free(username);
-
-            database = NULL;
-            username = NULL;
-            max_size = 0;
          }
+
+         free(database);
+         free(username);
+
+         database = NULL;
+         username = NULL;
+         max_size = 0;
       }
    }
 

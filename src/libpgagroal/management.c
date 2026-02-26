@@ -1511,6 +1511,10 @@ read:
 
       goto error;
    }
+   else if (r == 0)
+   {
+      goto error;
+   }
    else if (r < needs)
    {
       SLEEP(10000000L)

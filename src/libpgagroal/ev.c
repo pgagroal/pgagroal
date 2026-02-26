@@ -317,6 +317,8 @@ pgagroal_event_loop_init(void)
       goto error;
    }
 
+   loop->pid = getpid();
+
    return loop;
 
 error:
@@ -470,6 +472,11 @@ pgagroal_io_stop(struct io_watcher* watcher)
 
    assert(loop != NULL && watcher != NULL);
 
+   if (loop->pid != getpid())
+   {
+      return PGAGROAL_EVENT_RC_OK;
+   }
+
    for (i = 0; i < loop->events_nr; i++)
    {
       if (watcher == (struct io_watcher*)loop->events[i])
@@ -537,12 +544,17 @@ pgagroal_periodic_start(struct periodic_watcher* watcher)
    return periodic_start(watcher);
 }
 
-int __attribute__((unused))
+int
 pgagroal_periodic_stop(struct periodic_watcher* watcher)
 {
    int i;
 
    assert(loop != NULL && watcher != NULL);
+
+   if (loop->pid != getpid())
+   {
+      return PGAGROAL_EVENT_RC_OK;
+   }
 
    for (i = 0; i < loop->events_nr; i++)
    {
@@ -801,6 +813,11 @@ ev_io_uring_init(void)
 static int
 ev_io_uring_destroy(void)
 {
+   if (loop->pid != getpid())
+   {
+      return PGAGROAL_EVENT_RC_OK;
+   }
+
 #if EXPERIMENTAL_FEATURE_RECV_MULTISHOT_ENABLED
    if (loop->br.buf != NULL)
    {
@@ -857,6 +874,11 @@ ev_io_uring_io_stop(struct io_watcher* target)
    struct io_uring_sqe* sqe;
    struct io_uring_cqe* cqe;
    struct __kernel_timespec ts = {.tv_sec = 2, .tv_nsec = 0};
+
+   if (loop->pid != getpid())
+   {
+      return PGAGROAL_EVENT_RC_OK;
+   }
 
    /* When io_stop is called it may never return to a loop
     * where sqes are submitted. Flush these sqes so the get call
@@ -1035,6 +1057,8 @@ ev_io_uring_loop(void)
 static int
 ev_io_uring_fork(void)
 {
+   io_uring_queue_exit(&loop->ring_rcv);
+   io_uring_queue_exit(&loop->ring_snd);
    return 0;
 }
 
@@ -1439,6 +1463,11 @@ ev_epoll_io_stop(struct io_watcher* watcher)
    enum event_type type = watcher->event_watcher.type;
    int fd;
 
+   if (loop->pid != getpid())
+   {
+      return PGAGROAL_EVENT_RC_OK;
+   }
+
    switch (type)
    {
       case PGAGROAL_EVENT_TYPE_MAIN:
@@ -1723,6 +1752,11 @@ ev_kqueue_io_stop(struct io_watcher* watcher)
    struct kevent kev;
    int filter = EVFILT_READ;
 
+   if (loop->pid != getpid())
+   {
+      return PGAGROAL_EVENT_RC_OK;
+   }
+
    EV_SET(&kev, watcher->fds.__fds[0], filter, EV_DELETE, 0, 0, NULL);
    if (kevent(loop->kqueuefd, &kev, 1, NULL, 0, NULL) == -1)
    {
@@ -1852,6 +1886,11 @@ pgagroal_signal_stop(struct signal_watcher* target)
 {
    int rc = PGAGROAL_EVENT_RC_OK;
    sigset_t tmp;
+
+   if (loop && loop->pid != getpid())
+   {
+      return PGAGROAL_EVENT_RC_OK;
+   }
 
 #ifdef DEBUG
    if (!target)
