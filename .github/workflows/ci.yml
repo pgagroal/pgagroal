@@ -38,7 +38,7 @@ jobs:
 
   build-linux:
     needs: [format-check]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       matrix:
@@ -50,7 +50,9 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Update system
-        run: sudo apt update
+        run: |
+          sudo apt update
+          sudo apt install -y linux-libc-dev
 
       - name: Install Dependencies
         run: |

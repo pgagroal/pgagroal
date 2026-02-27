@@ -74,40 +74,36 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     message(FATAL_ERROR "liburing was not found")
   endif()
 
-  set(IO_URING_CONSTANTS_TEST "
-#include <liburing.h>
-#ifndef IORING_SETUP_CQSIZE
-#error \"IORING_SETUP_CQSIZE missing\"
-#endif
-#ifndef IORING_SETUP_DEFER_TASKRUN
-#error \"IORING_SETUP_DEFER_TASKRUN missing\"
-#endif
-#ifndef IORING_SETUP_SINGLE_ISSUER
-#error \"IORING_SETUP_SINGLE_ISSUER missing\"
-#endif
-#ifndef IORING_FEAT_FAST_POLL
-#error \"IORING_FEAT_FAST_POLL missing\"
-#endif
-#ifndef IORING_SETUP_NO_MMAP
-#error \"IORING_SETUP_NO_MMAP missing\"
-#endif
-#ifndef IORING_TIMEOUT_MULTISHOT
-#error \"IORING_TIMEOUT_MULTISHOT missing\"
-#endif
-#ifndef IORING_SQ_CQ_OVERFLOW
-#error \"IORING_SQ_CQ_OVERFLOW missing\"
-#endif
-#ifndef IORING_CQE_BUFFER_SHIFT
-#error \"IORING_CQE_BUFFER_SHIFT missing\"
-#endif
-#ifndef IORING_CQE_F_MORE
-#error \"IORING_CQE_F_MORE missing\"
-#endif
-int main(void) { return 0; }
-")
-
   set(CMAKE_REQUIRED_INCLUDES "${LIBURING_INCLUDE_DIRS}")
-  check_c_source_compiles("${IO_URING_CONSTANTS_TEST}" HAVE_IO_URING_CONSTANTS)
+  set(HAVE_IO_URING_CONSTANTS ON)
+  set(MISSING_IO_URING_CONSTANTS "")
+  foreach(constant
+          IORING_SETUP_CQSIZE
+          IORING_SETUP_DEFER_TASKRUN
+          IORING_SETUP_SINGLE_ISSUER
+          IORING_FEAT_FAST_POLL
+          IORING_SETUP_NO_MMAP
+          IORING_TIMEOUT_MULTISHOT
+          IORING_SQ_CQ_OVERFLOW
+          IORING_CQE_BUFFER_SHIFT
+          IORING_CQE_F_MORE)
+    set(IO_URING_CONSTANTS_TEST "
+#include <liburing.h>
+int main(void) {
+  (void)${constant};
+  return 0;
+}
+")
+    set(const_var "HAVE_${constant}")
+    check_c_source_compiles("${IO_URING_CONSTANTS_TEST}" ${const_var})
+    if(${const_var})
+      message(STATUS "io_uring constant check: ${constant}=usable")
+    else()
+      message(STATUS "io_uring constant check: ${constant}=not-usable")
+      set(HAVE_IO_URING_CONSTANTS OFF)
+      list(APPEND MISSING_IO_URING_CONSTANTS "${constant}")
+    endif()
+  endforeach()
   set(CMAKE_REQUIRED_INCLUDES "")
 
   if (HAVE_IO_URING_CONSTANTS)
@@ -116,6 +112,7 @@ int main(void) { return 0; }
     set(PGAGROAL_IO_URING_LIBRARIES ${LIBURING_LIBRARY})
   else()
     message(STATUS "io_uring constants missing; disabling io_uring backend")
+    message(STATUS "Missing io_uring constants: ${MISSING_IO_URING_CONSTANTS}")
   endif()
 
   pgagroal_require_shared_libs(
