@@ -3721,19 +3721,34 @@ static int
 sasl_prep(char* password, char** password_prep)
 {
    size_t char_count;
+   size_t password_len;
 
    if (!password || !password_prep)
    {
       goto error;
    }
+
+   password_len = strlen(password);
+
+   // Check for prohibited ASCII control characters per RFC 4013 (SASLprep)
+   // Prohibited: 0x00-0x1F (C0 controls) and 0x7F (DEL)
+   for (size_t i = 0; i < password_len; i++)
+   {
+      unsigned char c = (unsigned char)password[i];
+      if (c <= 0x1F || c == 0x7F)
+      {
+         goto error;
+      }
+   }
+
    // Validate password is valid UTF-8
-   if (!pgagroal_utf8_valid((const unsigned char*)password, strlen(password)))
+   if (!pgagroal_utf8_valid((const unsigned char*)password, password_len))
    {
       goto error;
    }
 
    // Validate the character count in the password
-   char_count = pgagroal_utf8_char_length((const unsigned char*)password, strlen(password));
+   char_count = pgagroal_utf8_char_length((const unsigned char*)password, password_len);
    if (char_count == (size_t)-1 || char_count > MAX_PASSWORD_CHARS)
    {
       goto error;
