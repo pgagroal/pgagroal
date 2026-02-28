@@ -41,6 +41,10 @@ All users defined in the frontend authentication must be defined in the user vau
 
 Frontend users (`-F`) requires a user vault (`-u`) to be defined.
 
+#### Vault Encryption
+
+pgagroal uses AES-256-CBC encryption for storing user credentials in vault files. Key derivation uses PKCS5_PBKDF2_HMAC with a SHA-256 hash, a cryptographically random 16-byte salt, and a high iteration count to protect against brute-force attacks.
+
 ### Authentication Query
 
 Authentication query will use the below defined function to query the database
