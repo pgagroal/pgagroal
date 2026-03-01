@@ -29,12 +29,14 @@
 /* pgagroal */
 #include <security.h>
 #include <pgagroal.h>
+#include <art.h>
 #include <logging.h>
 #include <memory.h>
 #include <message.h>
 #include <network.h>
 #include <prometheus.h>
 #include <utils.h>
+#include <value.h>
 #include <shmem.h>
 
 /* system */
@@ -77,6 +79,45 @@
 
 #define CERT_EXPIRING_THRESHOLD_DAYS 30
 
+/**
+ * ART-based metric value with timestamp
+ */
+typedef struct prometheus_metric_value
+{
+   time_t timestamp;
+   char* value;
+   char* help;
+   char* type;
+   int sort_type;
+} prometheus_metric_value_t;
+
+/**
+ * ART-based metrics container for each category
+ */
+typedef struct prometheus_metrics_container
+{
+   struct art* general_metrics;
+   struct art* connection_metrics;
+   struct art* limit_metrics;
+   struct art* session_metrics;
+   struct art* pool_metrics;
+   struct art* auth_metrics;
+   struct art* client_metrics;
+   struct art* internal_metrics;
+   struct art* awaiting_metrics;
+   struct art* os_metrics;
+   struct art* certificate_metrics_tree;
+} prometheus_metrics_container_t;
+
+static void prometheus_metric_value_destroy_cb(uintptr_t data);
+static char* prometheus_metric_value_string_cb(uintptr_t data, int32_t format, char* tag, int indent);
+static int create_metrics_container(prometheus_metrics_container_t** container);
+static void destroy_metrics_container(prometheus_metrics_container_t* container);
+static int add_metric_to_art(struct art* art_tree, char* key, char* value,
+                             char* help, char* type, int sort_type);
+static void output_art_metrics(SSL* client_ssl, int client_fd, struct art* art_tree);
+static void output_all_metrics(SSL* client_ssl, int client_fd, prometheus_metrics_container_t* container);
+
 static int resolve_page(struct message* msg);
 static int badrequest_page(SSL* client_ssl, int client_fd);
 static int unknown_page(SSL* client_ssl, int client_fd);
@@ -87,20 +128,20 @@ static int metrics_vault_page(SSL* client_ssl, int client_fd);
 static int bad_request(SSL* client_ssl, int client_fd);
 static int redirect_page(SSL* client_ssl, int client_fd, char* path);
 
-static void general_information(SSL* client_ssl, int client_fd);
-static void general_vault_information(SSL* client_ssl, int client_fd);
-static void connection_information(SSL* client_ssl, int client_fd);
-static void limit_information(SSL* client_ssl, int client_fd);
-static void session_information(SSL* client_ssl, int client_fd);
-static void pool_information(SSL* client_ssl, int client_fd);
-static void auth_information(SSL* client_ssl, int client_fd);
-static void client_information(SSL* client_ssl, int client_fd);
-static void internal_information(SSL* client_ssl, int client_fd);
-static void internal_vault_information(SSL* client_ssl, int client_fd);
-static void connection_awaiting_information(SSL* client_ssl, int client_fd);
-static void write_os_kernel_version(SSL* client_ssl, int client_fd);
+static void general_information(prometheus_metrics_container_t* container);
+static void general_vault_information(prometheus_metrics_container_t* container);
+static void connection_information(prometheus_metrics_container_t* container);
+static void limit_information(prometheus_metrics_container_t* container);
+static void session_information(prometheus_metrics_container_t* container);
+static void pool_information(prometheus_metrics_container_t* container);
+static void auth_information(prometheus_metrics_container_t* container);
+static void client_information(prometheus_metrics_container_t* container);
+static void internal_information(prometheus_metrics_container_t* container);
+static void internal_vault_information(prometheus_metrics_container_t* container);
+static void connection_awaiting_information(prometheus_metrics_container_t* container);
+static void write_os_kernel_version(prometheus_metrics_container_t* container);
 static int parse_certificate_file(const char* cert_path, struct certificate_info* cert_info);
-static void certificate_information(SSL* client_ssl, int client_fd);
+static void certificate_information(prometheus_metrics_container_t* container);
 
 static int send_chunk(SSL* cilent_ssl, int client_fd, char* data);
 
@@ -2028,17 +2069,33 @@ retry_cache_locking:
          free(data);
          data = NULL;
 
-         general_information(client_ssl, client_fd);
-         connection_information(client_ssl, client_fd);
-         limit_information(client_ssl, client_fd);
-         session_information(client_ssl, client_fd);
-         pool_information(client_ssl, client_fd);
-         auth_information(client_ssl, client_fd);
-         client_information(client_ssl, client_fd);
-         internal_information(client_ssl, client_fd);
-         connection_awaiting_information(client_ssl, client_fd);
-         write_os_kernel_version(client_ssl, client_fd);
-         certificate_information(client_ssl, client_fd);
+         /* ART-based metrics container */
+         prometheus_metrics_container_t* container = NULL;
+         if (create_metrics_container(&container))
+         {
+            pgagroal_log_error("Failed to create metrics container");
+            metrics_cache_invalidate();
+            atomic_store(&cache->lock, STATE_FREE);
+            goto error;
+         }
+
+         general_information(container);
+         connection_information(container);
+         limit_information(container);
+         session_information(container);
+         pool_information(container);
+         auth_information(container);
+         client_information(container);
+         internal_information(container);
+         connection_awaiting_information(container);
+         write_os_kernel_version(container);
+         certificate_information(container);
+
+         /* Output ART metrics */
+         output_all_metrics(client_ssl, client_fd, container);
+
+         /* Destroy container */
+         destroy_metrics_container(container);
 
          /* Footer */
          data = pgagroal_append(data, "0\r\n\r\n");
@@ -2146,8 +2203,24 @@ retry_cache_locking:
          free(data);
          data = NULL;
 
-         general_vault_information(client_ssl, client_fd);
-         internal_vault_information(client_ssl, client_fd);
+         /* ART-based metrics container */
+         prometheus_metrics_container_t* container = NULL;
+         if (create_metrics_container(&container))
+         {
+            pgagroal_log_error("Failed to create metrics container");
+            metrics_cache_invalidate();
+            atomic_store(&cache->lock, STATE_FREE);
+            goto error;
+         }
+
+         general_vault_information(container);
+         internal_vault_information(container);
+
+         /* Output ART metrics */
+         output_all_metrics(client_ssl, client_fd, container);
+
+         /* Destroy container */
+         destroy_metrics_container(container);
 
          /* Footer */
          data = pgagroal_append(data, "0\r\n\r\n");
@@ -2222,7 +2295,7 @@ bad_request(SSL* client_ssl, int client_fd)
 }
 
 static void
-general_information(SSL* client_ssl, int client_fd)
+general_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    struct main_configuration* config;
@@ -2243,13 +2316,19 @@ general_information(SSL* client_ssl, int client_fd)
    {
       data = pgagroal_append(data, "1");
    }
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_state", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_pipeline_mode The mode of pipeline\n");
    data = pgagroal_append(data, "#TYPE pgagroal_pipeline_mode gauge\n");
    data = pgagroal_append(data, "pgagroal_pipeline_mode ");
    data = pgagroal_append_int(data, config->pipeline);
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_pipeline_mode", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_server_error The number of errors for servers\n");
    data = pgagroal_append(data, "#TYPE pgagroal_server_error counter\n");
@@ -2292,46 +2371,75 @@ general_information(SSL* client_ssl, int client_fd)
       data = pgagroal_append_ulong(data, atomic_load(&prometheus->server_error[i]));
       data = pgagroal_append(data, "\n");
    }
-   data = pgagroal_append(data, "\n");
+   if (data != NULL)
+   {
+      add_metric_to_art(container->general_metrics, "pgagroal_server_error", data, NULL, NULL, 0);
+      free(data);
+      data = NULL;
+   }
 
    data = pgagroal_append(data, "#HELP pgagroal_logging_info The number of INFO logging statements\n");
    data = pgagroal_append(data, "#TYPE pgagroal_logging_info gauge\n");
    data = pgagroal_append(data, "pgagroal_logging_info ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_info));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_logging_info", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
    data = pgagroal_append(data, "#HELP pgagroal_logging_warn The number of WARN logging statements\n");
    data = pgagroal_append(data, "#TYPE pgagroal_logging_warn gauge\n");
    data = pgagroal_append(data, "pgagroal_logging_warn ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_warn));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_logging_warn", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
    data = pgagroal_append(data, "#HELP pgagroal_logging_error The number of ERROR logging statements\n");
    data = pgagroal_append(data, "#TYPE pgagroal_logging_error gauge\n");
    data = pgagroal_append(data, "pgagroal_logging_error ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_error));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_logging_error", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
    data = pgagroal_append(data, "#HELP pgagroal_logging_fatal The number of FATAL logging statements\n");
    data = pgagroal_append(data, "#TYPE pgagroal_logging_fatal gauge\n");
    data = pgagroal_append(data, "pgagroal_logging_fatal ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_fatal));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_logging_fatal", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_failed_servers The number of failed servers\n");
    data = pgagroal_append(data, "#TYPE pgagroal_failed_servers gauge\n");
    data = pgagroal_append(data, "pgagroal_failed_servers ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->failed_servers));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_failed_servers", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_wait_time The waiting time of clients\n");
    data = pgagroal_append(data, "#TYPE pgagroal_wait_time gauge\n");
    data = pgagroal_append(data, "pgagroal_wait_time ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->client_wait_time));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_wait_time", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_query_count The number of queries\n");
    data = pgagroal_append(data, "#TYPE pgagroal_query_count counter\n");
    data = pgagroal_append(data, "pgagroal_query_count ");
    data = pgagroal_append_ullong(data, atomic_load(&prometheus->query_count));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_query_count", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection_query_count The number of queries per connection\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection_query_count counter\n");
@@ -2358,25 +2466,25 @@ general_information(SSL* client_ssl, int client_fd)
       data = pgagroal_append_ullong(data, atomic_load(&prometheus->prometheus_connections[i].query_count));
       data = pgagroal_append(data, "\n");
    }
-   data = pgagroal_append(data, "\n");
+   if (data != NULL)
+   {
+      add_metric_to_art(container->general_metrics, "pgagroal_connection_query_count", data, NULL, NULL, 0);
+      free(data);
+      data = NULL;
+   }
 
    data = pgagroal_append(data, "#HELP pgagroal_tx_count The number of transactions\n");
    data = pgagroal_append(data, "#TYPE pgagroal_tx_count counter\n");
    data = pgagroal_append(data, "pgagroal_tx_count ");
    data = pgagroal_append_ullong(data, atomic_load(&prometheus->tx_count));
-   data = pgagroal_append(data, "\n\n");
-
-   if (data != NULL)
-   {
-      send_chunk(client_ssl, client_fd, data);
-      metrics_cache_append(data);
-      free(data);
-      data = NULL;
-   }
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_tx_count", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 }
 
 static void
-general_vault_information(SSL* client_ssl, int client_fd)
+general_vault_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    struct vault_prometheus* prometheus;
@@ -2387,34 +2495,41 @@ general_vault_information(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "#TYPE pgagroal_vault_logging_info gauge\n");
    data = pgagroal_append(data, "pgagroal_vault_logging_info ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_info));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_vault_logging_info", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
    data = pgagroal_append(data, "#HELP pgagroal_vault_logging_warn The number of WARN logging statements\n");
    data = pgagroal_append(data, "#TYPE pgagroal_vault_logging_warn gauge\n");
    data = pgagroal_append(data, "pgagroal_vault_logging_warn ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_warn));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_vault_logging_warn", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
    data = pgagroal_append(data, "#HELP pgagroal_vault_logging_error The number of ERROR logging statements\n");
    data = pgagroal_append(data, "#TYPE pgagroal_vault_logging_error gauge\n");
    data = pgagroal_append(data, "pgagroal_vault_logging_error ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_error));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_vault_logging_error", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
    data = pgagroal_append(data, "#HELP pgagroal_vault_logging_fatal The number of FATAL logging statements\n");
    data = pgagroal_append(data, "#TYPE pgagroal_vault_logging_fatal gauge\n");
    data = pgagroal_append(data, "pgagroal_vault_logging_fatal ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_fatal));
-   data = pgagroal_append(data, "\n\n");
-
-   if (data != NULL)
-   {
-      send_chunk(client_ssl, client_fd, data);
-      metrics_cache_append(data);
-      free(data);
-      data = NULL;
-   }
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_vault_logging_fatal", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 }
 
 static void
-connection_information(SSL* client_ssl, int client_fd)
+connection_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    int active;
@@ -2453,19 +2568,28 @@ connection_information(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "#TYPE pgagroal_active_connections gauge\n");
    data = pgagroal_append(data, "pgagroal_active_connections ");
    data = pgagroal_append_int(data, active);
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->connection_metrics, "pgagroal_active_connections", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_total_connections The total number of connections\n");
    data = pgagroal_append(data, "#TYPE pgagroal_total_connections gauge\n");
    data = pgagroal_append(data, "pgagroal_total_connections ");
    data = pgagroal_append_int(data, total);
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->connection_metrics, "pgagroal_total_connections", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_max_connections The maximum number of connections\n");
    data = pgagroal_append(data, "#TYPE pgagroal_max_connections counter\n");
    data = pgagroal_append(data, "pgagroal_max_connections ");
    data = pgagroal_append_int(data, config->max_connections);
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->connection_metrics, "pgagroal_max_connections", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection The connection information\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection gauge\n");
@@ -2552,29 +2676,18 @@ connection_information(SSL* client_ssl, int client_fd)
       }
 
       data = pgagroal_append(data, "\n");
-
-      if (strlen(data) > CHUNK_SIZE)
-      {
-         send_chunk(client_ssl, client_fd, data);
-         metrics_cache_append(data);
-         free(data);
-         data = NULL;
-      }
    }
-
-   data = pgagroal_append(data, "\n");
 
    if (data != NULL)
    {
-      send_chunk(client_ssl, client_fd, data);
-      metrics_cache_append(data);
+      add_metric_to_art(container->connection_metrics, "pgagroal_connection", data, NULL, NULL, 0);
       free(data);
       data = NULL;
    }
 }
 
 static void
-limit_information(SSL* client_ssl, int client_fd)
+limit_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    struct main_configuration* config;
@@ -2642,22 +2755,11 @@ limit_information(SSL* client_ssl, int client_fd)
          data = pgagroal_append(data, "type=\"active\"} ");
          data = pgagroal_append_int(data, config->limits[i].active_connections);
          data = pgagroal_append(data, "\n");
-
-         if (strlen(data) > CHUNK_SIZE)
-         {
-            send_chunk(client_ssl, client_fd, data);
-            metrics_cache_append(data);
-            free(data);
-            data = NULL;
-         }
       }
-
-      data = pgagroal_append(data, "\n");
 
       if (data != NULL)
       {
-         send_chunk(client_ssl, client_fd, data);
-         metrics_cache_append(data);
+         add_metric_to_art(container->limit_metrics, "pgagroal_limit", data, NULL, NULL, 0);
          free(data);
          data = NULL;
       }
@@ -2665,7 +2767,7 @@ limit_information(SSL* client_ssl, int client_fd)
 }
 
 static void
-session_information(SSL* client_ssl, int client_fd)
+session_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    unsigned long counter;
@@ -2774,16 +2876,15 @@ session_information(SSL* client_ssl, int client_fd)
 
    data = pgagroal_append(data, "pgagroal_session_time_seconds_count ");
    data = pgagroal_append_ulong(data, counter);
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
 
-   send_chunk(client_ssl, client_fd, data);
-   metrics_cache_append(data);
+   add_metric_to_art(container->session_metrics, "pgagroal_session_time_seconds", data, NULL, NULL, 0);
    free(data);
    data = NULL;
 }
 
 static void
-write_os_kernel_version(SSL* client_ssl, int client_fd)
+write_os_kernel_version(prometheus_metrics_container_t* container)
 {
    char* os = NULL;
    int major = 0, minor = 0, patch = 0;
@@ -2810,8 +2911,7 @@ write_os_kernel_version(SSL* client_ssl, int client_fd)
    data = pgagroal_append_int(data, patch);
    data = pgagroal_append(data, "\"} 1\n");
 
-   send_chunk(client_ssl, client_fd, data);
-   metrics_cache_append(data);
+   add_metric_to_art(container->os_metrics, "pgagroal_os_info", data, NULL, NULL, 0);
 
    /* Clean up */
    free(data);
@@ -2826,7 +2926,7 @@ error:
 }
 
 static void
-pool_information(SSL* client_ssl, int client_fd)
+pool_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    struct main_prometheus* prometheus;
@@ -2837,76 +2937,104 @@ pool_information(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "#TYPE pgagroal_connection_error counter\n");
    data = pgagroal_append(data, "pgagroal_connection_error ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_error));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_connection_error", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection_kill Number of connection kills\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection_kill counter\n");
    data = pgagroal_append(data, "pgagroal_connection_kill ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_kill));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_connection_kill", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection_remove Number of connection removes\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection_remove counter\n");
    data = pgagroal_append(data, "pgagroal_connection_remove ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_remove));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_connection_remove", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection_timeout Number of connection time outs\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection_timeout counter\n");
    data = pgagroal_append(data, "pgagroal_connection_timeout ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_timeout));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_connection_timeout", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection_return Number of connection returns\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection_return counter\n");
    data = pgagroal_append(data, "pgagroal_connection_return ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_return));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_connection_return", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection_invalid Number of connection invalids\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection_invalid counter\n");
    data = pgagroal_append(data, "pgagroal_connection_invalid ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_invalid));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_connection_invalid", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection_get Number of connection gets\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection_get counter\n");
    data = pgagroal_append(data, "pgagroal_connection_get ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_get));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_connection_get", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection_idletimeout Number of connection idle timeouts\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection_idletimeout counter\n");
    data = pgagroal_append(data, "pgagroal_connection_idletimeout ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_idletimeout));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_connection_idletimeout", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection_max_connection_age Number of connection max age timeouts\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection_max_connection_age counter\n");
    data = pgagroal_append(data, "pgagroal_connection_max_connection_age ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_max_connection_age));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_connection_max_connection_age", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection_flush Number of connection flushes\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection_flush counter\n");
    data = pgagroal_append(data, "pgagroal_connection_flush ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_flush));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_connection_flush", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_connection_success Number of connection successes\n");
    data = pgagroal_append(data, "#TYPE pgagroal_connection_success counter\n");
    data = pgagroal_append(data, "pgagroal_connection_success ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_success));
-   data = pgagroal_append(data, "\n\n");
-
-   send_chunk(client_ssl, client_fd, data);
-   metrics_cache_append(data);
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_connection_success", data, NULL, NULL, 0);
    free(data);
    data = NULL;
 }
 
 static void
-auth_information(SSL* client_ssl, int client_fd)
+auth_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    struct main_prometheus* prometheus;
@@ -2917,28 +3045,32 @@ auth_information(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "#TYPE pgagroal_auth_user_success counter\n");
    data = pgagroal_append(data, "pgagroal_auth_user_success ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->auth_user_success));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->auth_metrics, "pgagroal_auth_user_success", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_auth_user_bad_password Number of bad passwords during user authentication\n");
    data = pgagroal_append(data, "#TYPE pgagroal_auth_user_bad_password counter\n");
    data = pgagroal_append(data, "pgagroal_auth_user_bad_password ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->auth_user_bad_password));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->auth_metrics, "pgagroal_auth_user_bad_password", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_auth_user_error Number of errors during user authentication\n");
    data = pgagroal_append(data, "#TYPE pgagroal_auth_user_error counter\n");
    data = pgagroal_append(data, "pgagroal_auth_user_error ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->auth_user_error));
-   data = pgagroal_append(data, "\n\n");
-
-   send_chunk(client_ssl, client_fd, data);
-   metrics_cache_append(data);
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->auth_metrics, "pgagroal_auth_user_error", data, NULL, NULL, 0);
    free(data);
    data = NULL;
 }
 
 static void
-client_information(SSL* client_ssl, int client_fd)
+client_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    struct main_prometheus* prometheus;
@@ -2949,22 +3081,23 @@ client_information(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "#TYPE pgagroal_client_wait gauge\n");
    data = pgagroal_append(data, "pgagroal_client_wait ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->client_wait));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->client_metrics, "pgagroal_client_wait", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_client_active Number of active clients\n");
    data = pgagroal_append(data, "#TYPE pgagroal_client_active gauge\n");
    data = pgagroal_append(data, "pgagroal_client_active ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->client_active));
-   data = pgagroal_append(data, "\n\n");
-
-   send_chunk(client_ssl, client_fd, data);
-   metrics_cache_append(data);
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->client_metrics, "pgagroal_client_active", data, NULL, NULL, 0);
    free(data);
    data = NULL;
 }
 
 static void
-internal_information(SSL* client_ssl, int client_fd)
+internal_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    struct main_prometheus* prometheus;
@@ -2975,34 +3108,41 @@ internal_information(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "#TYPE pgagroal_network_sent gauge\n");
    data = pgagroal_append(data, "pgagroal_network_sent ");
    data = pgagroal_append_ullong(data, atomic_load(&prometheus->network_sent));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->internal_metrics, "pgagroal_network_sent", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_network_received Bytes received from servers\n");
    data = pgagroal_append(data, "#TYPE pgagroal_network_received gauge\n");
    data = pgagroal_append(data, "pgagroal_network_received ");
    data = pgagroal_append_ullong(data, atomic_load(&prometheus->network_received));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->internal_metrics, "pgagroal_network_received", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_client_sockets Number of sockets the client used\n");
    data = pgagroal_append(data, "#TYPE pgagroal_client_sockets gauge\n");
    data = pgagroal_append(data, "pgagroal_client_sockets ");
    data = pgagroal_append_int(data, atomic_load(&prometheus->prometheus_base.client_sockets));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->internal_metrics, "pgagroal_client_sockets", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_self_sockets Number of sockets used by pgagroal itself\n");
    data = pgagroal_append(data, "#TYPE pgagroal_self_sockets gauge\n");
    data = pgagroal_append(data, "pgagroal_self_sockets ");
    data = pgagroal_append_int(data, atomic_load(&prometheus->prometheus_base.self_sockets));
-   data = pgagroal_append(data, "\n\n");
-
-   send_chunk(client_ssl, client_fd, data);
-   metrics_cache_append(data);
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->internal_metrics, "pgagroal_self_sockets", data, NULL, NULL, 0);
    free(data);
    data = NULL;
 }
 
 static void
-internal_vault_information(SSL* client_ssl, int client_fd)
+internal_vault_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    struct vault_prometheus* prometheus;
@@ -3013,16 +3153,17 @@ internal_vault_information(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "#TYPE pgagroal_vault_client_sockets gauge\n");
    data = pgagroal_append(data, "pgagroal_client_sockets ");
    data = pgagroal_append_int(data, atomic_load(&prometheus->prometheus_base.client_sockets));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->internal_metrics, "pgagroal_vault_client_sockets", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_vault_self_sockets Number of sockets used by pgagroal-vault itself\n");
    data = pgagroal_append(data, "#TYPE pgagroal_vault_self_sockets gauge\n");
    data = pgagroal_append(data, "pgagroal_vault_self_sockets ");
    data = pgagroal_append_int(data, atomic_load(&prometheus->prometheus_base.self_sockets));
-   data = pgagroal_append(data, "\n\n");
-
-   send_chunk(client_ssl, client_fd, data);
-   metrics_cache_append(data);
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->internal_metrics, "pgagroal_vault_self_sockets", data, NULL, NULL, 0);
    free(data);
    data = NULL;
 }
@@ -3033,7 +3174,7 @@ internal_vault_information(SSL* client_ssl, int client_fd)
  * and also one line per limit if there are limits.
  */
 static void
-connection_awaiting_information(SSL* client_ssl, int client_fd)
+connection_awaiting_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    struct main_configuration* config;
@@ -3048,6 +3189,9 @@ connection_awaiting_information(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "pgagroal_connection_awaiting ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connections_awaiting_total));
    data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->awaiting_metrics, "pgagroal_connection_awaiting", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    if (config->number_of_limits > 0)
    {
@@ -3067,24 +3211,14 @@ connection_awaiting_information(SSL* client_ssl, int client_fd)
 
          data = pgagroal_append_ulong(data, atomic_load(&prometheus->connections_awaiting[i]));
          data = pgagroal_append(data, "\n");
-
-         if (strlen(data) > CHUNK_SIZE)
-         {
-            send_chunk(client_ssl, client_fd, data);
-            metrics_cache_append(data);
-            free(data);
-            data = NULL;
-         }
       }
-   }
 
-   if (data != NULL)
-   {
-      data = pgagroal_append(data, "\n");
-      send_chunk(client_ssl, client_fd, data);
-      metrics_cache_append(data);
-      free(data);
-      data = NULL;
+      if (data != NULL)
+      {
+         add_metric_to_art(container->awaiting_metrics, "pgagroal_limit_awaiting", data, NULL, NULL, 0);
+         free(data);
+         data = NULL;
+      }
    }
 }
 
@@ -3853,7 +3987,7 @@ pgagroal_update_main_certificate_metrics(struct main_configuration* config)
 }
 
 static void
-certificate_information(SSL* client_ssl, int client_fd)
+certificate_information(prometheus_metrics_container_t* container)
 {
    char* data = NULL;
    struct main_prometheus* prometheus;
@@ -3863,47 +3997,68 @@ certificate_information(SSL* client_ssl, int client_fd)
    cert_metrics = &prometheus->cert_metrics;
 
    // Summary metrics - always show these as they represent the total state
-   data = pgagroal_append(data, "\n#HELP pgagroal_certificates_total Total number of TLS certificates configured\n");
+   data = pgagroal_append(data, "#HELP pgagroal_certificates_total Total number of TLS certificates configured\n");
    data = pgagroal_append(data, "#TYPE pgagroal_certificates_total gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_total ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->configured));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->certificate_metrics_tree, "pgagroal_certificates_total", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_certificates_accessible Number of accessible TLS certificates\n");
    data = pgagroal_append(data, "#TYPE pgagroal_certificates_accessible gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_accessible ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->total));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->certificate_metrics_tree, "pgagroal_certificates_accessible", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_certificates_valid Number of valid TLS certificates\n");
    data = pgagroal_append(data, "#TYPE pgagroal_certificates_valid gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_valid ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->valid));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->certificate_metrics_tree, "pgagroal_certificates_valid", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_certificates_expired Number of expired TLS certificates\n");
    data = pgagroal_append(data, "#TYPE pgagroal_certificates_expired gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_expired ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->expired));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->certificate_metrics_tree, "pgagroal_certificates_expired", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_certificates_expiring_soon Number of TLS certificates expiring within 30 days\n");
    data = pgagroal_append(data, "#TYPE pgagroal_certificates_expiring_soon gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_expiring_soon ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->expiring_soon));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->certificate_metrics_tree, "pgagroal_certificates_expiring_soon", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_certificates_inaccessible Number of inaccessible TLS certificate files\n");
    data = pgagroal_append(data, "#TYPE pgagroal_certificates_inaccessible gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_inaccessible ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->inaccessible));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->certificate_metrics_tree, "pgagroal_certificates_inaccessible", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    data = pgagroal_append(data, "#HELP pgagroal_certificates_parse_errors Number of TLS certificates with parsing errors\n");
    data = pgagroal_append(data, "#TYPE pgagroal_certificates_parse_errors gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_parse_errors ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->parse_errors));
-   data = pgagroal_append(data, "\n\n");
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->certificate_metrics_tree, "pgagroal_certificates_parse_errors", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
 
    // Individual certificate metrics
    int cert_count = atomic_load(&cert_metrics->cert_count);
@@ -3946,7 +4101,9 @@ certificate_information(SSL* client_ssl, int client_fd)
          }
          data = pgagroal_append(data, "\n");
       }
-      data = pgagroal_append(data, "\n");
+      add_metric_to_art(container->certificate_metrics_tree, "pgagroal_tls_certificate_status", data, NULL, NULL, 0);
+      free(data);
+      data = NULL;
    }
 
    // Only show detailed metrics if we have at least one valid certificate
@@ -3967,7 +4124,12 @@ certificate_information(SSL* client_ssl, int client_fd)
             data = pgagroal_append(data, "\n");
          }
       }
-      data = pgagroal_append(data, "\n");
+      if (data != NULL)
+      {
+         add_metric_to_art(container->certificate_metrics_tree, "pgagroal_tls_certificate_expiration_seconds", data, NULL, NULL, 0);
+         free(data);
+         data = NULL;
+      }
 
       // Key size bits
       data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_key_size_bits TLS certificate key size in bits\n");
@@ -3984,7 +4146,12 @@ certificate_information(SSL* client_ssl, int client_fd)
             data = pgagroal_append(data, "\n");
          }
       }
-      data = pgagroal_append(data, "\n");
+      if (data != NULL)
+      {
+         add_metric_to_art(container->certificate_metrics_tree, "pgagroal_tls_certificate_key_size_bits", data, NULL, NULL, 0);
+         free(data);
+         data = NULL;
+      }
 
       // Is CA
       data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_is_ca Whether certificate is a CA certificate\n");
@@ -4001,7 +4168,12 @@ certificate_information(SSL* client_ssl, int client_fd)
             data = pgagroal_append(data, "\n");
          }
       }
-      data = pgagroal_append(data, "\n");
+      if (data != NULL)
+      {
+         add_metric_to_art(container->certificate_metrics_tree, "pgagroal_tls_certificate_is_ca", data, NULL, NULL, 0);
+         free(data);
+         data = NULL;
+      }
 
       // Key type
       data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_key_type TLS certificate key type\n");
@@ -4018,7 +4190,12 @@ certificate_information(SSL* client_ssl, int client_fd)
             data = pgagroal_append(data, "\n");
          }
       }
-      data = pgagroal_append(data, "\n");
+      if (data != NULL)
+      {
+         add_metric_to_art(container->certificate_metrics_tree, "pgagroal_tls_certificate_key_type", data, NULL, NULL, 0);
+         free(data);
+         data = NULL;
+      }
 
       // Signature algorithm
       data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_signature_algorithm TLS certificate signature algorithm\n");
@@ -4035,7 +4212,12 @@ certificate_information(SSL* client_ssl, int client_fd)
             data = pgagroal_append(data, "\n");
          }
       }
-      data = pgagroal_append(data, "\n");
+      if (data != NULL)
+      {
+         add_metric_to_art(container->certificate_metrics_tree, "pgagroal_tls_certificate_signature_algorithm", data, NULL, NULL, 0);
+         free(data);
+         data = NULL;
+      }
 
       // Certificate info metric with all metadata (at the end)
       data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_info TLS certificate metadata\n");
@@ -4067,11 +4249,206 @@ certificate_information(SSL* client_ssl, int client_fd)
             data = pgagroal_append(data, "\"} 1\n");
          }
       }
-      data = pgagroal_append(data, "\n");
+      if (data != NULL)
+      {
+         add_metric_to_art(container->certificate_metrics_tree, "pgagroal_tls_certificate_info", data, NULL, NULL, 0);
+         free(data);
+         data = NULL;
+      }
+   }
+}
+
+static void
+prometheus_metric_value_destroy_cb(uintptr_t data)
+{
+   prometheus_metric_value_t* mv = (prometheus_metric_value_t*)data;
+   if (mv != NULL)
+   {
+      free(mv->value);
+      free(mv->help);
+      free(mv->type);
+      free(mv);
+   }
+}
+
+static char*
+prometheus_metric_value_string_cb(uintptr_t data, int32_t format, char* tag, int indent)
+{
+   (void)format;
+   (void)tag;
+   (void)indent;
+
+   prometheus_metric_value_t* mv = (prometheus_metric_value_t*)data;
+   if (mv != NULL && mv->value != NULL)
+   {
+      return strdup(mv->value);
+   }
+   return NULL;
+}
+
+static int
+create_metrics_container(prometheus_metrics_container_t** container)
+{
+   prometheus_metrics_container_t* c = NULL;
+
+   c = (prometheus_metrics_container_t*)calloc(1, sizeof(prometheus_metrics_container_t));
+   if (c == NULL)
+   {
+      return 1;
    }
 
-   send_chunk(client_ssl, client_fd, data);
-   metrics_cache_append(data);
-   free(data);
-   data = NULL;
+   if (pgagroal_art_create(&c->general_metrics) ||
+       pgagroal_art_create(&c->connection_metrics) ||
+       pgagroal_art_create(&c->limit_metrics) ||
+       pgagroal_art_create(&c->session_metrics) ||
+       pgagroal_art_create(&c->pool_metrics) ||
+       pgagroal_art_create(&c->auth_metrics) ||
+       pgagroal_art_create(&c->client_metrics) ||
+       pgagroal_art_create(&c->internal_metrics) ||
+       pgagroal_art_create(&c->awaiting_metrics) ||
+       pgagroal_art_create(&c->os_metrics) ||
+       pgagroal_art_create(&c->certificate_metrics_tree))
+   {
+      destroy_metrics_container(c);
+      return 1;
+   }
+
+   *container = c;
+   return 0;
+}
+
+static void
+destroy_metrics_container(prometheus_metrics_container_t* container)
+{
+   if (container == NULL)
+   {
+      return;
+   }
+
+   if (container->general_metrics != NULL)
+   {
+      pgagroal_art_destroy(container->general_metrics);
+   }
+   if (container->connection_metrics != NULL)
+   {
+      pgagroal_art_destroy(container->connection_metrics);
+   }
+   if (container->limit_metrics != NULL)
+   {
+      pgagroal_art_destroy(container->limit_metrics);
+   }
+   if (container->session_metrics != NULL)
+   {
+      pgagroal_art_destroy(container->session_metrics);
+   }
+   if (container->pool_metrics != NULL)
+   {
+      pgagroal_art_destroy(container->pool_metrics);
+   }
+   if (container->auth_metrics != NULL)
+   {
+      pgagroal_art_destroy(container->auth_metrics);
+   }
+   if (container->client_metrics != NULL)
+   {
+      pgagroal_art_destroy(container->client_metrics);
+   }
+   if (container->internal_metrics != NULL)
+   {
+      pgagroal_art_destroy(container->internal_metrics);
+   }
+   if (container->awaiting_metrics != NULL)
+   {
+      pgagroal_art_destroy(container->awaiting_metrics);
+   }
+   if (container->os_metrics != NULL)
+   {
+      pgagroal_art_destroy(container->os_metrics);
+   }
+   if (container->certificate_metrics_tree != NULL)
+   {
+      pgagroal_art_destroy(container->certificate_metrics_tree);
+   }
+
+   free(container);
+}
+
+static int
+add_metric_to_art(struct art* art_tree, char* key, char* value,
+                  char* help, char* type, int sort_type)
+{
+   prometheus_metric_value_t* mv = NULL;
+   struct value_config config;
+
+   if (art_tree == NULL || key == NULL || value == NULL)
+   {
+      return 1;
+   }
+
+   mv = (prometheus_metric_value_t*)calloc(1, sizeof(prometheus_metric_value_t));
+   if (mv == NULL)
+   {
+      return 1;
+   }
+
+   mv->value = strdup(value);
+   mv->help = help != NULL ? strdup(help) : NULL;
+   mv->type = type != NULL ? strdup(type) : NULL;
+   mv->sort_type = sort_type;
+   mv->timestamp = time(NULL);
+
+   memset(&config, 0, sizeof(struct value_config));
+   config.destroy_data = prometheus_metric_value_destroy_cb;
+   config.to_string = prometheus_metric_value_string_cb;
+
+   return pgagroal_art_insert_with_config(art_tree, key, (uintptr_t)mv, &config);
+}
+
+static void
+output_art_metrics(SSL* client_ssl, int client_fd, struct art* art_tree)
+{
+   struct art_iterator* iter = NULL;
+
+   if (art_tree == NULL)
+   {
+      return;
+   }
+
+   if (pgagroal_art_iterator_create(art_tree, &iter))
+   {
+      return;
+   }
+
+   while (pgagroal_art_iterator_next(iter))
+   {
+      prometheus_metric_value_t* mv = (prometheus_metric_value_t*)pgagroal_value_data(iter->value);
+      if (mv != NULL && mv->value != NULL)
+      {
+         send_chunk(client_ssl, client_fd, mv->value);
+         metrics_cache_append(mv->value);
+      }
+   }
+
+   pgagroal_art_iterator_destroy(iter);
+}
+
+static void
+output_all_metrics(SSL* client_ssl, int client_fd, prometheus_metrics_container_t* container)
+{
+   if (container == NULL)
+   {
+      return;
+   }
+
+   output_art_metrics(client_ssl, client_fd, container->general_metrics);
+   output_art_metrics(client_ssl, client_fd, container->connection_metrics);
+   output_art_metrics(client_ssl, client_fd, container->limit_metrics);
+   output_art_metrics(client_ssl, client_fd, container->session_metrics);
+   output_art_metrics(client_ssl, client_fd, container->pool_metrics);
+   output_art_metrics(client_ssl, client_fd, container->auth_metrics);
+   output_art_metrics(client_ssl, client_fd, container->client_metrics);
+   output_art_metrics(client_ssl, client_fd, container->internal_metrics);
+   output_art_metrics(client_ssl, client_fd, container->awaiting_metrics);
+   output_art_metrics(client_ssl, client_fd, container->os_metrics);
+   output_art_metrics(client_ssl, client_fd, container->certificate_metrics_tree);
 }
