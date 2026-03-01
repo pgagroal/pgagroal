@@ -125,6 +125,7 @@ extern "C" {
 #define MANAGEMENT_ARGUMENT_SERVER_VERSION      "ServerVersion"
 #define MANAGEMENT_ARGUMENT_START_TIME          "StartTime"
 #define MANAGEMENT_ARGUMENT_STATE               "State"
+#define MANAGEMENT_ARGUMENT_HEALTH              "Health"
 #define MANAGEMENT_ARGUMENT_STATUS              "Status"
 #define MANAGEMENT_ARGUMENT_TIME                "Time"
 #define MANAGEMENT_ARGUMENT_TIMESTAMP           "Timestamp"

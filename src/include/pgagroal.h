@@ -78,6 +78,8 @@ extern "C" {
 #define DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT 0
 #define DEFAULT_MAX_CONNECTION_AGE               0
 #define DEFAULT_BACKGROUND_INTERVAL              300
+#define DEFAULT_HEALTH_CHECK_PERIOD              30
+#define DEFAULT_HEALTH_CHECK_TIMEOUT             5
 #define DEFAULT_AUTHENTICATION_TIMEOUT           5
 
 #define MAX_USERNAME_LENGTH                      128
@@ -138,6 +140,19 @@ extern "C" {
 #define SERVER_REPLICA                 1
 #define SERVER_FAILOVER                2
 #define SERVER_FAILED                  3
+
+#define SERVER_HEALTH_UNKNOWN          0
+#define SERVER_HEALTH_UP               1
+#define SERVER_HEALTH_DOWN             2
+
+#define HEALTH_CHECK_AUTH_UNKNOWN      0
+#define HEALTH_CHECK_AUTH_TRUST        1
+#define HEALTH_CHECK_AUTH_MD5          2
+#define HEALTH_CHECK_AUTH_SCRAM        3
+#define HEALTH_CHECK_AUTH_ERROR        4
+
+#define HEALTH_CHECK_MAX_RETRIES       3
+#define HEALTH_CHECK_MIN_INTERVAL      1
 
 #define FLUSH_IDLE                     0
 #define FLUSH_GRACEFULLY               1
@@ -374,6 +389,9 @@ struct server
    char tls_key_file[MAX_PATH];  /**< TLS key path */
    char tls_ca_file[MAX_PATH];   /**< TLS CA certificate path */
    atomic_schar state;           /**< The state of the server */
+   atomic_schar health_state;    /**< The health state of the server */
+   unsigned int failures;        /**< The number of failures */
+   atomic_schar auth_type;       /**< The authentication type used for health check */
    int lineno;                   /**< The line number within the configuration file */
 } __attribute__((aligned(64)));
 
@@ -690,6 +708,11 @@ struct main_configuration
    int validation;                                   /**< Validation mode */
    pgagroal_time_t background_interval;              /**< The duration of background validation interval (Default seconds) */
    int max_retries;                                  /**< The maximum number of retries */
+   bool health_check;                                /**< Is health check enabled */
+   pgagroal_time_t health_check_period;              /**< The duration of health check period (Default seconds) */
+   pgagroal_time_t health_check_timeout;             /**< The duration of health check timeout (Default seconds) */
+   char health_check_user[MAX_USERNAME_LENGTH];      /**< The health check user */
+   pid_t health_check_pid;                           /**< The health check PID */
    int disconnect_client;                            /**< Disconnect client if idle for more than the specified seconds */
    bool disconnect_client_force;                     /**< Force a disconnect client if active for more than the specified seconds */
    char pidfile[MAX_PATH];                           /**< File containing the PID */

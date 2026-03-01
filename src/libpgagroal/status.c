@@ -196,6 +196,13 @@ status_details(bool details, struct json* response)
    for (int i = 0; i < config->number_of_servers; i++)
    {
       struct json* js = NULL;
+      const char* health_str = "UNKNOWN";
+      int health_state = atomic_load(&config->servers[i].health_state);
+
+      if (health_state == SERVER_HEALTH_UP)
+         health_str = "UP";
+      else if (health_state == SERVER_HEALTH_DOWN)
+         health_str = "DOWN";
 
       pgagroal_json_create(&js);
 
@@ -203,6 +210,7 @@ status_details(bool details, struct json* response)
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_HOST, (uintptr_t)config->servers[i].host, ValueString);
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_PORT, (uintptr_t)config->servers[i].port, ValueInt32);
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_STATE, (uintptr_t)pgagroal_server_state_as_string(config->servers[i].state), ValueString);
+      pgagroal_json_put(js, MANAGEMENT_ARGUMENT_HEALTH, (uintptr_t)health_str, ValueString);
 
       pgagroal_json_append(servers, (uintptr_t)js, ValueJSON);
    }

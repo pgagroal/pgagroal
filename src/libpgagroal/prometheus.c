@@ -2423,6 +2423,53 @@ general_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
+   pgagroal_log_debug("Prometheus: Appending server health for %d servers", config->number_of_servers);
+   data = pgagroal_append(data, "#HELP pgagroal_server_health The health state of the server (0 = DOWN, 1 = UP, 2 = UNKNOWN)\n");
+   data = pgagroal_append(data, "#TYPE pgagroal_server_health gauge\n");
+   for (int i = 0; i < config->number_of_servers; i++)
+   {
+      pgagroal_log_debug("Prometheus: Server %d", i);
+      int health_state = atomic_load(&config->servers[i].health_state);
+      int state_val = 2; /* UNKNOWN */
+      if (health_state == SERVER_HEALTH_UP)
+      {
+         state_val = 1;
+      }
+      else if (health_state == SERVER_HEALTH_DOWN)
+      {
+         state_val = 0;
+      }
+
+      int health_auth = atomic_load(&config->servers[i].auth_type);
+      char* auth_str = "unknown";
+      if (health_auth == HEALTH_CHECK_AUTH_TRUST)
+      {
+         auth_str = "trust";
+      }
+      else if (health_auth == HEALTH_CHECK_AUTH_MD5)
+      {
+         auth_str = "md5";
+      }
+      else if (health_auth == HEALTH_CHECK_AUTH_SCRAM)
+      {
+         auth_str = "scram-sha-256";
+      }
+      else if (health_auth == HEALTH_CHECK_AUTH_ERROR)
+      {
+         auth_str = "error";
+      }
+
+      data = pgagroal_append(data, "pgagroal_server_health{server=\"");
+      data = pgagroal_append(data, config->servers[i].name);
+      data = pgagroal_append(data, "\",auth=\"");
+      data = pgagroal_append(data, auth_str);
+      data = pgagroal_append(data, "\"} ");
+      data = pgagroal_append_ulong(data, state_val);
+      data = pgagroal_append(data, "\n");
+   }
+   pgagroal_log_debug("Prometheus: Done appending server health");
+   data = pgagroal_append(data, "\n");
+
    data = pgagroal_append(data, "#HELP pgagroal_wait_time The waiting time of clients\n");
    data = pgagroal_append(data, "#TYPE pgagroal_wait_time gauge\n");
    data = pgagroal_append(data, "pgagroal_wait_time ");
