@@ -806,7 +806,7 @@ main(int argc, char** argv)
       errx(1, "pgagroal-vault: %s (file <%s>)", message, configuration_path);
    }
 
-   memcpy(&config->common.configuration_path[0], configuration_path, MIN(strlen(configuration_path), MAX_PATH - 1));
+   memcpy(config->common.configuration_path, configuration_path, MIN(strlen(configuration_path), MAX_PATH - 1));
 
    if (pgagroal_init_logging())
    {

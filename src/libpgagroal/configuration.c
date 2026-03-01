@@ -581,7 +581,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
       {
          pgagroal_log_fatal("pgagroal: No host defined for server [%s] (%s:%d)",
                             config->servers[i].name,
-                            config->common.configuration_path[0],
+                            config->common.configuration_path,
                             config->servers[i].lineno);
          return 1;
       }
@@ -590,7 +590,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
       {
          pgagroal_log_fatal("pgagroal: No port defined for server [%s] (%s:%d)",
                             config->servers[i].name,
-                            config->common.configuration_path[0],
+                            config->common.configuration_path,
                             config->servers[i].lineno);
          return 1;
       }
@@ -606,7 +606,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
             pgagroal_log_fatal("pgagroal: Servers [%s] and [%s] are duplicated! (%s:%d:%d)",
                                config->servers[i].name,
                                config->servers[j].name,
-                               config->common.configuration_path[0],
+                               config->common.configuration_path,
                                config->servers[i].lineno,
                                config->servers[j].lineno);
             return 1;
