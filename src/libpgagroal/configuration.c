@@ -3167,6 +3167,20 @@ cleanup:
       db_part = NULL;
    }
 
+   if (offset == -1)
+   {
+      if (*database)
+      {
+         free(*database);
+         *database = NULL;
+      }
+      if (*user)
+      {
+         free(*user);
+         *user = NULL;
+      }
+   }
+
    return;
 }
 
