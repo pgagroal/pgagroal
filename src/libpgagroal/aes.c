@@ -94,8 +94,8 @@ cleanup:
    free(encrypted);
 
    /* Wipe key material from stack */
-   OPENSSL_cleanse(key, sizeof(key));
-   OPENSSL_cleanse(iv, sizeof(iv));
+   pgagroal_cleanse(key, sizeof(key));
+   pgagroal_cleanse(iv, sizeof(iv));
 
    return ret;
 }
@@ -129,8 +129,8 @@ pgagroal_decrypt(char* ciphertext, int ciphertext_length, char* password, char**
                          key, iv, plaintext, mode);
 
    /* Wipe key material from stack */
-   OPENSSL_cleanse(key, sizeof(key));
-   OPENSSL_cleanse(iv, sizeof(iv));
+   pgagroal_cleanse(key, sizeof(key));
+   pgagroal_cleanse(iv, sizeof(iv));
 
    return ret;
 }
@@ -161,7 +161,7 @@ derive_key_iv(char* password, unsigned char* salt, unsigned char* key, unsigned 
    memcpy(iv, derived + key_length, iv_length);
 
    /* Wipe sensitive derived material */
-   OPENSSL_cleanse(derived, sizeof(derived));
+   pgagroal_cleanse(derived, sizeof(derived));
 
    return 0;
 }
@@ -226,8 +226,8 @@ error:
    }
 
    /* Wipe key material from stack */
-   OPENSSL_cleanse(key, sizeof(key));
-   OPENSSL_cleanse(iv, sizeof(iv));
+   pgagroal_cleanse(key, sizeof(key));
+   pgagroal_cleanse(iv, sizeof(iv));
 
    free(ct);
 
@@ -295,8 +295,8 @@ error:
    }
 
    /* Wipe key material from stack */
-   OPENSSL_cleanse(key, sizeof(key));
-   OPENSSL_cleanse(iv, sizeof(iv));
+   pgagroal_cleanse(key, sizeof(key));
+   pgagroal_cleanse(iv, sizeof(iv));
 
    free(pt);
 
@@ -514,14 +514,14 @@ encrypt_decrypt_buffer(unsigned char* origin_buffer, size_t origin_size, unsigne
    }
 
    /* Wipe key material from stack */
-   OPENSSL_cleanse(key, sizeof(key));
-   OPENSSL_cleanse(iv, sizeof(iv));
+   pgagroal_cleanse(key, sizeof(key));
+   pgagroal_cleanse(iv, sizeof(iv));
 
    EVP_CIPHER_CTX_free(ctx);
 
    if (master_key != NULL)
    {
-      OPENSSL_cleanse(master_key, strlen(master_key));
+      pgagroal_cleanse(master_key, strlen(master_key));
       free(master_key);
    }
 
@@ -536,12 +536,12 @@ error:
    }
 
    /* Wipe key material from stack */
-   OPENSSL_cleanse(key, sizeof(key));
-   OPENSSL_cleanse(iv, sizeof(iv));
+   pgagroal_cleanse(key, sizeof(key));
+   pgagroal_cleanse(iv, sizeof(iv));
 
    if (master_key != NULL)
    {
-      OPENSSL_cleanse(master_key, strlen(master_key));
+      pgagroal_cleanse(master_key, strlen(master_key));
       free(master_key);
    }
 

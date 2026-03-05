@@ -577,6 +577,14 @@ int
 pgagroal_backtrace(void);
 
 /**
+ * Cleanse memory
+ * @param data The data
+ * @param size The size
+ */
+void
+pgagroal_cleanse(void* data, size_t size);
+
+/**
  * Utility function to parse the command line
  * and search for a command.
  *
