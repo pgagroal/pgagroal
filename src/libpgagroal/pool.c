@@ -101,6 +101,13 @@ start:
    has_lock = false;
 
    connections = atomic_fetch_add(&config->active_connections, 1);
+
+   if (best_rule >= 0)
+   {
+      // increment the active connections for the current limit rule
+      atomic_fetch_add(&config->limits[best_rule].active_connections, 1);
+   }
+
    has_lock = true;
    if (connections >= config->max_connections)
    {
