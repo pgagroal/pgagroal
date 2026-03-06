@@ -66,7 +66,7 @@ pgagroal-cli flush pgbench   # pgagroal-cli flush gracefully pgbench
 ```
 
 #### ping
-The `ping` command checks if [**pgagroal**][pgagroal] is running.
+The `ping` command checks if [**pgagroal**][pgagroal] is running and verifies connectivity to configured PostgreSQL servers.
 In case of success, the command does not print anything on the standard output unless the `--verbose` flag is used.
 
 Command:
