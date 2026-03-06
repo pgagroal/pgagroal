@@ -59,8 +59,8 @@ pgagroal_encrypt(char* plaintext, char* password, char** ciphertext, int* cipher
 
 cleanup:
    /* Wipe key material from stack */
-   OPENSSL_cleanse(key, sizeof(key));
-   OPENSSL_cleanse(iv, sizeof(iv));
+   pgagroal_cleanse(key, sizeof(key));
+   pgagroal_cleanse(iv, sizeof(iv));
 
    return ret;
 }
@@ -84,8 +84,8 @@ pgagroal_decrypt(char* ciphertext, int ciphertext_length, char* password, char**
 
 cleanup:
    /* Wipe key material from stack */
-   OPENSSL_cleanse(key, sizeof(key));
-   OPENSSL_cleanse(iv, sizeof(iv));
+   pgagroal_cleanse(key, sizeof(key));
+   pgagroal_cleanse(iv, sizeof(iv));
 
    return ret;
 }
@@ -163,7 +163,11 @@ error:
       EVP_CIPHER_CTX_free(ctx);
    }
 
-   free(ct);
+   if (ct != NULL)
+   {
+      pgagroal_cleanse(ct, size);
+      free(ct);
+   }
 
    return 1;
 }
@@ -228,7 +232,11 @@ error:
       EVP_CIPHER_CTX_free(ctx);
    }
 
-   free(pt);
+   if (pt != NULL)
+   {
+      pgagroal_cleanse(pt, size);
+      free(pt);
+   }
 
    return 1;
 }
@@ -288,6 +296,8 @@ encrypt_decrypt_buffer(unsigned char* origin_buffer, size_t origin_size, unsigne
    size_t f_len = 0;
    unsigned char* out_buf = NULL;
    int ret = 1;
+
+   *res_buffer = NULL;
 
    cipher_fp = get_cipher(mode);
    if (cipher_fp == NULL)
@@ -367,8 +377,8 @@ encrypt_decrypt_buffer(unsigned char* origin_buffer, size_t origin_size, unsigne
 
 error:
    /* Wipe key material from stack */
-   OPENSSL_cleanse(key, sizeof(key));
-   OPENSSL_cleanse(iv, sizeof(iv));
+   pgagroal_cleanse(key, sizeof(key));
+   pgagroal_cleanse(iv, sizeof(iv));
 
    if (ctx)
    {
@@ -377,12 +387,13 @@ error:
 
    if (master_key != NULL)
    {
-      OPENSSL_cleanse(master_key, strlen(master_key));
+      pgagroal_cleanse(master_key, strlen(master_key));
       free(master_key);
    }
 
-   if (ret != 0)
+   if (ret != 0 && out_buf != NULL)
    {
+      pgagroal_cleanse(out_buf, outbuf_size);
       free(out_buf);
    }
 

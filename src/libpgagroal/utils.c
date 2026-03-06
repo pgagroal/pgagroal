@@ -43,6 +43,7 @@
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
+#include <openssl/crypto.h>
 #include <openssl/pem.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
@@ -2155,4 +2156,13 @@ pgagroal_time_format(pgagroal_time_t t, enum pgagroal_time_format_t fmt, char** 
 
    *output = str;
    return 0;
+}
+
+void
+pgagroal_cleanse(void* data, size_t size)
+{
+   if (data != NULL && size > 0)
+   {
+      OPENSSL_cleanse(data, size);
+   }
 }

@@ -698,6 +698,14 @@ pgagroal_time_is_valid(pgagroal_time_t t);
 int
 pgagroal_time_format(pgagroal_time_t t, enum pgagroal_time_format_t fmt, char** output);
 
+/**
+ * Securely cleanly wipe memory.
+ * @param data The pointer to the memory
+ * @param size The size of the memory
+ */
+void
+pgagroal_cleanse(void* data, size_t size);
+
 #ifdef __cplusplus
 }
 #endif
