@@ -981,12 +981,12 @@ notify_standbys(int old_primary, int new_primary)
       args[idx++] = "pgagroal_failover_notify_standbys";
 
       char* old_port = malloc(6);
-      snprintf(old_port, 6, "%d", config->servers[old_primary].port);
+      pgagroal_snprintf(old_port, 6, "%d", config->servers[old_primary].port);
       args[idx++] = config->servers[old_primary].host;
       args[idx++] = old_port;
 
       char* new_port = malloc(6);
-      snprintf(new_port, 6, "%d", config->servers[new_primary].port);
+      pgagroal_snprintf(new_port, 6, "%d", config->servers[new_primary].port);
       args[idx++] = config->servers[new_primary].host;
       args[idx++] = new_port;
 
@@ -1001,7 +1001,7 @@ notify_standbys(int old_primary, int new_primary)
             has_standbys = true;
 
             char* port = malloc(6);
-            snprintf(port, 6, "%d", config->servers[i].port);
+            pgagroal_snprintf(port, 6, "%d", config->servers[i].port);
             args[idx++] = config->servers[i].host;
             args[idx++] = port;
          }

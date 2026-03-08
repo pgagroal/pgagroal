@@ -348,9 +348,9 @@ route_status(char** response)
    }
 
    // Prepare numeric strings
-   snprintf(pid_str, sizeof(pid_str), "%d", getpid());
-   snprintf(port_str, sizeof(port_str), "%d", config->common.port);
-   snprintf(pgagroal_port_str, sizeof(pgagroal_port_str), "%d", config->vault_server.server.port);
+   pgagroal_snprintf(pid_str, sizeof(pid_str), "%d", getpid());
+   pgagroal_snprintf(port_str, sizeof(port_str), "%d", config->common.port);
+   pgagroal_snprintf(pgagroal_port_str, sizeof(pgagroal_port_str), "%d", config->vault_server.server.port);
 
    // Build HTTP response
    tmp_response = pgagroal_append(tmp_response, "HTTP/1.1 200 OK\r\n");
@@ -387,7 +387,7 @@ route_status(char** response)
    // Add metrics configuration if enabled
    if (config->common.metrics > 0)
    {
-      snprintf(metrics_port_str, sizeof(metrics_port_str), "%d", config->common.metrics);
+      pgagroal_snprintf(metrics_port_str, sizeof(metrics_port_str), "%d", config->common.metrics);
 
       metrics_tls_enabled = 0;
       if (strlen(config->common.metrics_cert_file) > 0 && strlen(config->common.metrics_key_file) > 0)
@@ -786,21 +786,21 @@ main(int argc, char** argv)
       // the configuration has some problem, build up a descriptive message
       if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND)
       {
-         snprintf(message, MISC_LENGTH, "Configuration file not found");
+         pgagroal_snprintf(message, MISC_LENGTH, "Configuration file not found");
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG)
       {
-         snprintf(message, MISC_LENGTH, "Too many sections");
+         pgagroal_snprintf(message, MISC_LENGTH, "Too many sections");
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_KO)
       {
-         snprintf(message, MISC_LENGTH, "Invalid configuration file");
+         pgagroal_snprintf(message, MISC_LENGTH, "Invalid configuration file");
       }
       else if (ret > 0)
       {
-         snprintf(message, MISC_LENGTH, "%d problematic or duplicated section%c",
-                  ret,
-                  ret > 1 ? 's' : ' ');
+         pgagroal_snprintf(message, MISC_LENGTH, "%d problematic or duplicated section%c",
+                           ret,
+                           ret > 1 ? 's' : ' ');
       }
 
       errx(1, "pgagroal-vault: %s (file <%s>)", message, configuration_path);
@@ -852,7 +852,7 @@ read_users_path:
       ret = pgagroal_vault_read_users_configuration(shmem, users_path);
       if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND)
       {
-         snprintf(message, MISC_LENGTH, "USERS configuration file not found");
+         pgagroal_snprintf(message, MISC_LENGTH, "USERS configuration file not found");
          errx(1, "pgagroal-vault: %s (file <%s>)", message, users_path);
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_CANNOT_DECRYPT)
@@ -861,7 +861,7 @@ read_users_path:
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG)
       {
-         snprintf(message, MISC_LENGTH, "Too many users defined %d (max %d)", config->number_of_users, NUMBER_OF_ADMINS);
+         pgagroal_snprintf(message, MISC_LENGTH, "Too many users defined %d (max %d)", config->number_of_users, NUMBER_OF_ADMINS);
          errx(1, "pgagroal-vault: %s (file <%s>)", message, users_path);
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_OK)
