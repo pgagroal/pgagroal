@@ -3469,7 +3469,7 @@ pgagroal_md5(char* str, int length, char** md5)
 
    for (n = 0; n < 16; ++n)
    {
-      snprintf(&(out[n * 2]), 32, "%02x", (unsigned int)digest[n]);
+      snprintf(&(out[n * 2]), 33 - (n * 2), "%02x", (unsigned int)digest[n]);
    }
 
    *md5 = out;
