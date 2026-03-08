@@ -199,7 +199,7 @@ pgagroal_authenticate(int client_fd, char* address, int* slot, SSL** client_ssl,
          char pgsql[MISC_LENGTH];
 
          memset(&pgsql, 0, sizeof(pgsql));
-         snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->servers[server].port);
+         pgagroal_snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->servers[server].port);
          ret = pgagroal_connect_unix_socket(config->servers[server].host, &pgsql[0], &server_fd);
       }
       else
@@ -901,13 +901,13 @@ pgagroal_remote_management_scram_sha256(char* username, char* password, int serv
    }
 
    memset(&key_file, 0, sizeof(key_file));
-   snprintf(&key_file[0], sizeof(key_file), "%s/.pgagroal/pgagroal.key", pgagroal_get_home_directory());
+   pgagroal_snprintf(&key_file[0], sizeof(key_file), "%s/.pgagroal/pgagroal.key", pgagroal_get_home_directory());
 
    memset(&cert_file, 0, sizeof(cert_file));
-   snprintf(&cert_file[0], sizeof(cert_file), "%s/.pgagroal/pgagroal.crt", pgagroal_get_home_directory());
+   pgagroal_snprintf(&cert_file[0], sizeof(cert_file), "%s/.pgagroal/pgagroal.crt", pgagroal_get_home_directory());
 
    memset(&root_file, 0, sizeof(root_file));
-   snprintf(&root_file[0], sizeof(root_file), "%s/.pgagroal/root.crt", pgagroal_get_home_directory());
+   pgagroal_snprintf(&root_file[0], sizeof(root_file), "%s/.pgagroal/root.crt", pgagroal_get_home_directory());
 
    if (stat(&key_file[0], &st) == 0)
    {
@@ -1066,7 +1066,7 @@ pgagroal_remote_management_scram_sha256(char* username, char* password, int serv
    iteration = atoi(iteration_string);
 
    memset(&wo_proof[0], 0, sizeof(wo_proof));
-   snprintf(&wo_proof[0], sizeof(wo_proof), "c=biws,r=%s", combined_nounce);
+   pgagroal_snprintf(&wo_proof[0], sizeof(wo_proof), "c=biws,r=%s", combined_nounce);
 
    /* n=,r=... */
    client_first_message_bare = sasl_response->data + 26;
@@ -1929,7 +1929,7 @@ retry:
    size = strlen(username) + strlen(password) + 1;
    pwdusr = calloc(1, size);
 
-   snprintf(pwdusr, size, "%s%s", password, username);
+   pgagroal_snprintf(pwdusr, size, "%s%s", password, username);
 
    if (pgagroal_md5(pwdusr, strlen(pwdusr), &shadow))
    {
@@ -2056,7 +2056,7 @@ retry:
 
    server_first_message = calloc(1, 89);
 
-   snprintf(server_first_message, 89, "r=%s%s,s=%s,i=4096", client_nounce, server_nounce, base64_salt);
+   pgagroal_snprintf(server_first_message, 89, "r=%s%s,s=%s,i=4096", client_nounce, server_nounce, base64_salt);
 
    status = pgagroal_create_auth_scram256_continue(client_nounce, server_nounce, base64_salt, &msg);
    if (status != MESSAGE_STATUS_OK)
@@ -2708,7 +2708,7 @@ server_md5(char* username, char* password, int slot, SSL* server_ssl)
    size = strlen(username) + strlen(password) + 1;
    pwdusr = calloc(1, size);
 
-   snprintf(pwdusr, size, "%s%s", password, username);
+   pgagroal_snprintf(pwdusr, size, "%s%s", password, username);
 
    if (pgagroal_md5(pwdusr, strlen(pwdusr), &shadow))
    {
@@ -2726,7 +2726,7 @@ server_md5(char* username, char* password, int slot, SSL* server_ssl)
    }
 
    memset(&md5str, 0, sizeof(md5str));
-   snprintf(&md5str[0], 36, "md5%s", md5);
+   pgagroal_snprintf(&md5str[0], 36, "md5%s", md5);
 
    status = pgagroal_create_auth_md5_response(md5str, &md5_msg);
    if (status != MESSAGE_STATUS_OK)
@@ -2907,7 +2907,7 @@ server_scram256(char* username, char* password, int slot, SSL* server_ssl)
    iteration = atoi(iteration_string);
 
    memset(&wo_proof[0], 0, sizeof(wo_proof));
-   snprintf(&wo_proof[0], sizeof(wo_proof), "c=biws,r=%s", combined_nounce);
+   pgagroal_snprintf(&wo_proof[0], sizeof(wo_proof), "c=biws,r=%s", combined_nounce);
 
    /* n=,r=... */
    client_first_message_bare = config->connections[slot].security_messages[1] + 26;
@@ -3397,7 +3397,7 @@ pgagroal_get_master_key(char** masterkey)
    }
 
    memset(&buf, 0, sizeof(buf));
-   snprintf(&buf[0], sizeof(buf), "%s/.pgagroal", pgagroal_get_home_directory());
+   pgagroal_snprintf(&buf[0], sizeof(buf), "%s/.pgagroal", pgagroal_get_home_directory());
 
    if (stat(&buf[0], &st) == -1)
    {
@@ -3416,7 +3416,7 @@ pgagroal_get_master_key(char** masterkey)
    }
 
    memset(&buf, 0, sizeof(buf));
-   snprintf(&buf[0], sizeof(buf), "%s/.pgagroal/master.key", pgagroal_get_home_directory());
+   pgagroal_snprintf(&buf[0], sizeof(buf), "%s/.pgagroal/master.key", pgagroal_get_home_directory());
 
    if (stat(&buf[0], &st) == -1)
    {
@@ -3525,7 +3525,7 @@ pgagroal_md5(char* str, int length, char** md5)
 
    for (n = 0; n < 16; ++n)
    {
-      snprintf(&(out[n * 2]), 32, "%02x", (unsigned int)digest[n]);
+      pgagroal_snprintf(&(out[n * 2]), 33 - (n * 2), "%02x", (unsigned int)digest[n]);
    }
 
    *md5 = out;
@@ -4901,7 +4901,7 @@ retry:
          char pgsql[MISC_LENGTH];
 
          memset(&pgsql, 0, sizeof(pgsql));
-         snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->servers[server].port);
+         pgagroal_snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->servers[server].port);
          ret = pgagroal_connect_unix_socket(config->servers[server].host, &pgsql[0], server_fd);
       }
       else
@@ -5096,7 +5096,7 @@ pgagroal_md5_client_auth(struct message* startup_response_msg, char* username, c
    size = strlen(username) + strlen(password) + 1;
    pwdusr = calloc(1, size);
 
-   snprintf(pwdusr, size, "%s%s", password, username);
+   pgagroal_snprintf(pwdusr, size, "%s%s", password, username);
 
    if (pgagroal_md5(pwdusr, strlen(pwdusr), &shadow))
    {
@@ -5113,7 +5113,7 @@ pgagroal_md5_client_auth(struct message* startup_response_msg, char* username, c
    }
 
    memset(&md5str, 0, sizeof(md5str));
-   snprintf(&md5str[0], 36, "md5%s", md5);
+   pgagroal_snprintf(&md5str[0], 36, "md5%s", md5);
 
    status = pgagroal_create_auth_md5_response(md5str, &md5_msg);
    if (status != MESSAGE_STATUS_OK)
@@ -5281,7 +5281,7 @@ pgagroal_scram_client_auth(char* username, char* password, int socket, SSL* serv
    iteration = atoi(iteration_string);
 
    memset(&wo_proof[0], 0, sizeof(wo_proof));
-   snprintf(&wo_proof[0], sizeof(wo_proof), "c=biws,r=%s", combined_nounce);
+   pgagroal_snprintf(&wo_proof[0], sizeof(wo_proof), "c=biws,r=%s", combined_nounce);
 
    /* n=,r=... */
    client_first_message_bare = sasl_response->data + 26;
@@ -5712,7 +5712,7 @@ retry:
    generate_nounce(&server_nounce);
 
    server_first_message = calloc(1, 89);
-   snprintf(server_first_message, 89, "r=%s%s,s=%s,i=%d", client_nounce, server_nounce, base64_salt, iterations);
+   pgagroal_snprintf(server_first_message, 89, "r=%s%s,s=%s,i=%d", client_nounce, server_nounce, base64_salt, iterations);
 
    status = pgagroal_create_auth_scram256_continue(client_nounce, server_nounce, base64_salt, &sasl_continue);
    if (status != MESSAGE_STATUS_OK)
@@ -6400,7 +6400,7 @@ pgagroal_md5_client_authenticate(char* username, char* password, char* salt, int
    /* Calculate MD5(password + username) */
    size = strlen(username) + strlen(password) + 1;
    pwdusr = calloc(1, size);
-   snprintf(pwdusr, size, "%s%s", password, username);
+   pgagroal_snprintf(pwdusr, size, "%s%s", password, username);
 
    if (pgagroal_md5(pwdusr, strlen(pwdusr), &shadow))
    {
@@ -6418,7 +6418,7 @@ pgagroal_md5_client_authenticate(char* username, char* password, char* salt, int
    }
 
    memset(&md5str, 0, sizeof(md5str));
-   snprintf(&md5str[0], 36, "md5%s", md5);
+   pgagroal_snprintf(&md5str[0], 36, "md5%s", md5);
 
    status = pgagroal_create_auth_md5_response(md5str, &md5_msg);
    if (status != MESSAGE_STATUS_OK)
@@ -6555,7 +6555,7 @@ pgagroal_scram_client_authenticate(char* username, char* password, int server_fd
    iteration = atoi(iteration_string);
 
    memset(&wo_proof[0], 0, sizeof(wo_proof));
-   snprintf(&wo_proof[0], sizeof(wo_proof), "c=biws,r=%s", combined_nounce);
+   pgagroal_snprintf(&wo_proof[0], sizeof(wo_proof), "c=biws,r=%s", combined_nounce);
 
    client_first_message_bare = (char*)sasl_response->data + 26;
    server_first_message = (char*)sasl_continue->data + 9;

@@ -120,7 +120,7 @@ transaction_start(struct event_loop* loop, struct worker_io* w)
    deallocate = false;
 
    memset(&p, 0, sizeof(p));
-   snprintf(&p[0], sizeof(p), MAIN_UDS);
+   pgagroal_snprintf(&p[0], sizeof(p), MAIN_UDS);
 
    if (pgagroal_bind_unix_socket(config->unix_socket_dir, &p[0], &unix_socket))
    {
@@ -571,7 +571,7 @@ shutdown_mgt(struct event_loop* loop __attribute__((unused)))
    config = (struct main_configuration*)shmem;
 
    memset(&p, 0, sizeof(p));
-   snprintf(&p[0], sizeof(p), ".s.pgagroal.%d", getpid());
+   pgagroal_snprintf(&p[0], sizeof(p), MAIN_UDS);
 
    pgagroal_io_stop(&io_mgt);
    pgagroal_disconnect(unix_socket);

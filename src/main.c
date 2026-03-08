@@ -203,7 +203,7 @@ shutdown_uds(bool remove)
    config = (struct main_configuration*)shmem;
 
    memset(&pgsql, 0, sizeof(pgsql));
-   snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
+   pgagroal_snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
 
    pgagroal_disconnect(unix_pgsql_socket);
    errno = 0;
@@ -646,21 +646,21 @@ main(int argc, char** argv)
       // the configuration has some problem, build up a descriptive message
       if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND)
       {
-         snprintf(message, MISC_LENGTH, "Configuration file not found");
+         pgagroal_snprintf(message, MISC_LENGTH, "Configuration file not found");
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG)
       {
-         snprintf(message, MISC_LENGTH, "Too many sections");
+         pgagroal_snprintf(message, MISC_LENGTH, "Too many sections");
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_KO)
       {
-         snprintf(message, MISC_LENGTH, "Invalid configuration file");
+         pgagroal_snprintf(message, MISC_LENGTH, "Invalid configuration file");
       }
       else if (ret > 0)
       {
-         snprintf(message, MISC_LENGTH, "%d problematic or duplicated section%c",
-                  ret,
-                  ret > 1 ? 's' : ' ');
+         pgagroal_snprintf(message, MISC_LENGTH, "%d problematic or duplicated section%c",
+                           ret,
+                           ret > 1 ? 's' : ' ');
       }
 
 #ifdef HAVE_SYSTEMD
@@ -677,7 +677,7 @@ main(int argc, char** argv)
    ret = pgagroal_read_hba_configuration(shmem, hba_path);
    if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND)
    {
-      snprintf(message, MISC_LENGTH, "HBA configuration file not found");
+      pgagroal_snprintf(message, MISC_LENGTH, "HBA configuration file not found");
 #ifdef HAVE_SYSTEMD
       sd_notifyf(0, "STATUS=%s: %s", message, hba_path);
 #endif
@@ -685,7 +685,7 @@ main(int argc, char** argv)
    }
    else if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG)
    {
-      snprintf(message, MISC_LENGTH, "HBA too many entries (max %d)", NUMBER_OF_HBAS);
+      pgagroal_snprintf(message, MISC_LENGTH, "HBA too many entries (max %d)", NUMBER_OF_HBAS);
 #ifdef HAVE_SYSTEMD
       sd_notifyf(0, "STATUS=%s: %s", message, hba_path);
 #endif
@@ -707,7 +707,7 @@ read_limit_path:
       }
       else if (conf_file_mandatory && ret == PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND)
       {
-         snprintf(message, MISC_LENGTH, "LIMIT configuration file not found");
+         pgagroal_snprintf(message, MISC_LENGTH, "LIMIT configuration file not found");
          printf("pgagroal: %s (file <%s>)\n", message, limit_path);
 #ifdef HAVE_SYSTEMD
          sd_notifyf(0, "STATUS=%s: %s", message, limit_path);
@@ -716,7 +716,7 @@ read_limit_path:
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG)
       {
-         snprintf(message, MISC_LENGTH, "Too many limit entries");
+         pgagroal_snprintf(message, MISC_LENGTH, "Too many limit entries");
 #ifdef HAVE_SYSTEMD
          sd_notifyf(0, "STATUS=%s: %s", message, limit_path);
 #endif
@@ -744,7 +744,7 @@ read_users_path:
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND && conf_file_mandatory)
       {
-         snprintf(message, MISC_LENGTH, "USERS configuration file not found");
+         pgagroal_snprintf(message, MISC_LENGTH, "USERS configuration file not found");
 #ifdef HAVE_SYSTEMD
          sd_notifyf(0, "STATUS=%s : %s", message, users_path);
 #endif
@@ -752,7 +752,7 @@ read_users_path:
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_KO || ret == PGAGROAL_CONFIGURATION_STATUS_CANNOT_DECRYPT)
       {
-         snprintf(message, MISC_LENGTH, "Invalid master key file");
+         pgagroal_snprintf(message, MISC_LENGTH, "Invalid master key file");
 #ifdef HAVE_SYSTEMD
          sd_notifyf(0, "STATUS=%s: <%s>", message, users_path);
 #endif
@@ -760,7 +760,7 @@ read_users_path:
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG)
       {
-         snprintf(message, MISC_LENGTH, "USERS: too many users defined (%d, max %d)", config->number_of_users, NUMBER_OF_USERS);
+         pgagroal_snprintf(message, MISC_LENGTH, "USERS: too many users defined (%d, max %d)", config->number_of_users, NUMBER_OF_USERS);
 
 #ifdef HAVE_SYSTEMD
          sd_notifyf(0, "STATUS=%s: %s", message, users_path);
@@ -785,7 +785,7 @@ read_frontend_users_path:
       if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND && conf_file_mandatory)
       {
          memset(message, 0, MISC_LENGTH);
-         snprintf(message, MISC_LENGTH, "FRONTEND USERS configuration file not found");
+         pgagroal_snprintf(message, MISC_LENGTH, "FRONTEND USERS configuration file not found");
 #ifdef HAVE_SYSTEMD
          sd_notifyf(0, "STATUS=%s: %s", message, frontend_users_path);
 #endif
@@ -795,7 +795,7 @@ read_frontend_users_path:
       {
 #ifdef HAVE_SYSTEMD
          memset(message, 0, MISC_LENGTH);
-         snprintf(message, MISC_LENGTH, "FRONTEND USERS Invalid master key file");
+         pgagroal_snprintf(message, MISC_LENGTH, "FRONTEND USERS Invalid master key file");
          sd_notifyf(0, "STATUS=%s: <%s>", message, frontend_users_path);
 #endif
          errx(1, "%s (file <%s>)", message, frontend_users_path);
@@ -803,8 +803,8 @@ read_frontend_users_path:
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG)
       {
          memset(message, 0, MISC_LENGTH);
-         snprintf(message, MISC_LENGTH, "FRONTEND USERS: Too many users defined %d (max %d)",
-                  config->number_of_frontend_users, NUMBER_OF_USERS);
+         pgagroal_snprintf(message, MISC_LENGTH, "FRONTEND USERS: Too many users defined %d (max %d)",
+                           config->number_of_frontend_users, NUMBER_OF_USERS);
 #ifdef HAVE_SYSTEMD
          sd_notifyf(0, "STATUS=%s: %s", message, frontend_users_path);
 #endif
@@ -832,7 +832,7 @@ read_admins_path:
       ret = pgagroal_read_admins_configuration(shmem, admins_path);
       if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND && conf_file_mandatory)
       {
-         snprintf(message, MISC_LENGTH, "ADMINS configuration file not found");
+         pgagroal_snprintf(message, MISC_LENGTH, "ADMINS configuration file not found");
 #ifdef HAVE_SYSTEMD
          sd_notifyf(0, "STATUS=%s: %s", message, admins_path);
 #endif
@@ -847,7 +847,7 @@ read_admins_path:
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG)
       {
-         snprintf(message, MISC_LENGTH, "Too many admins defined %d (max %d)", config->number_of_admins, NUMBER_OF_ADMINS);
+         pgagroal_snprintf(message, MISC_LENGTH, "Too many admins defined %d (max %d)", config->number_of_admins, NUMBER_OF_ADMINS);
 #ifdef HAVE_SYSTEMD
          sd_notifyf(0, "STATUS=%s %s", message, admins_path);
 #endif
@@ -875,7 +875,7 @@ read_superuser_path:
       memset(message, 0, MISC_LENGTH);
       if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND && conf_file_mandatory)
       {
-         snprintf(message, MISC_LENGTH, "SUPERUSER configuration file not found");
+         pgagroal_snprintf(message, MISC_LENGTH, "SUPERUSER configuration file not found");
 #ifdef HAVE_SYSTEMD
          sd_notifyf(0, "STATUS=%s: %s", message, superuser_path);
 #endif
@@ -890,7 +890,7 @@ read_superuser_path:
       }
       else if (ret == PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG)
       {
-         snprintf(message, MISC_LENGTH, "SUPERUSER: Too many superusers defined (max 1)");
+         pgagroal_snprintf(message, MISC_LENGTH, "SUPERUSER: Too many superusers defined (max 1)");
 #ifdef HAVE_SYSTEMD
          sd_notifyf(0, "STATUS=%s: %s", message, superuser_path);
 #endif
@@ -1143,7 +1143,7 @@ read_superuser_path:
       char pgsql[MISC_LENGTH];
 
       memset(&pgsql, 0, sizeof(pgsql));
-      snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
+      pgagroal_snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
 
       if (pgagroal_bind_unix_socket(config->unix_socket_dir, &pgsql[0], &unix_pgsql_socket))
       {
@@ -1544,7 +1544,7 @@ accept_main_cb(struct io_watcher* watcher)
          shutdown_uds(true);
 
          memset(&pgsql, 0, sizeof(pgsql));
-         snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
+         pgagroal_snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
 
          if (pgagroal_bind_unix_socket(config->unix_socket_dir, &pgsql[0], &unix_pgsql_socket))
          {
@@ -2949,7 +2949,7 @@ reload_configuration(bool* restart)
       shutdown_uds(true);
 
       memset(&pgsql, 0, sizeof(pgsql));
-      snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
+      pgagroal_snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
 
       if (pgagroal_bind_unix_socket(config->unix_socket_dir, &pgsql[0], &unix_pgsql_socket))
       {
@@ -3135,7 +3135,7 @@ reload_services_only(void)
 
    // Restart Unix Domain Socket with NEW port from memory
    memset(&pgsql, 0, sizeof(pgsql));
-   snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
+   pgagroal_snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
 
    if (pgagroal_bind_unix_socket(config->unix_socket_dir, &pgsql[0], &unix_pgsql_socket))
    {
@@ -3306,7 +3306,7 @@ create_pidfile_or_exit(void)
          err(1, "Could not create PID file <%s>", config->pidfile);
       }
 
-      snprintf(&buffer[0], sizeof(buffer), "%u\n", (unsigned)pid);
+      pgagroal_snprintf(&buffer[0], sizeof(buffer), "%u\n", (unsigned)pid);
 
       r = write(fd, &buffer[0], strlen(buffer));
       if (r < 0)

@@ -203,7 +203,7 @@ start:
             char pgsql[MISC_LENGTH];
 
             memset(&pgsql, 0, sizeof(pgsql));
-            snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->servers[server].port);
+            pgagroal_snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->servers[server].port);
             ret = pgagroal_connect_unix_socket(config->servers[server].host, &pgsql[0], &fd);
          }
          else

@@ -3899,8 +3899,8 @@ is_same_server(struct server* s1, struct server* s2)
    hints.ai_family = AF_UNSPEC;
    hints.ai_socktype = SOCK_STREAM;
 
-   snprintf(port1, sizeof(port1), "%d", s1->port);
-   snprintf(port2, sizeof(port2), "%d", s2->port);
+   pgagroal_snprintf(port1, sizeof(port1), "%d", s1->port);
+   pgagroal_snprintf(port2, sizeof(port2), "%d", s2->port);
 
    if (getaddrinfo(s1->host, port1, &hints, &res1) != 0 ||
        getaddrinfo(s2->host, port2, &hints, &res2) != 0)
@@ -4205,9 +4205,9 @@ restart_server(struct server* src, struct server* dst)
 
    if (!is_same_server(src, dst))
    {
-      snprintf(restart_message, sizeof(restart_message), "Server <%s>, parameter <host>", src->name);
+      pgagroal_snprintf(restart_message, sizeof(restart_message), "Server <%s>, parameter <host>", src->name);
       restart_string(restart_message, dst->host, src->host, false);
-      snprintf(restart_message, sizeof(restart_message), "Server <%s>, parameter <port>", src->name);
+      pgagroal_snprintf(restart_message, sizeof(restart_message), "Server <%s>, parameter <port>", src->name);
       restart_int(restart_message, dst->port, src->port);
       return 1;
    }
@@ -4270,9 +4270,9 @@ pgagroal_init_pidfile_if_needed(void)
    if (strlen(config->pidfile) == 0)
    {
       // no pidfile set, use a default one
-      snprintf(config->pidfile, sizeof(config->pidfile), "%s/pgagroal.%d.pid",
-               config->unix_socket_dir,
-               config->common.port);
+      pgagroal_snprintf(config->pidfile, sizeof(config->pidfile), "%s/pgagroal.%d.pid",
+                        config->unix_socket_dir,
+                        config->common.port);
       pgagroal_log_debug("PID file automatically set to: [%s]", config->pidfile);
    }
 }
@@ -5203,7 +5203,7 @@ to_int(char* where, int value)
       return 1;
    }
 
-   snprintf(where, MISC_LENGTH, "%d", value);
+   pgagroal_snprintf(where, MISC_LENGTH, "%d", value);
    return 0;
 }
 
@@ -5223,7 +5223,7 @@ to_bool(char* where, bool value)
       return 1;
    }
 
-   snprintf(where, MISC_LENGTH, "%s", value ? "on" : "off");
+   pgagroal_snprintf(where, MISC_LENGTH, "%s", value ? "on" : "off");
    return 0;
 }
 
@@ -5340,17 +5340,17 @@ to_update_process_title(char* where, int value)
    switch (value)
    {
       case UPDATE_PROCESS_TITLE_VERBOSE:
-         snprintf(where, MISC_LENGTH, "%s", "verbose");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "verbose");
          break;
       case UPDATE_PROCESS_TITLE_MINIMAL:
-         snprintf(where, MISC_LENGTH, "%s", "minimal");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "minimal");
 
          break;
       case UPDATE_PROCESS_TITLE_STRICT:
-         snprintf(where, MISC_LENGTH, "%s", "strict");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "strict");
          break;
       case UPDATE_PROCESS_TITLE_NEVER:
-         snprintf(where, MISC_LENGTH, "%s", "never");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "never");
          break;
    }
    return 0;
@@ -5375,13 +5375,13 @@ to_validation(char* where, int value)
    switch (value)
    {
       case VALIDATION_OFF:
-         snprintf(where, MISC_LENGTH, "%s", "off");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "off");
          break;
       case VALIDATION_FOREGROUND:
-         snprintf(where, MISC_LENGTH, "%s", "foreground");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "foreground");
          break;
       case VALIDATION_BACKGROUND:
-         snprintf(where, MISC_LENGTH, "%s", "background");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "background");
          break;
    }
 
@@ -5407,13 +5407,13 @@ to_startup_validation(char* where, int value)
    switch (value)
    {
       case STARTUP_VALIDATION_OFF:
-         snprintf(where, MISC_LENGTH, "%s", "off");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "off");
          break;
       case STARTUP_VALIDATION_TRY:
-         snprintf(where, MISC_LENGTH, "%s", "try");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "try");
          break;
       case STARTUP_VALIDATION_ON:
-         snprintf(where, MISC_LENGTH, "%s", "on");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "on");
          break;
    }
 
@@ -5439,13 +5439,13 @@ to_hugepage(char* where, int value)
    switch (value)
    {
       case HUGEPAGE_OFF:
-         snprintf(where, MISC_LENGTH, "%s", "off");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "off");
          break;
       case HUGEPAGE_TRY:
-         snprintf(where, MISC_LENGTH, "%s", "try");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "try");
          break;
       case HUGEPAGE_ON:
-         snprintf(where, MISC_LENGTH, "%s", "on");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "on");
          break;
    }
 
@@ -5471,16 +5471,16 @@ to_pipeline(char* where, int value)
    switch (value)
    {
       case PIPELINE_AUTO:
-         snprintf(where, MISC_LENGTH, "%s", "auto");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "auto");
          break;
       case PIPELINE_SESSION:
-         snprintf(where, MISC_LENGTH, "%s", "session");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "session");
          break;
       case PIPELINE_TRANSACTION:
-         snprintf(where, MISC_LENGTH, "%s", "transaction");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "transaction");
          break;
       case PIPELINE_PERFORMANCE:
-         snprintf(where, MISC_LENGTH, "%s", "performance");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "performance");
          break;
    }
 
@@ -5506,22 +5506,22 @@ to_log_level(char* where, int value)
    switch (value)
    {
       case PGAGROAL_LOGGING_LEVEL_DEBUG2:
-         snprintf(where, MISC_LENGTH, "%s", "debug2");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "debug2");
          break;
       case PGAGROAL_LOGGING_LEVEL_DEBUG1:
-         snprintf(where, MISC_LENGTH, "%s", "debug");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "debug");
          break;
       case PGAGROAL_LOGGING_LEVEL_INFO:
-         snprintf(where, MISC_LENGTH, "%s", "info");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "info");
          break;
       case PGAGROAL_LOGGING_LEVEL_WARN:
-         snprintf(where, MISC_LENGTH, "%s", "warn");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "warn");
          break;
       case PGAGROAL_LOGGING_LEVEL_ERROR:
-         snprintf(where, MISC_LENGTH, "%s", "error");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "error");
          break;
       case PGAGROAL_LOGGING_LEVEL_FATAL:
-         snprintf(where, MISC_LENGTH, "%s", "fatal");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "fatal");
          break;
    }
 
@@ -5547,10 +5547,10 @@ to_log_mode(char* where, int value)
    switch (value)
    {
       case PGAGROAL_LOGGING_MODE_CREATE:
-         snprintf(where, MISC_LENGTH, "%s", "create");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "create");
          break;
       case PGAGROAL_LOGGING_MODE_APPEND:
-         snprintf(where, MISC_LENGTH, "%s", "append");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "append");
          break;
    }
 
@@ -5576,13 +5576,13 @@ to_log_type(char* where, int value)
    switch (value)
    {
       case PGAGROAL_LOGGING_TYPE_CONSOLE:
-         snprintf(where, MISC_LENGTH, "%s", "console");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "console");
          break;
       case PGAGROAL_LOGGING_TYPE_FILE:
-         snprintf(where, MISC_LENGTH, "%s", "file");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "file");
          break;
       case PGAGROAL_LOGGING_TYPE_SYSLOG:
-         snprintf(where, MISC_LENGTH, "%s", "syslog");
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "syslog");
          break;
    }
 
@@ -7039,7 +7039,7 @@ pgagroal_conf_set(SSL* ssl __attribute__((unused)), int client_fd, uint8_t compr
    memset(old_value, 0, MISC_LENGTH);
    if (pgagroal_write_config_value(old_value, config_key, MISC_LENGTH))
    {
-      snprintf(old_value, MISC_LENGTH, "<unknown>");
+      pgagroal_snprintf(old_value, MISC_LENGTH, "<unknown>");
    }
 
    // Apply configuration change using the enhanced function
@@ -7065,7 +7065,7 @@ pgagroal_conf_set(SSL* ssl __attribute__((unused)), int client_fd, uint8_t compr
    memset(new_value, 0, MISC_LENGTH);
    if (pgagroal_write_config_value(new_value, config_key, MISC_LENGTH))
    {
-      snprintf(new_value, MISC_LENGTH, "<unknown>");
+      pgagroal_snprintf(new_value, MISC_LENGTH, "<unknown>");
    }
 
    if (*restart_required)

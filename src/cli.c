@@ -1831,7 +1831,7 @@ error:
       config_value = (char*)malloc(6);
       if (config_value)
       {
-         snprintf(config_value, 6, "Error");
+         pgagroal_snprintf(config_value, 6, "Error");
       }
       *r = (uintptr_t)config_value;
       pgagroal_json_destroy(filtered_response);
@@ -1920,7 +1920,7 @@ process_alias_result(SSL* ssl, int socket, int32_t output_format)
 
          // Build the database=aliases string
          char db_alias_string[DB_ALIAS_STRING_LENGTH];
-         snprintf(db_alias_string, sizeof(db_alias_string), "%s", database);
+         pgagroal_snprintf(db_alias_string, sizeof(db_alias_string), "%s", database);
 
          struct json* alias_list = (struct json*)pgagroal_json_get(entry, CONFIGURATION_ARGUMENT_LIMIT_ALIASES);
 

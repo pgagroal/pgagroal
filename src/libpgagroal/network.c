@@ -172,7 +172,7 @@ pgagroal_bind_unix_socket(const char* directory, const char* file, int* fd)
    }
 
    memset(&buf, 0, sizeof(buf));
-   snprintf(&buf[0], sizeof(buf), "%s", directory);
+   pgagroal_snprintf(&buf[0], sizeof(buf), "%s", directory);
 
    if (stat(&buf[0], &st) == -1)
    {
@@ -187,11 +187,11 @@ pgagroal_bind_unix_socket(const char* directory, const char* file, int* fd)
 
    if (!pgagroal_ends_with(&buf[0], "/"))
    {
-      snprintf(&buf[0], sizeof(buf), "%s/%s.%d", directory, file, config->common.port);
+      pgagroal_snprintf(&buf[0], sizeof(buf), "%s/%s.%d", directory, file, config->common.port);
    }
    else
    {
-      snprintf(&buf[0], sizeof(buf), "%s%s.%d", directory, file, config->common.port);
+      pgagroal_snprintf(&buf[0], sizeof(buf), "%s%s.%d", directory, file, config->common.port);
    }
 
    strncpy(addr.sun_path, &buf[0], sizeof(addr.sun_path) - 1);
@@ -230,7 +230,7 @@ pgagroal_remove_unix_socket(const char* directory, const char* file)
 
    config = (struct main_configuration*)shmem;
    memset(&buf, 0, sizeof(buf));
-   snprintf(&buf[0], sizeof(buf), "%s/%s.%d", directory, file, config->common.port);
+   pgagroal_snprintf(&buf[0], sizeof(buf), "%s/%s.%d", directory, file, config->common.port);
 
    unlink(&buf[0]);
 
@@ -382,7 +382,7 @@ pgagroal_connect_unix_socket(const char* directory, const char* file, int* fd)
    addr.sun_family = AF_UNIX;
 
    memset(&buf, 0, sizeof(buf));
-   snprintf(&buf[0], sizeof(buf), "%s/%s.%d", directory, file, config->common.port);
+   pgagroal_snprintf(&buf[0], sizeof(buf), "%s/%s.%d", directory, file, config->common.port);
 
    strncpy(addr.sun_path, &buf[0], sizeof(addr.sun_path) - 1);
 
