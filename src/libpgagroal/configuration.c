@@ -150,6 +150,7 @@ pgagroal_init_configuration(void* shm)
    config->common.tls = false;
    config->gracefully = false;
    config->keep_running = true;
+   config->console = 0;
    config->pipeline = PIPELINE_AUTO;
    config->authquery = false;
    config->blocking_timeout = PGAGROAL_TIME_SEC(DEFAULT_BLOCKING_TIMEOUT);
@@ -3439,6 +3440,7 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
       changed = true;
    }
    config->management = reload->management;
+   config->console = reload->console;
 
    config->update_process_title = reload->update_process_title;
 
@@ -4604,6 +4606,10 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       {
          return to_int(buffer, config->management);
       }
+      else if (!strncmp(key, "console", MISC_LENGTH))
+      {
+         return to_int(buffer, config->console);
+      }
       else if (!strncmp(key, "pipeline", MISC_LENGTH))
       {
          return to_pipeline(buffer, config->pipeline);
@@ -5479,6 +5485,13 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
          unknown = true;
       }
    }
+   else if (key_in_section("console", section, key, true, &unknown))
+   {
+      if (as_int(value, &config->console))
+      {
+         unknown = true;
+      }
+   }
    else if (key_in_section("pipeline", section, key, true, &unknown))
    {
       config->pipeline = as_pipeline(value);
@@ -6343,6 +6356,7 @@ add_configuration_response(struct json* res)
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_AGE, (uintptr_t)pgagroal_time_convert(config->common.metrics_cache_max_age, FORMAT_TIME_S), ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, (uintptr_t)config->common.metrics_cache_max_size, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MANAGEMENT, (uintptr_t)config->management, ValueInt64);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_CONSOLE, (uintptr_t)config->console, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_TYPE, (uintptr_t)config->common.log_type, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_LEVEL, (uintptr_t)config->common.log_level, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_PATH, (uintptr_t)config->common.log_path, ValueString);

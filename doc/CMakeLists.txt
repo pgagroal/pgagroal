@@ -137,14 +137,14 @@ if (DOCS)
 
   add_custom_command(
     OUTPUT ${MANUAL_OUTPUT_DIR}/pgagroal-en.pdf
-    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/pgagroal-en.pdf --from markdown --template eisvogel --listings -N --toc ${EN}
+    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/pgagroal-en.pdf --resource-path=${CMAKE_BINARY_DIR} --from markdown --template eisvogel --listings -N --toc ${EN}
     DEPENDS ${EN}
     COMMENT "Generating English PDF documentation"
   )
 
   add_custom_command(
     OUTPUT ${MANUAL_OUTPUT_DIR}/pgagroal-en.html
-    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/pgagroal-en.html -s -f markdown-smart -N --toc -t html5 ${EN}
+    COMMAND ${PANDOC_EXECUTABLE} -o ${MANUAL_OUTPUT_DIR}/pgagroal-en.html --resource-path=${CMAKE_BINARY_DIR} -s -f markdown-smart -N --toc -t html5 ${EN}
     DEPENDS ${EN}
     COMMENT "Generating English HTML documentation"
   )

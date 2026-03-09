@@ -86,4 +86,4 @@ pgagroal-admin user-add -U luca -P strongPassword 2>/dev/null
 ## Shell completion
 
 There is a minimal shell completion support for `pgagroal-admin`.
-See the [CLI Tools documentation](https://github.com/pgagroal/pgagroal/blob/master/doc/manual/en/13-cli-tools.md#shell-completions) for more details.
+See the [CLI Tools documentation](https://github.com/pgagroal/pgagroal/blob/master/doc/manual/en/14-cli-tools.md#shell-completions) for more details.

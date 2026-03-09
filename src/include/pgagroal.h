@@ -662,6 +662,7 @@ struct main_configuration
    char superuser_path[MAX_PATH];      /**< The superuser path */
 
    int management;    /**< The management port */
+   int console;       /**< The console port */
    bool gracefully;   /**< Is pgagroal in gracefully mode */
    bool keep_running; /**< Is pgagroal still running */
 

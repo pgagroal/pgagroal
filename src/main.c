@@ -30,6 +30,7 @@
 #include <pgagroal.h>
 #include <configuration.h>
 #include <connection.h>
+#include <console.h>
 #include <json.h>
 #include <ev.h>
 #include <logging.h>
@@ -78,6 +79,7 @@ static void accept_main_cb(struct io_watcher* watcher);
 static void accept_mgt_cb(struct io_watcher* watcher);
 static void accept_transfer_cb(struct io_watcher* watcher);
 static void accept_metrics_cb(struct io_watcher* watcher);
+static void accept_console_cb(struct io_watcher* watcher);
 static void accept_management_cb(struct io_watcher* watcher);
 static void shutdown_cb(void);
 static void reload_cb(void);
@@ -114,6 +116,9 @@ static int unix_pgsql_socket = -1;
 static struct accept_io io_metrics[MAX_FDS];
 static int* metrics_fds = NULL;
 static int metrics_fds_length = -1;
+static struct accept_io io_console[MAX_FDS];
+static int* console_fds = NULL;
+static int console_fds_length = -1;
 static struct accept_io io_management[MAX_FDS];
 static int* management_fds = NULL;
 static int management_fds_length = -1;
@@ -278,6 +283,31 @@ shutdown_management(bool remove __attribute__((unused)))
    for (int i = 0; i < management_fds_length; i++)
    {
       pgagroal_disconnect(io_management[i].socket);
+      errno = 0;
+   }
+}
+
+static void
+start_console(void)
+{
+   for (int i = 0; i < console_fds_length; i++)
+   {
+      int sockfd = *(console_fds + i);
+
+      memset(&io_console[i], 0, sizeof(struct accept_io));
+      pgagroal_event_accept_init(&io_console[i].watcher, sockfd, accept_console_cb);
+      io_console[i].socket = sockfd;
+      io_console[i].argv = argv_ptr;
+      pgagroal_io_start(&io_console[i].watcher);
+   }
+}
+
+static void
+shutdown_console(void)
+{
+   for (int i = 0; i < console_fds_length; i++)
+   {
+      pgagroal_disconnect(io_console[i].socket);
       errno = 0;
    }
 }
@@ -1302,6 +1332,30 @@ read_superuser_path:
       start_management();
    }
 
+   if (config->console > 0)
+   {
+      /* Bind console socket */
+      if (pgagroal_bind(config->common.host, config->console, &console_fds, &console_fds_length, config->nodelay, config->backlog))
+      {
+         pgagroal_log_fatal("pgagroal: Could not bind to %s:%d", config->common.host, config->console);
+#ifdef HAVE_SYSTEMD
+         sd_notifyf(0, "STATUS=Could not bind to %s:%d", config->common.host, config->console);
+#endif
+         goto error;
+      }
+
+      if (console_fds_length > MAX_FDS)
+      {
+         pgagroal_log_fatal("pgagroal: Too many descriptors %d", console_fds_length);
+#ifdef HAVE_SYSTEMD
+         sd_notifyf(0, "STATUS=Too many descriptors %d", console_fds_length);
+#endif
+         goto error;
+      }
+
+      start_console();
+   }
+
    pgagroal_log_info("pgagroal: %s started on %s:%d",
                      PGAGROAL_VERSION,
                      config->common.host,
@@ -1320,6 +1374,10 @@ read_superuser_path:
    for (int i = 0; i < management_fds_length; i++)
    {
       pgagroal_log_debug("Remote management: %d", *(management_fds + i));
+   }
+   for (int i = 0; i < console_fds_length; i++)
+   {
+      pgagroal_log_debug("Console: %d", *(console_fds + i));
    }
 
    pgagroal_log_debug("Pipeline: %d", config->pipeline);
@@ -1385,6 +1443,12 @@ read_superuser_path:
    }
    shutdown_management(true);
 
+   for (int i = 0; i < console_fds_length; i++)
+   {
+      pgagroal_io_stop(&io_console[i].watcher);
+   }
+   shutdown_console();
+
    for (int i = 0; i < metrics_fds_length; i++)
    {
       pgagroal_io_stop(&io_metrics[i].watcher);
@@ -1404,6 +1468,7 @@ read_superuser_path:
    free(main_fds);
    free(metrics_fds);
    free(management_fds);
+   free(console_fds);
 
    main_pipeline.destroy(pipeline_shmem, pipeline_shmem_size);
 
@@ -2488,6 +2553,75 @@ accept_management_cb(struct io_watcher* watcher)
 }
 
 static void
+accept_console_cb(struct io_watcher* watcher)
+{
+   int client_fd;
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
+
+   errno = 0;
+
+   client_fd = watcher->fds.main.client_fd;
+
+   pgagroal_prometheus_self_sockets_add();
+
+   if (client_fd == -1)
+   {
+      if (accept_fatal(errno) && config->keep_running)
+      {
+         pgagroal_log_warn("Restarting listening port due to: %s (%d)", strerror(errno), client_fd);
+
+         for (int i = 0; i < console_fds_length; i++)
+         {
+            pgagroal_io_stop(&io_console[i].watcher);
+         }
+         shutdown_console();
+
+         free(console_fds);
+         console_fds = NULL;
+         console_fds_length = 0;
+
+         if (pgagroal_bind(config->common.host, config->console, &console_fds, &console_fds_length, config->nodelay, config->backlog))
+         {
+            pgagroal_log_fatal("pgagroal: Could not bind to %s:%d", config->common.host, config->console);
+            exit(1);
+         }
+
+         if (console_fds_length > MAX_FDS)
+         {
+            pgagroal_log_fatal("pgagroal: Too many descriptors %d", console_fds_length);
+            exit(1);
+         }
+
+         start_console();
+
+         for (int i = 0; i < console_fds_length; i++)
+         {
+            pgagroal_log_debug("Console: %d", *(console_fds + i));
+         }
+      }
+      else
+      {
+         pgagroal_log_debug("accept: %s (%d)", strerror(errno), client_fd);
+      }
+      errno = 0;
+      return;
+   }
+
+   if (!fork())
+   {
+      pgagroal_event_loop_fork();
+      shutdown_ports(false);
+      /* We are leaving the socket descriptor valid such that the client won't reuse it */
+      pgagroal_console(NULL, client_fd);
+   }
+
+   pgagroal_disconnect(client_fd);
+   pgagroal_prometheus_self_sockets_sub();
+}
+
+static void
 shutdown_cb(void)
 {
    struct main_configuration* config = (struct main_configuration*)shmem;
@@ -2730,6 +2864,7 @@ reload_configuration(bool* restart)
    int old_port;
    int old_metrics;
    int old_management;
+   int old_console;
    struct main_configuration* config;
 
    config = (struct main_configuration*)shmem;
@@ -2740,6 +2875,7 @@ reload_configuration(bool* restart)
    old_port = config->common.port;
    old_metrics = config->common.metrics;
    old_management = config->management;
+   old_console = config->console;
 
    pgagroal_reload_configuration(restart);
 
@@ -2843,6 +2979,38 @@ reload_configuration(bool* restart)
       }
    }
 
+   /* Only rebind console if console port changed */
+   if (old_console != config->console)
+   {
+      for (int i = 0; i < console_fds_length; i++)
+      {
+         pgagroal_io_stop(&io_console[i].watcher);
+      }
+      shutdown_console();
+
+      free(console_fds);
+      console_fds = NULL;
+      console_fds_length = 0;
+
+      if (config->console > 0)
+      {
+         /* Bind console socket */
+         if (pgagroal_bind(config->common.host, config->console, &console_fds, &console_fds_length, config->nodelay, config->backlog))
+         {
+            pgagroal_log_fatal("pgagroal: Could not bind to %s:%d", config->common.host, config->console);
+            goto error;
+         }
+
+         if (console_fds_length > MAX_FDS)
+         {
+            pgagroal_log_fatal("pgagroal: Too many descriptors %d", console_fds_length);
+            goto error;
+         }
+
+         start_console();
+      }
+   }
+
    for (int i = 0; i < main_fds_length; i++)
    {
       pgagroal_log_debug("Socket: %d", *(main_fds + i));
@@ -2855,6 +3023,10 @@ reload_configuration(bool* restart)
    for (int i = 0; i < management_fds_length; i++)
    {
       pgagroal_log_debug("Remote management: %d", *(management_fds + i));
+   }
+   for (int i = 0; i < console_fds_length; i++)
+   {
+      pgagroal_log_debug("Console: %d", *(console_fds + i));
    }
 
    return true;
@@ -2889,6 +3061,12 @@ reload_services_only(void)
       pgagroal_io_stop(&io_management[i].watcher);
    }
    shutdown_management(true);
+
+   for (int i = 0; i < console_fds_length; i++)
+   {
+      pgagroal_io_stop(&io_console[i].watcher);
+   }
+   shutdown_console();
 
    // Instead, restart services with current memory configuration
    pgagroal_log_debug("conf set: unix socket Bound to %s/.s.PGSQL.%d", config->unix_socket_dir, config->common.port);
@@ -2964,6 +3142,27 @@ reload_services_only(void)
          if (management_fds_length <= MAX_FDS)
          {
             start_management();
+         }
+      }
+   }
+
+   // Restart console
+   if (config->console > 0)
+   {
+      free(console_fds);
+      console_fds = NULL;
+      console_fds_length = 0;
+
+      if (pgagroal_bind(config->common.host, config->console, &console_fds, &console_fds_length, config->nodelay, config->backlog))
+      {
+         pgagroal_log_warn("pgagroal: Could not rebind console port %s:%d, continuing without console", config->common.host, config->console);
+         config->console = 0;
+      }
+      else
+      {
+         if (console_fds_length <= MAX_FDS)
+         {
+            start_console();
          }
       }
    }
@@ -3090,5 +3289,10 @@ shutdown_ports(bool remove)
    if (config->management > 0)
    {
       shutdown_management(remove);
+   }
+
+   if (config->console > 0)
+   {
+      shutdown_console();
    }
 }

@@ -489,7 +489,7 @@ pgagroal-cli clear prometheus
 ## Shell completions
 
 There is a minimal shell completion support for `pgagroal-cli`.
-Please refer to the [CLI Tools documentation](https://github.com/pgagroal/pgagroal/blob/master/doc/manual/en/13-cli-tools.md#shell-completions) for detailed information about how to enable and use shell completions.
+Please refer to the [CLI Tools documentation](https://github.com/pgagroal/pgagroal/blob/master/doc/manual/en/14-cli-tools.md#shell-completions) for detailed information about how to enable and use shell completions.
 
 
 ## JSON Output Format
