@@ -64,6 +64,14 @@ int
 pgagroal_server_status(void);
 
 /**
+ * Update the server alive
+ * @param server The server
+ * @return true upon success, otherwise false
+ */
+bool
+pgagroal_server_is_alive(int server);
+
+/**
  * Failover
  * @param slot The slot
  * @return 0 upon success, otherwise 1

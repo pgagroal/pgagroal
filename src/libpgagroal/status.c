@@ -35,6 +35,7 @@
 #include <network.h>
 #include <status.h>
 #include <utils.h>
+#include <server.h>
 
 static void status_details(bool details, struct json* response);
 
@@ -203,6 +204,7 @@ status_details(bool details, struct json* response)
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_HOST, (uintptr_t)config->servers[i].host, ValueString);
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_PORT, (uintptr_t)config->servers[i].port, ValueInt32);
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_STATE, (uintptr_t)pgagroal_server_state_as_string(config->servers[i].state), ValueString);
+      pgagroal_json_put(js, MANAGEMENT_ARGUMENT_ALIVE, (uintptr_t)pgagroal_server_is_alive(i), ValueBool);
 
       pgagroal_json_append(servers, (uintptr_t)js, ValueJSON);
    }
