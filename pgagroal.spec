@@ -1,6 +1,6 @@
 Name:          pgagroal
-Version:       2.1.0
-Release:       1%{dist}
+Version:       2.0.1
+Release:       1%{?dist}
 Summary:       High-performance connection pool for PostgreSQL
 License:       BSD
 URL:           https://github.com/pgagroal/pgagroal
@@ -14,7 +14,7 @@ Requires:      liburing openssl systemd libatomic zlib libzstd lz4 bzip2 binutil
 pgagroal is a high-performance connection pool for PostgreSQL.
 
 %prep
-%setup -q
+%setup -q -n %{name}-%{version}
 
 %build
 
