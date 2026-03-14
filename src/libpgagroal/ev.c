@@ -1478,11 +1478,18 @@ ev_epoll_io_handler(struct io_watcher* watcher)
          client_fd = accept(watcher->fds.main.listen_fd, NULL, NULL);
          if (client_fd == -1)
          {
-            if (errno != EAGAIN && errno != EWOULDBLOCK)
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-               pgagroal_log_error("accept error: %s", strerror(errno));
-               return PGAGROAL_EVENT_RC_ERROR;
+               return PGAGROAL_EVENT_RC_OK;
             }
+
+            if (errno == EBADF || errno == ENOTSOCK)
+            {
+               return PGAGROAL_EVENT_RC_OK;
+            }
+
+            pgagroal_log_error("accept error: %s", strerror(errno));
+            return PGAGROAL_EVENT_RC_ERROR;
          }
          else
          {

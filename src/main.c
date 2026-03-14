@@ -205,13 +205,16 @@ shutdown_uds(bool remove)
    memset(&pgsql, 0, sizeof(pgsql));
    snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->common.port);
 
-   pgagroal_disconnect(unix_pgsql_socket);
-   errno = 0;
+   if (unix_pgsql_socket >= 0)
+   {
+      pgagroal_disconnect(unix_pgsql_socket);
+      unix_pgsql_socket = -1;
+   }
+
    if (remove)
    {
       pgagroal_remove_unix_socket(config->unix_socket_dir, &pgsql[0]);
    }
-   errno = 0;
 }
 
 static void
@@ -260,8 +263,11 @@ shutdown_metrics(void)
 {
    for (int i = 0; i < metrics_fds_length; i++)
    {
-      pgagroal_disconnect(io_metrics[i].socket);
-      errno = 0;
+      if (io_metrics[i].socket >= 0)
+      {
+         pgagroal_disconnect(io_metrics[i].socket);
+         io_metrics[i].socket = -1;
+      }
    }
 }
 
@@ -285,8 +291,11 @@ shutdown_management(bool remove __attribute__((unused)))
 {
    for (int i = 0; i < management_fds_length; i++)
    {
-      pgagroal_disconnect(io_management[i].socket);
-      errno = 0;
+      if (io_management[i].socket >= 0)
+      {
+         pgagroal_disconnect(io_management[i].socket);
+         io_management[i].socket = -1;
+      }
    }
 }
 
