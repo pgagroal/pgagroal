@@ -1083,21 +1083,30 @@ ev_io_uring_handler(struct io_uring_cqe* cqe)
       case PGAGROAL_EVENT_TYPE_MAIN:
          io = (struct io_watcher*)watcher;
          if (cqe->res < 0)
-         {
-            pgagroal_log_error("io_uring: accept error: %s", strerror(-cqe->res));
-            if (pgagroal_event_loop_is_running())
-            {
+	 {
+   	    int err = -cqe->res;
+  	    if (err == EBADF || err == ENOTSOCK || err == ECANCELED)
+   	    {
+      	       pgagroal_log_debug("io_uring: accept ignored during reload: %s", strerror(err));
+               return PGAGROAL_EVENT_RC_OK;
+   	    }
+
+   	    pgagroal_log_error("io_uring: accept error: %s", strerror(err));
+
+   	    if (pgagroal_event_loop_is_running())
+   	    {
                ev_io_uring_io_start(io);
-            }
-            return PGAGROAL_EVENT_RC_OK;
-         }
+   	    }
+	
+   	    return PGAGROAL_EVENT_RC_OK;
+	 }																										
          io->fds.main.client_fd = cqe->res;
          io->cb(io);
 
          if (!(cqe->flags & IORING_CQE_F_MORE))
          {
             pgagroal_log_debug("io_uring: multishot accept ended: rearming");
-            if (pgagroal_event_loop_is_running())
+            if (pgagroal_event_loop_is_running() && io->fds.main.listen_fd != -1)
             {
                ev_io_uring_io_start(io);
             }
