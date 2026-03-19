@@ -480,9 +480,7 @@ pgagroal_io_stop(struct io_watcher* watcher)
 
    if (i >= loop->events_nr)
    {
-      pgagroal_log_warn("pgagroal_io_stop: watcher not found in events list (fd rcv=%d, snd=%d, events_nr=%d) - possible double-stop",
-                        watcher->fds.worker.rcv_fd, watcher->fds.worker.snd_fd, loop->events_nr);
-      return PGAGROAL_EVENT_RC_ERROR;
+     return PGAGROAL_EVENT_RC_OK;
    }
 
    int rc = io_stop(watcher);
