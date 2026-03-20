@@ -375,3 +375,42 @@ MCTF_TEST(test_configuration_reject_invalid_update_process_title)
 
    MCTF_FINISH();
 }
+
+MCTF_TEST(test_configuration_accept_time_params)
+{
+   // blocking_timeout
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, "30s");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, "2m");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, "1h");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, "1d");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, "2w");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, "60");
+
+   // idle_timeout
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, "30s");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, "5m");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, "1w");
+
+   // authentication_timeout
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_AUTHENTICATION_TIMEOUT, "5s");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_AUTHENTICATION_TIMEOUT, "10");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_reject_invalid_time_params)
+{
+   // Non-numeric
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, "abc");
+
+   // Invalid suffix
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, "10x");
+
+   // Negative value
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, "-5s");
+
+   // Mixed units
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_AUTHENTICATION_TIMEOUT, "1h5s");
+
+   MCTF_FINISH();
+}
