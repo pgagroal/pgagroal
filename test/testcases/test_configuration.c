@@ -375,3 +375,34 @@ MCTF_TEST(test_configuration_reject_invalid_update_process_title)
 
    MCTF_FINISH();
 }
+
+MCTF_TEST(test_configuration_accept_log_rotation)
+{
+   // log_rotation_size (as_bytes path)
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_ROTATION_SIZE, "1M");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_ROTATION_SIZE, "512K");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_ROTATION_SIZE, "1G");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_ROTATION_SIZE, "1024");
+
+   // log_rotation_age (as_seconds path)
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_ROTATION_AGE, "1d");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_ROTATION_AGE, "12h");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_ROTATION_AGE, "1w");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_reject_invalid_log_rotation)
+{
+   // log_rotation_size
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_LOG_ROTATION_SIZE, "abc");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_LOG_ROTATION_SIZE, "-1");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_LOG_ROTATION_SIZE, "1MK");
+
+   // log_rotation_age
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_LOG_ROTATION_AGE, "abc");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_LOG_ROTATION_AGE, "10x");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_LOG_ROTATION_AGE, "-1s");
+
+   MCTF_FINISH();
+}
