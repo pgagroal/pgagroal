@@ -459,3 +459,43 @@ MCTF_TEST(test_configuration_reject_invalid_log_rotation)
 
    MCTF_FINISH();
 }
+
+MCTF_TEST(test_configuration_accept_int)
+{
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_PORT, "5432");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_PORT, "0");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_PORT, "65535");
+
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_MAX_CONNECTIONS, "100");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_MAX_CONNECTIONS, "1");
+
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_MAX_RETRIES, "5");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_MAX_RETRIES, "0");
+
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_BACKLOG, "128");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_reject_invalid_int)
+{
+   // Non-numeric
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_PORT, "abc");
+
+   // Decimal
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_PORT, "12.5");
+
+   // Empty string
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_PORT, "");
+
+   // Trailing characters
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_PORT, "100abc");
+
+   // Embedded space
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_PORT, "12 34");
+
+   // Whitespace only
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_PORT, " ");
+
+   MCTF_FINISH();
+}
