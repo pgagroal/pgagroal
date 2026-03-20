@@ -26,6 +26,11 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef __NetBSD__
+#ifndef secure_getenv
+#define secure_getenv getenv
+#endif
+#endif
 #ifndef PGAGROAL_UTILS_H
 #define PGAGROAL_UTILS_H
 

@@ -46,6 +46,7 @@
 #include <net/if.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <sys/time.h>
@@ -84,7 +85,7 @@ pgagroal_bind(const char* hostname, int port, int** fds, int* length, bool no_de
       {
          if (ifa->ifa_addr != NULL &&
              (ifa->ifa_addr->sa_family == AF_INET || ifa->ifa_addr->sa_family == AF_INET6) &&
-             (ifa->ifa_flags & IFF_UP))
+             (ifa->ifa_flags & 1))
          {
             int* new_fds = NULL;
             int new_length = 0;
@@ -195,7 +196,7 @@ pgagroal_bind_unix_socket(const char* directory, const char* file, int* fd)
       snprintf(&buf[0], sizeof(buf), "%s%s", directory, file);
    }
 
-   strncpy(addr.sun_path, &buf[0], sizeof(addr.sun_path) - 1);
+    snprintf(addr.sun_path, sizeof(addr.sun_path),"%.*s", (int)(sizeof(addr.sun_path)-1), buf);
    unlink(&buf[0]);
 
    if (bind(*fd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
@@ -378,7 +379,7 @@ pgagroal_connect_unix_socket(const char* directory, const char* file, int* fd)
    memset(&buf, 0, sizeof(buf));
    snprintf(&buf[0], sizeof(buf), "%s/%s", directory, file);
 
-   strncpy(addr.sun_path, &buf[0], sizeof(addr.sun_path) - 1);
+   snprintf(addr.sun_path, sizeof(addr.sun_path), "%.*s", (int)(sizeof(addr.sun_path)-1),buf);
 
    if (connect(*fd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
    {
