@@ -65,14 +65,14 @@ static int extract_key_value(char* str, char** key, char** value);
 static int extract_syskey_value(char* str, char** key, char** value);
 static int as_int(char* str, int* i);
 static int as_bool(char* str, bool* b);
-static int as_logging_type(char* str);
+static int as_logging_type(char* str, int* type);
 static int as_logging_level(char* str);
-static int as_logging_mode(char* str);
+static int as_logging_mode(char* str, int* mode);
 
 static int as_logging_rotation_size(char* str, unsigned int* size);
-static int as_validation(char* str);
-static int as_pipeline(char* str);
-static int as_hugepage(char* str);
+static int as_validation(char* str, int* val);
+static int as_pipeline(char* str, int* pipeline);
+static int as_hugepage(char* str, unsigned char* hp);
 static unsigned int as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy);
 static int extract_value(char* str, int offset, char** value);
 static void extract_hba(char* str, char** type, char** database, char** user, char** address, char** method);
@@ -2783,24 +2783,27 @@ as_bool(char* str, bool* b)
 }
 
 static int
-as_logging_type(char* str)
+as_logging_type(char* str, int* type)
 {
    if (!strcasecmp(str, "console"))
    {
-      return PGAGROAL_LOGGING_TYPE_CONSOLE;
+      *type = PGAGROAL_LOGGING_TYPE_CONSOLE;
+      return 0;
    }
 
    if (!strcasecmp(str, "file"))
    {
-      return PGAGROAL_LOGGING_TYPE_FILE;
+      *type = PGAGROAL_LOGGING_TYPE_FILE;
+      return 0;
    }
 
    if (!strcasecmp(str, "syslog"))
    {
-      return PGAGROAL_LOGGING_TYPE_SYSLOG;
+      *type = PGAGROAL_LOGGING_TYPE_SYSLOG;
+      return 0;
    }
 
-   return PGAGROAL_LOGGING_TYPE_CONSOLE;
+   return 1;
 }
 
 static int
@@ -2887,87 +2890,99 @@ as_logging_level(char* str)
 }
 
 static int
-as_logging_mode(char* str)
+as_logging_mode(char* str, int* mode)
 {
    if (!strcasecmp(str, "a") || !strcasecmp(str, "append"))
    {
-      return PGAGROAL_LOGGING_MODE_APPEND;
+      *mode = PGAGROAL_LOGGING_MODE_APPEND;
+      return 0;
    }
 
    if (!strcasecmp(str, "c") || !strcasecmp(str, "create"))
    {
-      return PGAGROAL_LOGGING_MODE_CREATE;
+      *mode = PGAGROAL_LOGGING_MODE_CREATE;
+      return 0;
    }
 
-   return PGAGROAL_LOGGING_MODE_APPEND;
+   return 1;
 }
 
 static int
-as_validation(char* str)
+as_validation(char* str, int* val)
 {
    if (!strcasecmp(str, "off"))
    {
-      return VALIDATION_OFF;
+      *val = VALIDATION_OFF;
+      return 0;
    }
 
    if (!strcasecmp(str, "foreground"))
    {
-      return VALIDATION_FOREGROUND;
+      *val = VALIDATION_FOREGROUND;
+      return 0;
    }
 
    if (!strcasecmp(str, "background"))
    {
-      return VALIDATION_BACKGROUND;
+      *val = VALIDATION_BACKGROUND;
+      return 0;
    }
 
-   return VALIDATION_OFF;
+   return 1;
 }
 
 static int
-as_pipeline(char* str)
+as_pipeline(char* str, int* pipeline)
 {
    if (!strcasecmp(str, "auto"))
    {
-      return PIPELINE_AUTO;
+      *pipeline = PIPELINE_AUTO;
+      return 0;
    }
 
    if (!strcasecmp(str, "performance"))
    {
-      return PIPELINE_PERFORMANCE;
+      *pipeline = PIPELINE_PERFORMANCE;
+      return 0;
    }
 
    if (!strcasecmp(str, "session"))
    {
-      return PIPELINE_SESSION;
+      *pipeline = PIPELINE_SESSION;
+      return 0;
    }
 
    if (!strcasecmp(str, "transaction"))
    {
-      return PIPELINE_TRANSACTION;
+      *pipeline = PIPELINE_TRANSACTION;
+      return 0;
    }
 
-   return PIPELINE_AUTO;
+   return 1;
 }
 
 static int
-as_hugepage(char* str)
+as_hugepage(char* str, unsigned char* hp)
 {
    if (!strcasecmp(str, "off"))
    {
-      return HUGEPAGE_OFF;
+      *hp = HUGEPAGE_OFF;
+      return 0;
    }
 
    if (!strcasecmp(str, "try"))
    {
-      return HUGEPAGE_TRY;
+      *hp = HUGEPAGE_TRY;
+      return 0;
    }
 
    if (!strcasecmp(str, "on"))
    {
-      return HUGEPAGE_ON;
+      *hp = HUGEPAGE_ON;
+      return 0;
    }
 
-   return HUGEPAGE_OFF;
+   return 1;
 }
 
 static void
@@ -5601,7 +5616,10 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("pipeline", section, key, true, &unknown))
    {
-      config->pipeline = as_pipeline(value);
+      if (as_pipeline(value, &config->pipeline))
+      {
+         unknown = true;
+      }
    }
    else if (key_in_section("failover", section, key, true, &unknown))
    {
@@ -5743,7 +5761,10 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("validation", section, key, true, &unknown))
    {
-      config->validation = as_validation(value);
+      if (as_validation(value, &config->validation))
+      {
+         unknown = true;
+      }
    }
    else if (key_in_section("background_interval", section, key, true, &unknown))
    {
@@ -5829,7 +5850,10 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("log_type", section, key, true, &unknown))
    {
-      config->common.log_type = as_logging_type(value);
+      if (as_logging_type(value, &config->common.log_type))
+      {
+         unknown = true;
+      }
    }
    else if (key_in_section("log_level", section, key, true, &unknown))
    {
@@ -5884,7 +5908,10 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("log_mode", section, key, true, &unknown))
    {
-      config->common.log_mode = as_logging_mode(value);
+      if (as_logging_mode(value, &config->common.log_mode))
+      {
+         unknown = true;
+      }
    }
    else if (key_in_section("max_connections", section, key, true, &unknown))
    {
@@ -5929,7 +5956,10 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("hugepage", section, key, true, &unknown))
    {
-      config->common.hugepage = as_hugepage(value);
+      if (as_hugepage(value, &config->common.hugepage))
+      {
+         unknown = true;
+      }
    }
    else if (key_in_section("tracker", section, key, true, &unknown))
    {
@@ -5949,7 +5979,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    {
       if (as_update_process_title(value, &config->update_process_title, UPDATE_PROCESS_TITLE_VERBOSE))
       {
-         unknown = false;
+         unknown = true;
       }
    }
    else
@@ -6137,7 +6167,10 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("log_type", section, key, true, &unknown))
    {
-      config->common.log_type = as_logging_type(value);
+      if (as_logging_type(value, &config->common.log_type))
+      {
+         unknown = true;
+      }
    }
    else if (key_in_section("log_level", section, key, true, &unknown))
    {
@@ -6192,11 +6225,17 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("log_mode", section, key, true, &unknown))
    {
-      config->common.log_mode = as_logging_mode(value);
+      if (as_logging_mode(value, &config->common.log_mode))
+      {
+         unknown = true;
+      }
    }
    else if (key_in_section("hugepage", section, key, true, &unknown))
    {
-      config->common.hugepage = as_hugepage(value);
+      if (as_hugepage(value, &config->common.hugepage))
+      {
+         unknown = true;
+      }
    }
    return 0;
 }

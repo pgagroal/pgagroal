@@ -172,3 +172,121 @@ cleanup:
    free(str);
    MCTF_FINISH();
 }
+
+MCTF_TEST(test_configuration_accept_pipeline)
+{
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_PIPELINE, "auto");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_PIPELINE, "performance");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_PIPELINE, "session");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_PIPELINE, "transaction");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_PIPELINE, "AUTO");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_PIPELINE, "Session");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_reject_invalid_pipeline)
+{
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_PIPELINE, "fast");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_PIPELINE, "none");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_PIPELINE, "");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_accept_validation)
+{
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_VALIDATION, "off");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_VALIDATION, "foreground");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_VALIDATION, "background");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_VALIDATION, "OFF");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_VALIDATION, "Foreground");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_reject_invalid_validation)
+{
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_VALIDATION, "on");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_VALIDATION, "true");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_VALIDATION, "");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_accept_hugepage)
+{
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_HUGEPAGE, "off");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_HUGEPAGE, "try");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_HUGEPAGE, "on");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_HUGEPAGE, "OFF");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_HUGEPAGE, "Try");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_reject_invalid_hugepage)
+{
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_HUGEPAGE, "yes");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_HUGEPAGE, "true");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_HUGEPAGE, "");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_accept_log_type)
+{
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_TYPE, "console");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_TYPE, "file");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_TYPE, "syslog");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_TYPE, "Console");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_reject_invalid_log_type)
+{
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_LOG_TYPE, "stdout");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_LOG_TYPE, "");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_accept_log_mode)
+{
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_MODE, "a");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_MODE, "append");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_MODE, "c");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_LOG_MODE, "create");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_reject_invalid_log_mode)
+{
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_LOG_MODE, "overwrite");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_LOG_MODE, "");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_accept_update_process_title)
+{
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, "never");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, "off");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, "strict");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, "minimal");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, "verbose");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, "full");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_reject_invalid_update_process_title)
+{
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, "invalid");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, "yes");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, "");
+
+   MCTF_FINISH();
+}
