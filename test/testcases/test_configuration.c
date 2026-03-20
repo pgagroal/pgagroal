@@ -172,3 +172,88 @@ cleanup:
    free(str);
    MCTF_FINISH();
 }
+
+MCTF_TEST(test_configuration_accept_bool)
+{
+   // Lowercase
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "true");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "false");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "on");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "off");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "yes");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "no");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "1");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "0");
+
+   // Case insensitive
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "TRUE");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "True");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "FALSE");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "ON");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "Yes");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "NO");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_reject_invalid_bool)
+{
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "2");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "maybe");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "enabled");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "disabled");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "y");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "n");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "t");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_KEEP_ALIVE, "f");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_accept_bytes)
+{
+   // Bare integer (bytes)
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "1024");
+
+   // Byte suffix
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "512B");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "512b");
+
+   // Kilobytes
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "256K");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "256k");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "256KB");
+
+   // Megabytes
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "1M");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "1m");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "1MB");
+
+   // Gigabytes
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "1G");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "1g");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "1GB");
+
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_reject_invalid_bytes)
+{
+   // Non-numeric
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "abc");
+
+   // Negative value
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "-1");
+
+   // Conflicting double suffix
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "1MK");
+
+   // 'BB' not allowed (bytes suffix cannot repeat)
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "1BB");
+
+   // Special characters
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "1 K");
+
+   MCTF_FINISH();
+}
