@@ -375,3 +375,17 @@ MCTF_TEST(test_configuration_reject_invalid_update_process_title)
 
    MCTF_FINISH();
 }
+
+MCTF_TEST(test_configuration_prometheus_section_keys)
+{
+   // Metrics keys should be accepted in a [prometheus] section
+   pgagroal_test_assert_conf_section_set_ok("prometheus", CONFIGURATION_ARGUMENT_METRICS, "9187");
+   pgagroal_test_assert_conf_section_set_ok("prometheus", CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_AGE, "10s");
+   pgagroal_test_assert_conf_section_set_ok("prometheus", CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, "256K");
+
+   // Same keys should still work in the main [pgagroal] section
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS, "9187");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_AGE, "10s");
+
+   MCTF_FINISH();
+}

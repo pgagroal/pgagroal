@@ -47,6 +47,20 @@ pgagroal_test_assert_conf_set_fail(char* key, char* value)
 }
 
 void
+pgagroal_test_assert_conf_section_set_ok(char* section, char* key, char* value)
+{
+   struct main_configuration config;
+   memset(&config, 0, sizeof(struct main_configuration));
+   int ret = pgagroal_apply_main_configuration(&config, NULL, section, key, value);
+   if (ret != 0)
+   {
+      mctf_errno = 1;
+      mctf_errmsg = mctf_format_error("Expected conf set to succeed for section='%s' key='%s' value='%s', but it failed with %d",
+                                       section, key, value, ret);
+   }
+}
+
+void
 pgagroal_test_assert_conf_set_ok(char* key, char* value)
 {
    struct main_configuration config;

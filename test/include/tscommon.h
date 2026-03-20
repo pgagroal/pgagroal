@@ -44,6 +44,15 @@ void
 pgagroal_test_assert_conf_set_ok(char* key, char* value);
 
 /**
+ * Assert that conf set succeeds for a given section
+ * @param section The configuration section
+ * @param key The configuration key
+ * @param value The value to set
+ */
+void
+pgagroal_test_assert_conf_section_set_ok(char* section, char* key, char* value);
+
+/**
  * Assert that conf set fails for the given key/value
  * @param key The configuration key
  * @param value The value to set
