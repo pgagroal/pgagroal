@@ -3,8 +3,8 @@ Version:       2.0.1
 Release:       1%{?dist}
 Summary:       High-performance connection pool for PostgreSQL
 License:       BSD
-URL:           https://github.com/pgagroal/pgagroal
-Source0:       %{name}-%{version}.tar.gz
+URL: https://github.com/pgagroal/pgagroal
+Source0: https://github.com/pgagroal/pgagroal/archive/refs/tags/%{version}.tar.gz
 
 BuildRequires: gcc cmake make python3-docutils
 BuildRequires: liburing liburing-devel openssl openssl-devel systemd systemd-devel libatomic zlib zlib-devel libzstd libzstd-devel lz4 lz4-devel bzip2 bzip2-devel binutils
@@ -14,7 +14,7 @@ Requires:      liburing openssl systemd libatomic zlib libzstd lz4 bzip2 binutil
 pgagroal is a high-performance connection pool for PostgreSQL.
 
 %prep
-%setup -q -n %{name}-%{version}
+%setup -q
 
 %build
 
@@ -94,7 +94,7 @@ cmake -DCMAKE_BUILD_TYPE=Release -DDOCS=OFF ..
 %{__install} -m 755 %{_builddir}/%{name}-%{version}/build/src/pgagroal-admin %{buildroot}%{_bindir}/pgagroal-admin
 %{__install} -m 755 %{_builddir}/%{name}-%{version}/build/src/pgagroal-vault %{buildroot}%{_bindir}/pgagroal-vault
 
-%{__install} -m 755 %{_builddir}/%{name}-%{version}/build/src/libpgagroal.so.%{version} %{buildroot}%{_libdir}/libpgagroal.so.%{version}
+%{__install} -m 755 %{_builddir}/%{name}-%{version}/build/src/libpgagroal.so* %{buildroot}%{_libdir}/
 
 chrpath -r %{_libdir} %{buildroot}%{_bindir}/pgagroal
 chrpath -r %{_libdir} %{buildroot}%{_bindir}/pgagroal-cli
@@ -160,3 +160,5 @@ cd %{buildroot}%{_libdir}/
 %{_libdir}/libpgagroal.so.%{version}
 
 %changelog
+* Thu Mar 21 2026 Shyam Pandey Shyampandey2625@gmail.com - 2.0.1-1
+- Fix RPM spec build issues
