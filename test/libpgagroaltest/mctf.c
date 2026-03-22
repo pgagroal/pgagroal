@@ -27,6 +27,7 @@
  */
 
 #include <mctf.h>
+#include <tsclient.h>
 
 #include <errno.h>
 #include <stdarg.h>
@@ -442,7 +443,29 @@ mctf_run_tests(mctf_filter_type_t filter_type, const char* filter)
          free(mctf_errmsg);
          mctf_errmsg = NULL;
       }
-      int ret = test->func();
+      int ret = 0;
+
+      if (pgagroal_tsclient_reset_shmem())
+      {
+         mctf_errno = __LINE__;
+         mctf_errmsg = strdup("Failed to reset shared memory before test");
+         ret = 1;
+      }
+      else
+      {
+         ret = test->func();
+      }
+
+      if (pgagroal_tsclient_reset_shmem())
+      {
+         if (mctf_errmsg)
+         {
+            free(mctf_errmsg);
+         }
+         mctf_errno = __LINE__;
+         mctf_errmsg = strdup("Failed to reset shared memory after test");
+         ret = 1;
+      }
 
       clock_gettime(CLOCK_MONOTONIC, &end_time);
 
