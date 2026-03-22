@@ -3382,41 +3382,49 @@ get_salt(void* data, char** salt)
 }
 
 int
-pgagroal_get_master_key(char** masterkey)
+pgagroal_get_master_key(char* master_key_path, char** masterkey)
 {
    FILE* master_key_file = NULL;
-   char buf[MISC_LENGTH];
+   char buf[MAX_PATH];
    char line[MISC_LENGTH];
    char* mk = NULL;
    size_t mk_length = 0;
    struct stat st = {0};
 
-   if (pgagroal_get_home_directory() == NULL)
+   if (master_key_path != NULL)
    {
-      goto error;
-   }
-
-   memset(&buf, 0, sizeof(buf));
-   snprintf(&buf[0], sizeof(buf), "%s/.pgagroal", pgagroal_get_home_directory());
-
-   if (stat(&buf[0], &st) == -1)
-   {
-      goto error;
+      memset(&buf, 0, sizeof(buf));
+      memcpy(&buf[0], master_key_path, MIN(strlen(master_key_path), sizeof(buf) - 1));
    }
    else
    {
-      if (S_ISDIR(st.st_mode) && st.st_mode & S_IRWXU && !(st.st_mode & S_IRWXG) && !(st.st_mode & S_IRWXO))
-      {
-         /* Ok */
-      }
-      else
+      if (pgagroal_get_home_directory() == NULL)
       {
          goto error;
       }
-   }
 
-   memset(&buf, 0, sizeof(buf));
-   snprintf(&buf[0], sizeof(buf), "%s/.pgagroal/master.key", pgagroal_get_home_directory());
+      memset(&buf, 0, sizeof(buf));
+      snprintf(&buf[0], sizeof(buf), "%s/.pgagroal", pgagroal_get_home_directory());
+
+      if (stat(&buf[0], &st) == -1)
+      {
+         goto error;
+      }
+      else
+      {
+         if (S_ISDIR(st.st_mode) && st.st_mode & S_IRWXU && !(st.st_mode & S_IRWXG) && !(st.st_mode & S_IRWXO))
+         {
+            /* Ok */
+         }
+         else
+         {
+            goto error;
+         }
+      }
+
+      memset(&buf, 0, sizeof(buf));
+      snprintf(&buf[0], sizeof(buf), "%s/.pgagroal/master.key", pgagroal_get_home_directory());
+   }
 
    if (stat(&buf[0], &st) == -1)
    {

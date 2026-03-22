@@ -587,7 +587,7 @@ encrypt_decrypt_buffer(unsigned char* origin_buffer, size_t origin_size, unsigne
    cipher_block_size = EVP_CIPHER_block_size(cipher_fp());
    tag_len = get_tag_length(mode);
 
-   if (pgagroal_get_master_key(&master_key))
+   if (pgagroal_get_master_key(NULL, &master_key))
    {
       pgagroal_log_error("pgagroal_get_master_key: Invalid master key");
       goto error;
