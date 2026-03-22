@@ -193,6 +193,7 @@ struct periodic_watcher
 struct event_loop
 {
    atomic_bool running;                 /**< Flag indicating if the event loop is running. */
+   atomic_bool forked;                  /**< Set to true in child processes after pgagroal_event_loop_fork(). */
    sigset_t sigset;                     /**< Signal set used for handling signals in the event loop. */
    event_watcher_t* events[MAX_EVENTS]; /**< List of events */
    int events_nr;                       /**< Size of list of events */
