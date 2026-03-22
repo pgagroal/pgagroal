@@ -109,6 +109,7 @@ extern "C" {
 #define MANAGEMENT_ARGUMENT_ENCRYPTION          "Encryption"
 #define MANAGEMENT_ARGUMENT_ERROR               "Error"
 #define MANAGEMENT_ARGUMENT_FD                  "FD"
+#define MANAGEMENT_ARGUMENT_FIPS_ENABLED        "FipsEnabled"
 #define MANAGEMENT_ARGUMENT_HOST                "Host"
 #define MANAGEMENT_ARGUMENT_INITIAL_CONNECTIONS "InitialConnections"
 #define MANAGEMENT_ARGUMENT_LIMITS              "Limits"

@@ -48,6 +48,10 @@ The number of FATAL logging statements
 
 The number of failed servers
 
+**pgagroal_fips_enabled**
+
+Whether FIPS is enabled for the server (1 = enabled, 0 = disabled)
+
 **pgagroal_wait_time**
 
 The waiting time of clients
