@@ -189,7 +189,7 @@ pgagroal-cli -c pgagroal.conf flush idle
 To stop pgagroal you would use
 
 ```
-pgagroal-cli -c pgagroal.conf stop
+pgagroal-cli -c pgagroal.conf shutdown
 ```
 
 Check the outcome of the operations by verifying the exit code, like

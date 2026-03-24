@@ -128,7 +128,7 @@ max_retries
   The maximum number of iterations to obtain a connection. Default is 5
 
 max_connections
-  The maximum number of connections (max 1000). Default is 1000
+  The maximum number of connections (max 10000). Default is 100
 
 allow_unknown_users
   Allow unknown users to connect. Default is true

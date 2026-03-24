@@ -41,6 +41,7 @@ Abdelrhman Sersawy <abdelrhmansersawy@gmail.com>
 Zeyad Daowd <zeyaddaowd@yahoo.com>
 Somye Mahajan <mahajan.somye@gmail.com>
 Bhawesh Panwar <panwarbhawesh1112@gmail.com>
+Frank Heikens <frank@elevarq.com>
 ```
 
 ## Committers
