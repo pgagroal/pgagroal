@@ -528,10 +528,14 @@ run_multiple_config_tests() {
             # Backup current configuration
             cp "$CONFIGURATION_DIRECTORY/pgagroal.conf" "$CONFIGURATION_DIRECTORY/pgagroal.conf.backup"
             cp "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf" "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf.backup"
-            
+            cp "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf" "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf.backup"
+
             # Copy test configuration
             cp "$entry/pgagroal.conf" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
             cp "$entry/pgagroal_hba.conf" "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf"
+            if [ -f "$entry/pgagroal_databases.conf" ]; then
+               cp "$entry/pgagroal_databases.conf" "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf"
+            fi
             
             # Update log path in the configuration to use our log directory
             sed -i "s|log_path = test.log|log_path = $LOG_DIR/pgagroal-$config_name.log|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
@@ -549,6 +553,7 @@ run_multiple_config_tests() {
             # Restore original configuration
             cp "$CONFIGURATION_DIRECTORY/pgagroal.conf.backup" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
             cp "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf.backup" "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf"
+            cp "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf.backup" "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf"
             
             echo "Configuration $config_name: PASSED"
          else
@@ -560,6 +565,7 @@ run_multiple_config_tests() {
       # Clean up backup files
       rm -f "$CONFIGURATION_DIRECTORY/pgagroal.conf.backup"
       rm -f "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf.backup"
+      rm -f "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf.backup"
       
       echo ""
       echo "=========================================="
