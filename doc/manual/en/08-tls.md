@@ -30,7 +30,7 @@ For the purpose of this tutorial we will assume the client certificate and key s
 
 **Modify the `pgagroal` configuration**
 
-It is now time to modify the [pgagroal] section of configuration file `/etc/pgagroal/pgagroal_vault.conf`, with your editor of choice by adding the following lines in the [pgagroal] section.
+It is now time to modify the [pgagroal] section of configuration file `/etc/pgagroal/pgagroal.conf`, with your editor of choice by adding the following lines in the [pgagroal] section.
 
 ```
 tls = on
