@@ -550,27 +550,25 @@ string_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char
 {
    char* ret = NULL;
    char* str = (char*)data;
-   char buf[MISC_LENGTH];
    char* translated_string = NULL;
 
    ret = pgagroal_indent(ret, tag, indent);
-   memset(buf, 0, MISC_LENGTH);
    if (str == NULL)
    {
       if (format == FORMAT_JSON || format == FORMAT_JSON_COMPACT)
       {
-         snprintf(buf, MISC_LENGTH, "null");
+         ret = pgagroal_append(ret, "null");
       }
    }
    else if (strlen(str) == 0)
    {
       if (format == FORMAT_JSON || format == FORMAT_JSON_COMPACT)
       {
-         snprintf(buf, MISC_LENGTH, "\"%s\"", str);
+         ret = pgagroal_append(ret, "\"\"");
       }
       else if (format == FORMAT_TEXT)
       {
-         snprintf(buf, MISC_LENGTH, "''");
+         ret = pgagroal_append(ret, "''");
       }
    }
    else
@@ -578,15 +576,16 @@ string_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char
       if (format == FORMAT_JSON || format == FORMAT_JSON_COMPACT)
       {
          translated_string = pgagroal_escape_string(str);
-         snprintf(buf, MISC_LENGTH, "\"%s\"", translated_string);
+         ret = pgagroal_append(ret, "\"");
+         ret = pgagroal_append(ret, translated_string);
+         ret = pgagroal_append(ret, "\"");
          free(translated_string);
       }
       else if (format == FORMAT_TEXT)
       {
-         snprintf(buf, MISC_LENGTH, "%s", str);
+         ret = pgagroal_append(ret, str);
       }
    }
-   ret = pgagroal_append(ret, buf);
    return ret;
 }
 
