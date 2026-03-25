@@ -499,3 +499,37 @@ MCTF_TEST(test_configuration_reject_invalid_int)
 
    MCTF_FINISH();
 }
+
+MCTF_TEST(test_configuration_server_section_keys)
+{
+   struct main_configuration config;
+   struct server srv;
+   int ret;
+
+   // primary accepted in server section
+   memset(&config, 0, sizeof(struct main_configuration));
+   memset(&srv, 0, sizeof(struct server));
+   ret = pgagroal_apply_main_configuration(&config, &srv, "myserver", CONFIGURATION_ARGUMENT_PRIMARY, "on");
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "primary=on should be accepted in server section");
+
+   // port accepted in server section
+   memset(&config, 0, sizeof(struct main_configuration));
+   memset(&srv, 0, sizeof(struct server));
+   ret = pgagroal_apply_main_configuration(&config, &srv, "myserver", CONFIGURATION_ARGUMENT_PORT, "5432");
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "port=5432 should be accepted in server section");
+
+   // invalid port rejected in server section
+   memset(&config, 0, sizeof(struct main_configuration));
+   memset(&srv, 0, sizeof(struct server));
+   ret = pgagroal_apply_main_configuration(&config, &srv, "myserver", CONFIGURATION_ARGUMENT_PORT, "abc");
+   MCTF_ASSERT_INT_EQ(ret, 1, cleanup, "port=abc should be rejected in server section");
+
+   // invalid primary rejected in server section
+   memset(&config, 0, sizeof(struct main_configuration));
+   memset(&srv, 0, sizeof(struct server));
+   ret = pgagroal_apply_main_configuration(&config, &srv, "myserver", CONFIGURATION_ARGUMENT_PRIMARY, "maybe");
+   MCTF_ASSERT_INT_EQ(ret, 1, cleanup, "primary=maybe should be rejected in server section");
+
+cleanup:
+   MCTF_FINISH();
+}
