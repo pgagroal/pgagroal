@@ -203,7 +203,7 @@ shutdown_uds(bool remove)
    config = (struct main_configuration*)shmem;
 
    memset(&pgsql, 0, sizeof(pgsql));
-   snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->common.port);
+   snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
 
    pgagroal_disconnect(unix_pgsql_socket);
    errno = 0;
@@ -1121,9 +1121,9 @@ read_superuser_path:
    /* Bind Unix Domain Socket: Main */
    if (pgagroal_bind_unix_socket(config->unix_socket_dir, MAIN_UDS, &unix_management_socket))
    {
-      pgagroal_log_fatal("pgagroal: Could not bind to %s/%s", config->unix_socket_dir, MAIN_UDS);
+      pgagroal_log_fatal("pgagroal: Could not bind to %s/%s.%d", config->unix_socket_dir, MAIN_UDS, config->common.port);
 #ifdef HAVE_SYSTEMD
-      sd_notifyf(0, "STATUS=Could not bind to %s/%s", config->unix_socket_dir, MAIN_UDS);
+      sd_notifyf(0, "STATUS=Could not bind to %s/%s.%d", config->unix_socket_dir, MAIN_UDS, config->common.port);
 #endif
       goto error;
    }
@@ -1131,9 +1131,9 @@ read_superuser_path:
    /* Bind Unix Domain Socket: Transfer */
    if (pgagroal_bind_unix_socket(config->unix_socket_dir, TRANSFER_UDS, &unix_transfer_socket))
    {
-      pgagroal_log_fatal("pgagroal: Could not bind to %s/%s", config->unix_socket_dir, TRANSFER_UDS);
+      pgagroal_log_fatal("pgagroal: Could not bind to %s/%s.%d", config->unix_socket_dir, TRANSFER_UDS, config->common.port);
 #ifdef HAVE_SYSTEMD
-      sd_notifyf(0, "STATUS=Could not bind to %s/%s", config->unix_socket_dir, TRANSFER_UDS);
+      sd_notifyf(0, "STATUS=Could not bind to %s/%s.%d", config->unix_socket_dir, TRANSFER_UDS, config->common.port);
 #endif
       goto error;
    }
@@ -1143,13 +1143,13 @@ read_superuser_path:
       char pgsql[MISC_LENGTH];
 
       memset(&pgsql, 0, sizeof(pgsql));
-      snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->common.port);
+      snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
 
       if (pgagroal_bind_unix_socket(config->unix_socket_dir, &pgsql[0], &unix_pgsql_socket))
       {
-         pgagroal_log_fatal("pgagroal: Could not bind to %s/%s", config->unix_socket_dir, &pgsql[0]);
+         pgagroal_log_fatal("pgagroal: Could not bind to %s/%s.%d", config->unix_socket_dir, &pgsql[0], config->common.port);
 #ifdef HAVE_SYSTEMD
-         sd_notifyf(0, "STATUS=Could not bind to %s/%s", config->unix_socket_dir, &pgsql[0]);
+         sd_notifyf(0, "STATUS=Could not bind to %s/%s.%d", config->unix_socket_dir, &pgsql[0], config->common.port);
 #endif
          goto error;
       }
@@ -1535,11 +1535,11 @@ accept_main_cb(struct io_watcher* watcher)
          shutdown_uds(true);
 
          memset(&pgsql, 0, sizeof(pgsql));
-         snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->common.port);
+         snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
 
          if (pgagroal_bind_unix_socket(config->unix_socket_dir, &pgsql[0], &unix_pgsql_socket))
          {
-            pgagroal_log_fatal("pgagroal: Could not bind to %s/%s", config->unix_socket_dir, &pgsql[0]);
+            pgagroal_log_fatal("pgagroal: Could not bind to %s/%s.%d", config->unix_socket_dir, &pgsql[0], config->common.port);
             exit(1);
          }
 
@@ -1665,7 +1665,7 @@ accept_mgt_cb(struct io_watcher* watcher)
 
          if (pgagroal_bind_unix_socket(config->unix_socket_dir, MAIN_UDS, &unix_management_socket))
          {
-            pgagroal_log_fatal("pgagroal: Could not bind to %s", config->unix_socket_dir);
+            pgagroal_log_fatal("pgagroal: Could not bind to %s/%s.%d", config->unix_socket_dir, MAIN_UDS, config->common.port);
             exit(1);
          }
 
@@ -2244,7 +2244,7 @@ accept_transfer_cb(struct io_watcher* watcher)
 
          if (pgagroal_bind_unix_socket(config->unix_socket_dir, TRANSFER_UDS, &unix_transfer_socket))
          {
-            pgagroal_log_fatal("pgagroal: Could not bind to %s/%s", config->unix_socket_dir, TRANSFER_UDS);
+            pgagroal_log_fatal("pgagroal: Could not bind to %s/%s.%d", config->unix_socket_dir, TRANSFER_UDS, config->common.port);
             exit(1);
          }
 
@@ -2909,11 +2909,11 @@ reload_configuration(bool* restart)
       shutdown_uds(true);
 
       memset(&pgsql, 0, sizeof(pgsql));
-      snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->common.port);
+      snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
 
       if (pgagroal_bind_unix_socket(config->unix_socket_dir, &pgsql[0], &unix_pgsql_socket))
       {
-         pgagroal_log_fatal("pgagroal: Could not bind to %s/%s", config->unix_socket_dir, &pgsql[0]);
+         pgagroal_log_fatal("pgagroal: Could not bind to %s/%s.%d", config->unix_socket_dir, &pgsql[0], config->common.port);
          goto error;
       }
 
@@ -3095,11 +3095,11 @@ reload_services_only(void)
 
    // Restart Unix Domain Socket with NEW port from memory
    memset(&pgsql, 0, sizeof(pgsql));
-   snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->common.port);
+   snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
 
    if (pgagroal_bind_unix_socket(config->unix_socket_dir, &pgsql[0], &unix_pgsql_socket))
    {
-      pgagroal_log_fatal("pgagroal: Could not bind to %s/%s", config->unix_socket_dir, &pgsql[0]);
+      pgagroal_log_fatal("pgagroal: Could not bind to %s/%s.%d", config->unix_socket_dir, &pgsql[0], config->common.port);
       goto error;
    }
 

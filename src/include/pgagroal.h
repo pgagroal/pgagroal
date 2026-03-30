@@ -48,6 +48,7 @@ extern "C" {
 
 #define MAIN_UDS          ".s.pgagroal"
 #define TRANSFER_UDS      ".s.pgagroal.tu"
+#define PG_UDS            ".s.PGSQL"
 
 #ifdef HAVE_FREEBSD
 #define PGAGROAL_DEFAULT_CONFIGURATION_PATH "/usr/local/etc/pgagroal/"

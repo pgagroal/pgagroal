@@ -120,11 +120,11 @@ transaction_start(struct event_loop* loop, struct worker_io* w)
    deallocate = false;
 
    memset(&p, 0, sizeof(p));
-   snprintf(&p[0], sizeof(p), ".s.pgagroal.%d", getpid());
+   snprintf(&p[0], sizeof(p), MAIN_UDS);
 
    if (pgagroal_bind_unix_socket(config->unix_socket_dir, &p[0], &unix_socket))
    {
-      pgagroal_log_fatal("pgagroal: Could not bind to %s/%s", config->unix_socket_dir, &p[0]);
+      pgagroal_log_fatal("pgagroal: Could not bind to %s/%s.%d", config->unix_socket_dir, &p[0], config->common.port);
       goto error;
    }
 

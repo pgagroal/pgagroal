@@ -185,14 +185,13 @@ pgagroal_bind_unix_socket(const char* directory, const char* file, int* fd)
       }
    }
 
-   memset(&buf, 0, sizeof(buf));
    if (!pgagroal_ends_with(&buf[0], "/"))
    {
-      snprintf(&buf[0], sizeof(buf), "%s/%s", directory, file);
+      snprintf(&buf[0], sizeof(buf), "%s/%s.%d", directory, file, config->common.port);
    }
    else
    {
-      snprintf(&buf[0], sizeof(buf), "%s%s", directory, file);
+      snprintf(&buf[0], sizeof(buf), "%s%s.%d", directory, file, config->common.port);
    }
 
    strncpy(addr.sun_path, &buf[0], sizeof(addr.sun_path) - 1);
@@ -200,14 +199,14 @@ pgagroal_bind_unix_socket(const char* directory, const char* file, int* fd)
 
    if (bind(*fd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
    {
-      pgagroal_log_error("pgagroal_bind_unix_socket: bind: %s/%s %s", directory, file, strerror(errno));
+      pgagroal_log_error("pgagroal_bind_unix_socket: bind: %s/%s.%d %s", directory, file, config->common.port, strerror(errno));
       errno = 0;
       goto error;
    }
 
    if (listen(*fd, config->backlog) == -1)
    {
-      pgagroal_log_error("pgagroal_bind_unix_socket: listen: %s/%s %s", directory, file, strerror(errno));
+      pgagroal_log_error("pgagroal_bind_unix_socket: listen: %s/%s.%d %s", directory, file, config->common.port, strerror(errno));
       errno = 0;
       goto error;
    }
@@ -227,8 +226,11 @@ pgagroal_remove_unix_socket(const char* directory, const char* file)
 {
    char buf[MISC_LENGTH];
 
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
    memset(&buf, 0, sizeof(buf));
-   snprintf(&buf[0], sizeof(buf), "%s/%s", directory, file);
+   snprintf(&buf[0], sizeof(buf), "%s/%s.%d", directory, file, config->common.port);
 
    unlink(&buf[0]);
 
@@ -365,6 +367,10 @@ pgagroal_connect_unix_socket(const char* directory, const char* file, int* fd)
    char buf[107];
    struct sockaddr_un addr;
 
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
+
    if ((*fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
    {
       pgagroal_log_warn("pgagroal_connect_unix_socket: socket: %s %s", directory, strerror(errno));
@@ -376,13 +382,13 @@ pgagroal_connect_unix_socket(const char* directory, const char* file, int* fd)
    addr.sun_family = AF_UNIX;
 
    memset(&buf, 0, sizeof(buf));
-   snprintf(&buf[0], sizeof(buf), "%s/%s", directory, file);
+   snprintf(&buf[0], sizeof(buf), "%s/%s.%d", directory, file, config->common.port);
 
    strncpy(addr.sun_path, &buf[0], sizeof(addr.sun_path) - 1);
 
    if (connect(*fd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
    {
-      pgagroal_log_trace("pgagroal_connect_unix_socket: connect: %s/%s %s", directory, file, strerror(errno));
+      pgagroal_log_trace("pgagroal_connect_unix_socket: connect: %s/%s.%d %s", directory, file, config->common.port, strerror(errno));
       pgagroal_disconnect(*fd);
       errno = 0;
       *fd = -1;
