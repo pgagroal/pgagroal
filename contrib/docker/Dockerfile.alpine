@@ -95,4 +95,7 @@ EXPOSE 2345 2346
 
 USER pgagroal
 
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+    CMD pgagroal-cli -c /etc/pgagroal/pgagroal.conf ping || exit 1
+
 CMD ["/usr/local/bin/pgagroal", "-c", "/etc/pgagroal/pgagroal.conf", "-a", "/etc/pgagroal/pgagroal_hba.conf"]
