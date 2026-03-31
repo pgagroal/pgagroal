@@ -1,0 +1,42 @@
+# Reduce Docker build context for container image builds.
+# The Dockerfiles in contrib/docker/ use COPY . . in the builder stage,
+# so only files needed by cmake and the runtime COPY are required.
+
+# Version control
+.git
+.gitignore
+
+# CI/CD
+.github
+
+# Tests (cmake skips test/ if absent)
+test
+
+# Monitoring and observability tooling
+contrib/grafana
+contrib/prometheus_scrape
+contrib/shell_comp
+contrib/valgrind
+contrib/docker/rpm
+
+# Developer tools
+.clang-format
+clang-format.sh
+
+# Package specs
+pgagroal.spec
+
+# Documentation at root level
+README.md
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+AUTHORS
+
+# Build artifacts (if present locally)
+build
+CMakeCache.txt
+CMakeFiles
+
+# OS and editor artifacts
+.DS_Store
+*.log
