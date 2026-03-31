@@ -76,24 +76,14 @@ RUN rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.
     dnf install -y dnf-plugins-core && \
     dnf config-manager --set-enabled crb && \
     dnf makecache && \
-    dnf install -y \ 
+    dnf install -y \
         libpq \
-        libpq-devel \
         libatomic \
         zlib \
-        zlib-devel \
         zstd \
-        libzstd-devel \
         lz4 \
-        lz4-devel \
         bzip2 \
-        bzip2-devel \
-        libatomic \
-        libyaml-devel \
-        systemd-devel \
-        liburing-devel \
-        libasan \ 
-        libubsan && \
+        liburing && \
     dnf clean all
 
 RUN useradd --create-home --shell /bin/bash pgagroal

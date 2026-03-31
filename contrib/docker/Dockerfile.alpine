@@ -69,14 +69,11 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositori
     apk add --no-cache \
     bash \
     ca-certificates \
-    yaml \
     bzip2 \
-    bzip2-dev \
     libpq \
     libatomic \
-    liburing-dev\
+    liburing \
     zstd \
-    linux-headers \
     lz4-libs
 
 RUN adduser -D -s /bin/sh pgagroal
