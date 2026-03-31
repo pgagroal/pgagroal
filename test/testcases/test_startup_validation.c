@@ -1,0 +1,286 @@
+/*
+ * Copyright (C) 2026 The pgagroal community
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this list
+ * of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this
+ * list of conditions and the following disclaimer in the documentation and/or other
+ * materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors may
+ * be used to endorse or promote products derived from this software without specific
+ * prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
+ * THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT
+ * OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+ * TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <pgagroal.h>
+#include <configuration.h>
+#include <server.h>
+#include <shmem.h>
+#include <tsclient.h>
+#include <mctf.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int
+build_test_conf_path(const char* subdir, char* path, size_t path_size)
+{
+   int n;
+
+   n = snprintf(path, path_size, "%s/test/conf/%s/pgagroal.conf",
+                project_directory, subdir);
+
+   if (n <= 0 || (size_t)n >= path_size)
+   {
+      return 1;
+   }
+
+   return 0;
+}
+
+// duplicate server detection via getaddrinfo (localhost vs 127.0.0.1)
+MCTF_TEST(test_server_validation_duplicate_server_getaddrinfo)
+{
+   struct main_configuration config;
+   char path[MAX_PATH];
+   int ret;
+
+   memset(&config, 0, sizeof(struct main_configuration));
+   pgagroal_init_configuration(&config);
+
+   MCTF_ASSERT(build_test_conf_path("07", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   ret = pgagroal_read_configuration(&config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
+
+   ret = pgagroal_validate_configuration(&config, true, true);
+   MCTF_ASSERT(ret != 0, cleanup,
+               "validation should fail for duplicate servers (localhost vs 127.0.0.1)");
+
+cleanup:
+   MCTF_FINISH();
+}
+
+// duplicate server name detection
+MCTF_TEST(test_server_validation_duplicate_server_name)
+{
+   struct main_configuration config;
+   char path[MAX_PATH];
+   int ret;
+
+   memset(&config, 0, sizeof(struct main_configuration));
+   pgagroal_init_configuration(&config);
+
+   MCTF_ASSERT(build_test_conf_path("08", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   ret = pgagroal_read_configuration(&config, path, false);
+   MCTF_ASSERT(ret != 0, cleanup,
+               "read_configuration should fail for duplicate server names");
+
+cleanup:
+   MCTF_FINISH();
+}
+
+// multiple primary server detection
+MCTF_TEST(test_server_validation_multiple_primaries)
+{
+   struct main_configuration config;
+   char path[MAX_PATH];
+   int ret;
+
+   memset(&config, 0, sizeof(struct main_configuration));
+   pgagroal_init_configuration(&config);
+
+   MCTF_ASSERT(build_test_conf_path("09", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   ret = pgagroal_read_configuration(&config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
+
+   ret = pgagroal_validate_configuration(&config, true, true);
+   MCTF_ASSERT(ret != 0, cleanup,
+               "validation should fail for multiple primary servers");
+
+cleanup:
+   MCTF_FINISH();
+}
+
+// valid configuration should pass all checks
+MCTF_TEST(test_server_validation_valid_config)
+{
+   struct main_configuration config;
+   char path[MAX_PATH];
+   int ret;
+
+   memset(&config, 0, sizeof(struct main_configuration));
+   pgagroal_init_configuration(&config);
+
+   MCTF_ASSERT(build_test_conf_path("10", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   ret = pgagroal_read_configuration(&config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
+
+   ret = pgagroal_validate_configuration(&config, true, true);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
+                      "validation should pass for a valid configuration");
+
+cleanup:
+   MCTF_FINISH();
+}
+
+// duplicate system_identifier detection (same cluster, different server names)
+MCTF_TEST(test_server_validation_duplicate_system_identifier)
+{
+   struct main_configuration* config;
+   int ret;
+   int orig_count;
+   struct server orig_servers[NUMBER_OF_SERVERS];
+   char orig_health_check_user[MAX_USERNAME_LENGTH];
+
+   config = (struct main_configuration*)shmem;
+
+   /* Save original state */
+   orig_count = config->number_of_servers;
+   memcpy(orig_servers, config->servers, sizeof(orig_servers));
+   memcpy(orig_health_check_user, config->health_check_user, MAX_USERNAME_LENGTH);
+
+   /* Set health_check_user to postgres */
+   snprintf(config->health_check_user, MAX_USERNAME_LENGTH, "postgres");
+
+   /* Set up two servers pointing to the same instance */
+   config->number_of_servers = 2;
+   memset(&config->servers[0], 0, sizeof(struct server));
+   memset(&config->servers[1], 0, sizeof(struct server));
+
+   snprintf(config->servers[0].name, MISC_LENGTH, "server_a");
+   snprintf(config->servers[0].host, MISC_LENGTH, "%s", orig_servers[0].host);
+   config->servers[0].port = orig_servers[0].port;
+
+   snprintf(config->servers[1].name, MISC_LENGTH, "server_b");
+   snprintf(config->servers[1].host, MISC_LENGTH, "%s", orig_servers[0].host);
+   config->servers[1].port = orig_servers[0].port;
+
+   ret = pgagroal_check_server_identifiers();
+
+   /* Restore original config */
+   config->number_of_servers = orig_count;
+   memcpy(config->servers, orig_servers, sizeof(orig_servers));
+   memcpy(config->health_check_user, orig_health_check_user, MAX_USERNAME_LENGTH);
+
+   MCTF_ASSERT(ret != 0, cleanup,
+               "check_server_identifiers should fail for two servers pointing to the same cluster");
+
+cleanup:
+   MCTF_FINISH();
+}
+
+// startup_validation = off: identifier check should be skipped entirely
+MCTF_TEST(test_startup_validation_off)
+{
+   struct main_configuration* config;
+   struct main_configuration backup;
+   char path[MAX_PATH];
+   int ret;
+
+   config = (struct main_configuration*)shmem;
+
+   /* Save original state */
+   memcpy(&backup, config, sizeof(struct main_configuration));
+
+   MCTF_ASSERT(build_test_conf_path("11", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   pgagroal_init_configuration(config);
+   ret = pgagroal_read_configuration(config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
+
+   ret = pgagroal_check_server_identifiers();
+
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
+                      "check_server_identifiers should return 0 when startup_validation is off");
+
+cleanup:
+   /* Restore original config */
+   memcpy(config, &backup, sizeof(struct main_configuration));
+   MCTF_FINISH();
+}
+
+// startup_validation = try with no health_check_user: should skip gracefully
+MCTF_TEST(test_startup_validation_try_no_user)
+{
+   struct main_configuration* config;
+   struct main_configuration backup;
+   char path[MAX_PATH];
+   int ret;
+
+   config = (struct main_configuration*)shmem;
+
+   /* Save original state */
+   memcpy(&backup, config, sizeof(struct main_configuration));
+
+   MCTF_ASSERT(build_test_conf_path("12", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   pgagroal_init_configuration(config);
+   ret = pgagroal_read_configuration(config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
+
+   ret = pgagroal_check_server_identifiers();
+
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
+                      "check_server_identifiers should return 0 in try mode without health_check_user");
+
+cleanup:
+   /* Restore original config */
+   memcpy(config, &backup, sizeof(struct main_configuration));
+   MCTF_FINISH();
+}
+
+// startup_validation = on with no health_check_user: should fail
+MCTF_TEST(test_startup_validation_on_no_user)
+{
+   struct main_configuration* config;
+   struct main_configuration backup;
+   char path[MAX_PATH];
+   int ret;
+
+   config = (struct main_configuration*)shmem;
+
+   /* Save original state */
+   memcpy(&backup, config, sizeof(struct main_configuration));
+
+   MCTF_ASSERT(build_test_conf_path("13", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   pgagroal_init_configuration(config);
+   ret = pgagroal_read_configuration(config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
+
+   ret = pgagroal_check_server_identifiers();
+
+   MCTF_ASSERT(ret != 0, cleanup,
+               "check_server_identifiers should fail in on mode without health_check_user");
+
+cleanup:
+   /* Restore original config */
+   memcpy(config, &backup, sizeof(struct main_configuration));
+   MCTF_FINISH();
+}

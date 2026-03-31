@@ -31,19 +31,16 @@
 #include <health.h>
 #include <logging.h>
 #include <network.h>
+#include <server.h>
 #include <shmem.h>
 #include <utils.h>
 #include <message.h>
-#include <security.h>
 
 /* system */
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdatomic.h>
-#include <arpa/inet.h>
-#include <string.h>
-#include <errno.h>
 #include <sys/wait.h>
 
 static void health_check_loop(void);
@@ -208,188 +205,33 @@ health_check_loop(void)
    pgagroal_log_info("Health check stopped");
 }
 
-/**
- * Probes a single server
- */
 static int
 server_probe(int server_idx, bool* up, int* auth_type)
 {
    struct main_configuration* config;
-   struct server* server;
    int fd = -1;
-   char buffer[1024];
-   int offset = 0;
    struct message* msg = NULL;
    int status;
-   size_t start_packet_size;
-   char* password = NULL;
-   char* query_string = "SELECT 1";
-   int query_len;
-   int msg_size;
    bool query_success = false;
-   int auth_type_msg;
-   bool ready = false;
-   int offset_p;
-   char kind;
-   int len;
    bool query_ready = false;
    int offset_q;
    char type_q;
    int len_q;
+   char buffer[8];
 
    config = (struct main_configuration*)shmem;
-   server = &config->servers[server_idx];
 
    *up = false;
    *auth_type = HEALTH_CHECK_AUTH_UNKNOWN;
 
-   pgagroal_log_debug("Health: Probing server %d (%s:%d) as user %s", server_idx, server->host, server->port, config->health_check_user);
+   pgagroal_log_debug("Health: Probing server %d (%s:%d) as user %s",
+                      server_idx, config->servers[server_idx].host,
+                      config->servers[server_idx].port, config->health_check_user);
 
-   if (pgagroal_connect(server->host, server->port, &fd, true, false) != 0)
+   if (pgagroal_server_query_execute(server_idx, config->health_check_user, config->health_check_user, "SELECT 1", auth_type, &fd) != 0)
    {
       pgagroal_log_debug("Health: Failed to connect to server %d", server_idx);
       return 1;
-   }
-
-   /* Construct Startup Packet */
-   start_packet_size = 4 + 4 + 5 + strlen(config->health_check_user) + 1 + 9 + strlen(config->health_check_user) + 1 + 1;
-
-   memset(buffer, 0, sizeof(buffer));
-   pgagroal_write_int32(buffer, start_packet_size);
-   pgagroal_write_int32(buffer + 4, 196608); /* Protocol 3.0 */
-
-   offset = 8;
-   pgagroal_snprintf(buffer + offset, sizeof(buffer) - offset, "user");
-   offset += 5;
-   pgagroal_snprintf(buffer + offset, sizeof(buffer) - offset, "%s", config->health_check_user);
-   offset += strlen(config->health_check_user) + 1;
-
-   pgagroal_snprintf(buffer + offset, sizeof(buffer) - offset, "database");
-   offset += 9;
-   pgagroal_snprintf(buffer + offset, sizeof(buffer) - offset, "%s", config->health_check_user);
-   offset += strlen(config->health_check_user) + 1;
-
-   buffer[offset++] = 0;
-
-   if (pgagroal_write_socket(NULL, fd, buffer, offset) != offset)
-   {
-      pgagroal_log_debug("Health: Failed to write startup packet");
-      goto error;
-   }
-
-   /* Authentication Phase */
-   status = pgagroal_read_timeout_message(NULL, fd, 5, &msg);
-   if (status != MESSAGE_STATUS_OK || msg->kind != 'R')
-   {
-      pgagroal_log_debug("Health: Expected 'R' but got %c (status %d)", msg ? msg->kind : '?', status);
-      goto error;
-   }
-
-   auth_type_msg = ntohl(*(int*)(msg->data + 5));
-   if (auth_type_msg == 0) /* Trust / AuthenticationOk */
-   {
-      pgagroal_log_debug("Health: AuthenticationOk (Trust)");
-      *auth_type = HEALTH_CHECK_AUTH_TRUST;
-   }
-   else if (auth_type_msg == 5) /* MD5 */
-   {
-      pgagroal_log_debug("Health: Server %d requires MD5 authentication", server_idx);
-      *auth_type = HEALTH_CHECK_AUTH_MD5;
-      password = pgagroal_get_user_password(config->health_check_user);
-      if (password == NULL)
-      {
-         pgagroal_log_warn("Health: Password for %s not found", config->health_check_user);
-         goto error;
-      }
-      if (pgagroal_md5_client_auth(msg, config->health_check_user, password, fd, NULL, &msg) != 0)
-      {
-         pgagroal_log_debug("Health: MD5 authentication failed for server %d", server_idx);
-         goto error;
-      }
-   }
-   else if (auth_type_msg == 10) /* SASL */
-   {
-      pgagroal_log_debug("Health: Server %d requires SCRAM-SHA-256 authentication", server_idx);
-      *auth_type = HEALTH_CHECK_AUTH_SCRAM;
-      password = pgagroal_get_user_password(config->health_check_user);
-      if (password == NULL)
-      {
-         pgagroal_log_warn("Health: Password for %s not found", config->health_check_user);
-         goto error;
-      }
-      if (pgagroal_scram_client_auth(config->health_check_user, password, fd, NULL, &msg) != 0)
-      {
-         pgagroal_log_debug("Health: SCRAM-SHA-256 authentication failed for server %d", server_idx);
-         goto error;
-      }
-   }
-   else
-   {
-      pgagroal_log_warn("Health: Unsupported authentication type %d for server %d", auth_type_msg, server_idx);
-      goto error;
-   }
-
-   /* Wait for ReadyForQuery */
-   while (true)
-   {
-      if (msg == NULL)
-      {
-         status = pgagroal_read_timeout_message(NULL, fd, 5, &msg);
-         if (status != MESSAGE_STATUS_OK || msg == NULL)
-         {
-            pgagroal_log_debug("Health: Failed to read from server (status %d)", status);
-            goto error;
-         }
-      }
-
-      offset_p = 0;
-      while (offset_p < msg->length)
-      {
-         kind = pgagroal_read_byte(msg->data + offset_p);
-         len = pgagroal_read_int32(msg->data + offset_p + 1);
-
-         pgagroal_log_debug("Health Trace: loop msg kind=%c len=%d offset=%d total=%zd", kind, len, offset_p, msg->length);
-
-         if (kind == 'Z')
-         {
-            ready = true;
-            break;
-         }
-         else if (kind == 'E')
-         {
-            pgagroal_log_debug("Health: Received ErrorResponse during session initialization");
-            goto error;
-         }
-
-         offset_p += 1 + len;
-         if (offset_p >= msg->length)
-         {
-            break;
-         }
-      }
-
-      pgagroal_clear_message(msg);
-      msg = NULL;
-
-      if (ready)
-      {
-         break;
-      }
-   }
-
-   /* Send SELECT 1 */
-   query_len = strlen(query_string);
-   memset(buffer, 0, sizeof(buffer));
-   buffer[0] = 'Q';
-   pgagroal_write_int32(buffer + 1, 4 + query_len + 1);
-   memcpy(buffer + 5, query_string, query_len);
-   buffer[5 + query_len] = 0;
-   msg_size = 1 + 4 + query_len + 1;
-
-   if (pgagroal_write_socket(NULL, fd, buffer, msg_size) != msg_size)
-   {
-      pgagroal_log_debug("Health: Failed to write query");
-      goto error;
    }
 
    /* Wait for query response */

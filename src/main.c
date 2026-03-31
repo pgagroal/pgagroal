@@ -1259,6 +1259,15 @@ read_superuser_path:
       pgagroal_health_check(argc, argv);
    }
 
+   if (pgagroal_check_server_identifiers())
+   {
+      pgagroal_log_fatal("pgagroal: Duplicate server system identifiers detected");
+#ifdef HAVE_SYSTEMD
+      sd_notify(0, "STATUS=Duplicate server system identifiers detected");
+#endif
+      goto error;
+   }
+
    if (pgagroal_time_is_valid(config->idle_timeout))
    {
       pgagroal_periodic_init(&idle_timeout, idle_timeout_cb,

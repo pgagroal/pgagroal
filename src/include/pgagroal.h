@@ -169,6 +169,10 @@ extern "C" {
 #define HUGEPAGE_TRY                   1
 #define HUGEPAGE_ON                    2
 
+#define STARTUP_VALIDATION_OFF         0
+#define STARTUP_VALIDATION_TRY         1
+#define STARTUP_VALIDATION_ON          2
+
 #define TLS_CERT_AUTH_MODE_VERIFY_CA   0
 #define TLS_CERT_AUTH_MODE_VERIFY_FULL 1
 
@@ -712,6 +716,7 @@ struct main_configuration
    pgagroal_time_t health_check_timeout;             /**< The duration of health check timeout (Default seconds) */
    char health_check_user[MAX_USERNAME_LENGTH];      /**< The health check user */
    pid_t health_check_pid;                           /**< The health check PID */
+   int startup_validation;                           /**< Startup server identifier validation mode */
    int disconnect_client;                            /**< Disconnect client if idle for more than the specified seconds */
    bool disconnect_client_force;                     /**< Force a disconnect client if active for more than the specified seconds */
    char pidfile[MAX_PATH];                           /**< File containing the PID */

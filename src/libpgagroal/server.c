@@ -34,6 +34,8 @@
 #include <pool.h>
 #include <security.h>
 #include <server.h>
+#include <message.h>
+#include <network.h>
 #include <utils.h>
 #include <value.h>
 
@@ -45,9 +47,400 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <arpa/inet.h>
 
 static int failover(int old_primary);
 static int process_server_parameters(int server, struct deque* server_parameters);
+static int query_system_identifier(int server_idx, char* identifier, size_t id_size);
+
+/**
+ * Check server system identifiers for duplicates.
+ *
+ * Behavior is controlled by the startup_validation config parameter:
+ *   off: skip entirely
+ *   try: run check if health_check_user is set, otherwise log INFO and continue
+ *   on:  require health_check_user and fail on any query error or duplicate
+ */
+int
+pgagroal_check_server_identifiers(void)
+{
+   struct main_configuration* config;
+   char identifiers[NUMBER_OF_SERVERS][64];
+   int num_servers;
+
+   config = (struct main_configuration*)shmem;
+   num_servers = config->number_of_servers;
+
+   if (config->startup_validation == STARTUP_VALIDATION_OFF)
+   {
+      pgagroal_log_debug("Startup validation: off, skipping identifier check");
+      return 0;
+   }
+
+   if (num_servers < 2)
+   {
+      return 0;
+   }
+
+   if (strlen(config->health_check_user) == 0)
+   {
+      if (config->startup_validation == STARTUP_VALIDATION_ON)
+      {
+         pgagroal_log_fatal("startup_validation is set to 'on' but health_check_user is not configured");
+         return 1;
+      }
+
+      /* try mode: no health_check_user, just inform and continue */
+      pgagroal_log_info("Startup validation: health_check_user not set, skipping server identifier check");
+      return 0;
+   }
+
+   pgagroal_log_info("Checking server system identifiers");
+
+   for (int i = 0; i < num_servers; i++)
+   {
+      memset(identifiers[i], 0, sizeof(identifiers[i]));
+
+      if (query_system_identifier(i, identifiers[i], sizeof(identifiers[i])))
+      {
+         if (config->startup_validation == STARTUP_VALIDATION_ON)
+         {
+            pgagroal_log_fatal("Could not query system_identifier for server [%s] (%s:%d)",
+                               config->servers[i].name, config->servers[i].host, config->servers[i].port);
+            return 1;
+         }
+
+         pgagroal_log_warn("Could not query system_identifier for server [%s] (%s:%d)",
+                           config->servers[i].name, config->servers[i].host, config->servers[i].port);
+      }
+   }
+
+   for (int i = 0; i < num_servers; i++)
+   {
+      if (!strlen(identifiers[i]))
+      {
+         continue;
+      }
+
+      for (int j = i + 1; j < num_servers; j++)
+      {
+         if (!strlen(identifiers[j]))
+         {
+            continue;
+         }
+
+         if (!strcmp(identifiers[i], identifiers[j]))
+         {
+            pgagroal_log_fatal("Servers [%s] (%s:%d) and [%s] (%s:%d) have the same system_identifier (%s) "
+                               "- they point to the same PostgreSQL cluster",
+                               config->servers[i].name, config->servers[i].host, config->servers[i].port,
+                               config->servers[j].name, config->servers[j].host, config->servers[j].port,
+                               identifiers[i]);
+            return 1;
+         }
+      }
+   }
+
+   return 0;
+}
+
+int
+pgagroal_server_query_execute(int server_idx, char* user, char* database, char* query, int* auth_type, int* fd_out)
+{
+   struct main_configuration* config;
+   struct server* srv;
+   int fd = -1;
+   char buffer[1024];
+   struct message* msg = NULL;
+   struct message* startup_msg = NULL;
+   int status;
+   char* password = NULL;
+   int query_len;
+   int msg_size;
+   int auth_type_msg;
+   bool ready = false;
+   int offset_p;
+   char kind;
+   int len;
+
+   config = (struct main_configuration*)shmem;
+   srv = &config->servers[server_idx];
+
+   if (pgagroal_connect(srv->host, srv->port, &fd, true, false) != 0)
+   {
+      pgagroal_log_debug("server_query: Failed to connect to server %d (%s:%d)",
+                         server_idx, srv->host, srv->port);
+      return 1;
+   }
+
+   /* Construct and send Startup Packet */
+   if (pgagroal_create_startup_message(user, database, &(startup_msg)) != MESSAGE_STATUS_OK)
+   {
+      pgagroal_log_debug("server_query: Failed to create startup message");
+      goto error;
+   }
+
+   if (pgagroal_write_message(NULL, fd, startup_msg) != MESSAGE_STATUS_OK)
+   {
+      pgagroal_log_debug("server_query: Failed to write startup packet");
+      pgagroal_free_message(startup_msg);
+      startup_msg = NULL;
+      goto error;
+   }
+
+   pgagroal_free_message(startup_msg);
+   startup_msg = NULL;
+
+   /* Authentication Phase */
+   status = pgagroal_read_timeout_message(NULL, fd, 5, &msg);
+   if (status != MESSAGE_STATUS_OK || msg == NULL || msg->kind != 'R')
+   {
+      pgagroal_log_debug("server_query: Expected 'R' but got %c (status %d)",
+                         msg ? msg->kind : '?', status);
+      goto error;
+   }
+
+   auth_type_msg = ntohl(*(int*)(msg->data + 5));
+   if (auth_type_msg == 0) /* Trust */
+   {
+      if (auth_type != NULL)
+      {
+         *auth_type = HEALTH_CHECK_AUTH_TRUST;
+      }
+   }
+   else if (auth_type_msg == 5) /* MD5 */
+   {
+      if (auth_type != NULL)
+      {
+         *auth_type = HEALTH_CHECK_AUTH_MD5;
+      }
+      password = pgagroal_get_user_password(user);
+      if (password == NULL)
+      {
+         pgagroal_log_debug("server_query: Password for %s not found", user);
+         goto error;
+      }
+      if (pgagroal_md5_client_auth(msg, user, password, fd, NULL, &msg) != 0)
+      {
+         pgagroal_log_debug("server_query: MD5 auth failed for server %d", server_idx);
+         goto error;
+      }
+   }
+   else if (auth_type_msg == 10) /* SASL */
+   {
+      if (auth_type != NULL)
+      {
+         *auth_type = HEALTH_CHECK_AUTH_SCRAM;
+      }
+      password = pgagroal_get_user_password(user);
+      if (password == NULL)
+      {
+         pgagroal_log_debug("server_query: Password for %s not found", user);
+         goto error;
+      }
+      if (pgagroal_scram_client_auth(user, password, fd, NULL, &msg) != 0)
+      {
+         pgagroal_log_debug("server_query: SCRAM auth failed for server %d", server_idx);
+         goto error;
+      }
+   }
+   else
+   {
+      pgagroal_log_debug("server_query: Unsupported auth type %d for server %d", auth_type_msg, server_idx);
+      goto error;
+   }
+
+   /* Wait for ReadyForQuery */
+   while (true)
+   {
+      if (msg == NULL)
+      {
+         status = pgagroal_read_timeout_message(NULL, fd, 5, &msg);
+         if (status != MESSAGE_STATUS_OK || msg == NULL)
+         {
+            pgagroal_log_debug("server_query: Failed to read from server (status %d)", status);
+            goto error;
+         }
+      }
+
+      offset_p = 0;
+      while (offset_p < msg->length)
+      {
+         kind = pgagroal_read_byte(msg->data + offset_p);
+         len = pgagroal_read_int32(msg->data + offset_p + 1);
+
+         if (kind == 'Z')
+         {
+            ready = true;
+            break;
+         }
+         else if (kind == 'E')
+         {
+            pgagroal_log_debug("server_query: Received ErrorResponse during session initialization");
+            goto error;
+         }
+
+         offset_p += 1 + len;
+         if (offset_p >= msg->length)
+         {
+            break;
+         }
+      }
+
+      pgagroal_clear_message(msg);
+      msg = NULL;
+
+      if (ready)
+      {
+         break;
+      }
+   }
+
+   /* Send query */
+   query_len = strlen(query);
+   msg_size = 1 + 4 + query_len + 1;
+
+   if ((size_t)msg_size > sizeof(buffer))
+   {
+      pgagroal_log_debug("server_query: Query too large (%d bytes)", query_len);
+      goto error;
+   }
+
+   memset(buffer, 0, sizeof(buffer));
+   buffer[0] = 'Q';
+   pgagroal_write_int32(buffer + 1, 4 + query_len + 1);
+   memcpy(buffer + 5, query, query_len);
+   buffer[5 + query_len] = 0;
+
+   if (pgagroal_write_socket(NULL, fd, buffer, msg_size) != msg_size)
+   {
+      pgagroal_log_debug("server_query: Failed to write query");
+      goto error;
+   }
+
+   *fd_out = fd;
+   return 0;
+
+error:
+   if (msg != NULL)
+   {
+      pgagroal_clear_message(msg);
+   }
+   if (fd != -1)
+   {
+      pgagroal_disconnect(fd);
+   }
+   return 1;
+}
+
+static int
+query_system_identifier(int server_idx, char* identifier, size_t id_size)
+{
+   struct main_configuration* config;
+   struct server* srv;
+   int fd = -1;
+   struct message* msg = NULL;
+   int status;
+   bool query_ready = false;
+   int offset_q;
+   char buffer[8];
+
+   config = (struct main_configuration*)shmem;
+   srv = &config->servers[server_idx];
+
+   if (pgagroal_server_query_execute(server_idx,
+                                     config->health_check_user,
+                                     config->health_check_user,
+                                     "SELECT system_identifier FROM pg_control_system()",
+                                     NULL, &fd) != 0)
+   {
+      return 1;
+   }
+
+   /* Parse query response and extract system_identifier from DataRow */
+   while (true)
+   {
+      status = pgagroal_read_timeout_message(NULL, fd, 5, &msg);
+      if (status != MESSAGE_STATUS_OK || msg == NULL)
+      {
+         goto error;
+      }
+
+      offset_q = 0;
+      while (offset_q < msg->length)
+      {
+         char type_q = pgagroal_read_byte(msg->data + offset_q);
+         int len_q = pgagroal_read_int32(msg->data + offset_q + 1);
+
+         if (type_q == 'D')
+         {
+            /* DataRow: 'D' | int32 len | int16 num_cols | int32 col_len | data */
+            int dr_offset = offset_q + 5; /* skip 'D' + len */
+            int num_cols = pgagroal_read_int16(msg->data + dr_offset);
+            dr_offset += 2;
+
+            if (num_cols >= 1)
+            {
+               int col_len = pgagroal_read_int32(msg->data + dr_offset);
+               dr_offset += 4;
+
+               if (col_len > 0 && (size_t)col_len < id_size)
+               {
+                  memcpy(identifier, msg->data + dr_offset, col_len);
+                  identifier[col_len] = '\0';
+               }
+            }
+         }
+         else if (type_q == 'Z')
+         {
+            query_ready = true;
+            break;
+         }
+         else if (type_q == 'E')
+         {
+            pgagroal_log_error("cannot query pg_control_system() on server %d", server_idx);
+            goto error;
+         }
+
+         offset_q += 1 + len_q;
+         if (offset_q >= msg->length)
+         {
+            break;
+         }
+      }
+
+      pgagroal_clear_message(msg);
+      msg = NULL;
+
+      if (query_ready)
+      {
+         break;
+      }
+   }
+
+   /* Send Terminate */
+   buffer[0] = 'X';
+   pgagroal_write_int32(buffer + 1, 4);
+   pgagroal_write_socket(NULL, fd, buffer, 5);
+
+   pgagroal_disconnect(fd);
+
+   pgagroal_log_debug("system_identifier: Server [%s] (%s:%d) = %s",
+                      srv->name, srv->host, srv->port, identifier);
+
+   return strlen(identifier) > 0 ? 0 : 1;
+
+error:
+   if (msg != NULL)
+   {
+      pgagroal_clear_message(msg);
+   }
+   if (fd != -1)
+   {
+      pgagroal_disconnect(fd);
+   }
+   return 1;
+}
 
 int
 pgagroal_get_primary(int* server)

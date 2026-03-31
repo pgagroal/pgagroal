@@ -95,6 +95,26 @@ pgagroal_server_clear(char* server);
 int
 pgagroal_server_switch(char* server);
 
+/**
+ * Check server system identifiers for duplicates
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_check_server_identifiers(void);
+
+/**
+ * Connect to a server, authenticate, and execute a simple query
+ * @param server_idx The server index
+ * @param user The username for the connection
+ * @param database The database name for the connection
+ * @param query The SQL query string
+ * @param auth_type The authentication type used, can be NULL
+ * @param fd_out The resulting file descriptor for reading the response
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_server_query_execute(int server_idx, char* user, char* database, char* query, int* auth_type, int* fd_out);
+
 #ifdef __cplusplus
 }
 #endif

@@ -72,6 +72,25 @@ To set up a dedicated health check user:
    ```
    *Note: Ensure the backend [PostgreSQL][postgresql] `pg_hba.conf` also allows this connection.*
 
+## Best Practices
+
+* **Always configure `health_check_user`**: It is best practice to set `health_check_user` on all configured servers, even when `health_check` is disabled. This allows pgagroal to verify server system identifiers at startup and detect misconfigured duplicate servers before they cause problems.
+
+* **Use `startup_validation`**: The `startup_validation` parameter controls how strictly pgagroal validates server identifiers at startup:
+
+  | Value | Behavior |
+  |-------|----------|
+  | `on`  | Fail startup if `health_check_user` is not configured, if any server identifier cannot be fetched, or if duplicate identifiers are detected. Recommended for production. |
+  | `try` | (Default) Attempt the check if `health_check_user` is set. If not set, log an INFO message and continue. If a query fails, log a warning but continue. Duplicates still cause a fatal error. |
+  | `off` | Skip identifier checks entirely. |
+
+  Example configuration for strict startup validation:
+  ```ini
+  [pgagroal]
+  health_check_user = pgagroal_health
+  startup_validation = on
+  ```
+
 ## Monitoring
 
 The health status of each server is exposed via the Prometheus metrics endpoint (`pgagroal_server_health`).

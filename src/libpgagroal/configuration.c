@@ -51,6 +51,8 @@
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <netdb.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <err.h>
@@ -73,6 +75,7 @@ static int as_logging_rotation_size(char* str, unsigned int* size);
 static int as_validation(char* str, int* val);
 static int as_pipeline(char* str, int* pipeline);
 static int as_hugepage(char* str, unsigned char* hp);
+static int as_startup_validation(char* str, int* sv);
 static unsigned int as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy);
 static int extract_value(char* str, int offset, char** value);
 static void extract_hba(char* str, char** type, char** database, char** user, char** address, char** method);
@@ -116,6 +119,7 @@ static int to_bool(char* where, bool value);
 static int to_int(char* where, int value);
 static int to_update_process_title(char* where, int value);
 static int to_validation(char* where, int value);
+static int to_startup_validation(char* where, int value);
 static int to_hugepage(char* where, int value);
 static int to_pipeline(char* where, int value);
 static int to_log_mode(char* where, int value);
@@ -171,6 +175,7 @@ pgagroal_init_configuration(void* shm)
    config->health_check_timeout = PGAGROAL_TIME_SEC(DEFAULT_HEALTH_CHECK_TIMEOUT);
    pgagroal_snprintf(config->health_check_user, MAX_USERNAME_LENGTH, "");
    config->health_check_pid = 0;
+   config->startup_validation = STARTUP_VALIDATION_TRY;
    config->common.authentication_timeout = PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT);
    config->disconnect_client = 0;
    config->disconnect_client_force = false;
@@ -681,6 +686,25 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
                                config->servers[j].lineno);
             return 1;
          }
+      }
+   }
+
+   // check for multiple primary servers
+   {
+      int primary_count = 0;
+      for (int i = 0; i < config->number_of_servers; i++)
+      {
+         if (atomic_load(&config->servers[i].state) == SERVER_NOTINIT_PRIMARY)
+         {
+            primary_count++;
+         }
+      }
+
+      if (primary_count > 1)
+      {
+         pgagroal_log_fatal("pgagroal: Multiple primary servers defined (%d). Only one primary is allowed",
+                            primary_count);
+         return 1;
       }
    }
 
@@ -2986,6 +3010,30 @@ as_hugepage(char* str, unsigned char* hp)
    return 1;
 }
 
+static int
+as_startup_validation(char* str, int* sv)
+{
+   if (!strcasecmp(str, "off"))
+   {
+      *sv = STARTUP_VALIDATION_OFF;
+      return 0;
+   }
+
+   if (!strcasecmp(str, "try"))
+   {
+      *sv = STARTUP_VALIDATION_TRY;
+      return 0;
+   }
+
+   if (!strcasecmp(str, "on"))
+   {
+      *sv = STARTUP_VALIDATION_ON;
+      return 0;
+   }
+
+   return 1;
+}
+
 static void
 extract_hba(char* str, char** type, char** database, char** user, char** address, char** method)
 {
@@ -3675,6 +3723,8 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
 
    memcpy(config->health_check_user, reload->health_check_user, MAX_USERNAME_LENGTH);
 
+   config->startup_validation = reload->startup_validation;
+
    /* pidfile */
    if (restart_string("pidfile", config->pidfile, reload->pidfile, true))
    {
@@ -3812,26 +3862,74 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
 }
 
 /**
- * Checks if the configuration of the first server
- * is the same as the configuration of the second server.
- * So far it tests for the same connection string, meaning
- * that the hostname and the port must be the same (i.e.,
- * pointing to the same endpoint).
- * It does not resolve the hostname, therefore 'localhost' and '127.0.0.1'
- * are considered as different hosts.
- * @return true if the server configurations look the same
+ * Checks if two servers point to the same endpoint.
+ * Resolves hostnames via getaddrinfo() to detect duplicates
+ * like 'localhost' vs '127.0.0.1' pointing to the same server
+ * @return true if the server configurations are same
  */
 static bool
 is_same_server(struct server* s1, struct server* s2)
 {
-   if (!strncmp(s1->host, s2->host, MISC_LENGTH) && s1->port == s2->port)
-   {
-      return true;
-   }
-   else
+   struct addrinfo hints;
+   struct addrinfo* res1 = NULL;
+   struct addrinfo* res2 = NULL;
+   struct addrinfo* p1;
+   struct addrinfo* p2;
+   char port1[6];
+   char port2[6];
+   bool same = false;
+
+   if (s1->port != s2->port)
    {
       return false;
    }
+
+   /* Quick string check first */
+   if (!strncmp(s1->host, s2->host, MISC_LENGTH))
+   {
+      return true;
+   }
+
+   /* Resolve via getaddrinfo */
+   memset(&hints, 0, sizeof(hints));
+   hints.ai_family = AF_UNSPEC;
+   hints.ai_socktype = SOCK_STREAM;
+
+   snprintf(port1, sizeof(port1), "%d", s1->port);
+   snprintf(port2, sizeof(port2), "%d", s2->port);
+
+   if (getaddrinfo(s1->host, port1, &hints, &res1) != 0 ||
+       getaddrinfo(s2->host, port2, &hints, &res2) != 0)
+   {
+      goto cleanup;
+   }
+
+   /* Compare all resolved addresses */
+   for (p1 = res1; p1 != NULL && !same; p1 = p1->ai_next)
+   {
+      for (p2 = res2; p2 != NULL && !same; p2 = p2->ai_next)
+      {
+         if (p1->ai_addrlen == p2->ai_addrlen &&
+             memcmp(p1->ai_addr, p2->ai_addr, p1->ai_addrlen) == 0)
+         {
+            same = true;
+         }
+      }
+   }
+
+cleanup:
+
+   if (res1 != NULL)
+   {
+      freeaddrinfo(res1);
+   }
+
+   if (res2 != NULL)
+   {
+      freeaddrinfo(res2);
+   }
+
+   return same;
 }
 
 /**
@@ -4798,6 +4896,10 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       {
          return to_validation(buffer, config->validation);
       }
+      else if (!strncmp(key, "startup_validation", MISC_LENGTH))
+      {
+         return to_startup_validation(buffer, config->startup_validation);
+      }
       else if (!strncmp(key, "update_process_title", MISC_LENGTH))
       {
          return to_update_process_title(buffer, config->update_process_title);
@@ -5281,6 +5383,39 @@ to_validation(char* where, int value)
 
    return 0;
 }
+
+/**
+ * An utility function to convert the enumeration of values for the startup_validation setting
+ * into one of its possible string descriptions.
+ *
+ * @param where the buffer used to store the stringy thing
+ * @param value the config->startup_validation setting
+ * @return 0 on success, 1 otherwise
+ */
+static int
+to_startup_validation(char* where, int value)
+{
+   if (!where || value < 0)
+   {
+      return 1;
+   }
+
+   switch (value)
+   {
+      case STARTUP_VALIDATION_OFF:
+         snprintf(where, MISC_LENGTH, "%s", "off");
+         break;
+      case STARTUP_VALIDATION_TRY:
+         snprintf(where, MISC_LENGTH, "%s", "try");
+         break;
+      case STARTUP_VALIDATION_ON:
+         snprintf(where, MISC_LENGTH, "%s", "on");
+         break;
+   }
+
+   return 0;
+}
+
 /**
  * An utility function to convert the enumeration of values for the hugepage setting
  * into one of its possible string descriptions.
@@ -5843,6 +5978,13 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
       }
       memset(config->health_check_user, 0, MAX_USERNAME_LENGTH);
       memcpy(config->health_check_user, value, max);
+   }
+   else if (key_in_section("startup_validation", section, key, true, &unknown))
+   {
+      if (as_startup_validation(value, &config->startup_validation))
+      {
+         unknown = true;
+      }
    }
    else if (key_in_section("authentication_timeout", section, key, true, &unknown))
    {
@@ -6592,9 +6734,10 @@ add_configuration_response(struct json* res)
    pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, config->idle_timeout, FORMAT_TIME_S);
    pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_TIMEOUT, config->rotate_frontend_password_timeout, FORMAT_TIME_S);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_LENGTH, (uintptr_t)config->rotate_frontend_password_length, ValueInt64);
-   pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_MAX_CONNECTION_AGE, config->max_connection_age, FORMAT_TIME_S);
-   pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_VALIDATION, config->validation, to_validation);
-   pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_BACKGROUND_INTERVAL, config->background_interval, FORMAT_TIME_S);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_CONNECTION_AGE, (uintptr_t)pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S), ValueInt64);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_VALIDATION, (uintptr_t)config->validation, ValueInt64);
+   pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_STARTUP_VALIDATION, config->startup_validation, to_startup_validation);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_BACKGROUND_INTERVAL, (uintptr_t)pgagroal_time_convert(config->background_interval, FORMAT_TIME_S), ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_RETRIES, (uintptr_t)config->max_retries, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_CONNECTIONS, (uintptr_t)config->max_connections, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ALLOW_UNKNOWN_USERS, (uintptr_t)config->allow_unknown_users, ValueBool);
