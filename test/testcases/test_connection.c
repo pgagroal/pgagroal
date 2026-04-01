@@ -26,6 +26,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <pgagroal.h>
 #include <tsclient.h>
 #include <mctf.h>
 
@@ -44,6 +45,23 @@ MCTF_TEST(test_pgagroal_connection_load)
 {
    int found = 0;
    found = !pgagroal_tsclient_execute_pgbench(user, database, true, 6, 0, 1000);
+   MCTF_ASSERT(found, cleanup, "success status not found");
+cleanup:
+   MCTF_FINISH();
+}
+
+// saturation
+MCTF_TEST(test_pgagroal_connection_saturation)
+{
+   int found = 0;
+   struct main_configuration* config = (struct main_configuration*)shmem;
+
+   if (config->max_connections >= 8)
+   {
+      MCTF_SKIP("pool has enough slots for all clients");
+   }
+
+   found = !pgagroal_tsclient_execute_pgbench(user, database, true, 8, 8, 100);
    MCTF_ASSERT(found, cleanup, "success status not found");
 cleanup:
    MCTF_FINISH();
