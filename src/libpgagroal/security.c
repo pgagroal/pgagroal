@@ -1050,6 +1050,10 @@ pgagroal_remote_management_scram_sha256(char* username, char* password, int serv
    }
 
    sasl_continue = pgagroal_copy_message(msg);
+   if (((char*)sasl_continue->data)[0] == 'E')
+   {
+      goto error;
+   }
 
    get_scram_attribute('r', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &combined_nounce);
    get_scram_attribute('s', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &base64_salt);
@@ -2886,6 +2890,10 @@ server_scram256(char* username, char* password, int slot, SSL* server_ssl)
    }
 
    sasl_continue = pgagroal_copy_message(msg);
+   if (((char*)sasl_continue->data)[0] == 'E')
+   {
+      goto error;
+   }
 
    config->connections[slot].security_lengths[auth_index] = sasl_continue->length;
    memcpy(&config->connections[slot].security_messages[auth_index], sasl_continue->data, sasl_continue->length);
@@ -5264,6 +5272,10 @@ pgagroal_scram_client_auth(char* username, char* password, int socket, SSL* serv
    }
 
    sasl_continue = pgagroal_copy_message(msg);
+   if (((char*)sasl_continue->data)[0] == 'E')
+   {
+      goto error;
+   }
 
    get_scram_attribute('r', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &combined_nounce);
    get_scram_attribute('s', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &base64_salt);
@@ -6537,6 +6549,10 @@ pgagroal_scram_client_authenticate(char* username, char* password, int server_fd
    }
 
    sasl_continue = pgagroal_copy_message(msg);
+   if (((char*)sasl_continue->data)[0] == 'E')
+   {
+      goto error;
+   }
    pgagroal_free_message(msg);
    msg = NULL;
 
