@@ -282,9 +282,12 @@ status_details(bool details, struct json* response)
 
       for (int i = 0; i < config->max_connections; i++)
       {
+         int state = atomic_load(&config->states[i]);
          struct json* js = NULL;
 
          pgagroal_json_create(&js);
+
+         pgagroal_json_put(js, MANAGEMENT_ARGUMENT_STATE, (uintptr_t)pgagroal_connection_state_as_string(state), ValueString);
 
          pgagroal_json_put(js, MANAGEMENT_ARGUMENT_START_TIME, (uintptr_t)config->connections[i].start_time, ValueInt64);
          pgagroal_json_put(js, MANAGEMENT_ARGUMENT_TIMESTAMP, (uintptr_t)config->connections[i].timestamp, ValueInt64);
