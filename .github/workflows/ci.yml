@@ -68,6 +68,8 @@ jobs:
   build-linux:
     needs: [format-check]
     runs-on: ubuntu-latest
+    container:
+      image: rockylinux/rockylinux:10
     timeout-minutes: 30
     strategy:
       matrix:
@@ -78,95 +80,35 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Update system
-        run: |
-          sudo apt update
-          sudo apt install -y linux-libc-dev
-
       - name: Install Dependencies
         run: |
-          sudo apt install -y \
-            cmake \
-            liburing-dev \
-            libsystemd-dev \
-            python3-docutils \
-            libzstd-dev \
-            liblz4-dev \
-            libbz2-dev \
-            check \
-            graphviz \
-            doxygen \
-            llvm \
-            clang \
-            net-tools \
-            gcovr \
-            pandoc texlive texlive-latex-extra texlive-fonts-extra texlive-xetex \
-            texlive-luatex texlive-science texlive-extra-utils
+          dnf -y install dnf-plugins-core
+          dnf config-manager --set-enabled crb
+          dnf -y install epel-release
+          dnf -y install \
+            git gcc clang clang-tools-extra cmake make \
+            openssl openssl-devel \
+            systemd systemd-devel zlib zlib-devel \
+            libzstd libzstd-devel lz4 lz4-devel \
+            libatomic liburing liburing-devel \
+            python3-docutils bzip2 bzip2-devel \
+            check check-devel llvm \
+            libasan libubsan \
+            net-tools procps-ng \
+            util-linux sudo which
 
-      - name: Install LLVM/Clang Toolchain
-        run: |
-          sudo apt update -y
-          sudo apt install -y lsb-release wget software-properties-common gnupg
-          # Retry logic for fetching LLVM GPG key (handles transient DNS failures)
-          max_retries=5
-          retry_delay=2
-          tmp_key=$(mktemp)
-          success=false
-          
-          for i in $(seq 1 $max_retries); do
-            echo "Attempt $i of $max_retries to fetch LLVM GPG key..."
-            if wget --timeout=10 --tries=1 -O "$tmp_key" https://apt.llvm.org/llvm-snapshot.gpg.key 2>&1; then
-              echo "✓ Successfully fetched GPG key on attempt $i"
-              success=true
-              break
-            else
-              if [ $i -eq $max_retries ]; then
-                echo "✗ Failed after $max_retries attempts"
-                rm -f "$tmp_key"
-                exit 1
-              else
-                echo "  Attempt $i failed, retrying in ${retry_delay}s..."
-                sleep $retry_delay
-                retry_delay=$((retry_delay * 2))
-              fi
-            fi
-          done
-          
-          if [ "$success" = true ]; then
-            cat "$tmp_key" | sudo gpg --dearmor -o /usr/share/keyrings/llvm-snapshot.gpg
-            rm -f "$tmp_key"
-          fi
-          echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot.gpg] http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm.list
-          sudo apt update -y
-          sudo apt install -y clang-21 clang-tools-21 llvm-21
-          
-          # Create symlinks for the compiler
-          sudo ln -sf /usr/bin/clang-21 /usr/bin/clang
-          sudo ln -sf /usr/bin/clang++-21 /usr/bin/clang++
-          
-          # Create symlinks for coverage tools
-          sudo ln -sf /usr/bin/llvm-cov-21 /usr/bin/llvm-cov
-          sudo ln -sf /usr/bin/llvm-profdata-21 /usr/bin/llvm-profdata
-          
-      - name: Install Eisvogel template for Pandoc
-        run: |
-          wget https://github.com/Wandmalfarbe/pandoc-latex-template/releases/download/v3.4.0/Eisvogel-3.4.0.tar.gz
-          tar -xzf Eisvogel-3.4.0.tar.gz
-          mkdir -p ~/.local/share/pandoc/templates
-          mv Eisvogel-3.4.0/eisvogel.latex ~/.local/share/pandoc/templates/
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Install PostgreSQL
         run: |
-          sudo apt install -y postgresql curl ca-certificates
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          sudo apt update
-          sudo apt install -y postgresql-17 postgresql-common postgresql-contrib
+          dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+          dnf -qy module disable postgresql 2>/dev/null || true
+          dnf install -y postgresql17 postgresql17-server postgresql17-contrib postgresql17-libs postgresql17-devel
 
       - name: Set Env Path Variable for PostgreSQL
         run: |
-          echo "PATH=$PATH:/usr/lib/postgresql/17/bin" >> $GITHUB_ENV
+          echo "PATH=/usr/pgsql-17/bin:$PATH" >> $GITHUB_ENV
           echo $PATH
 
       - name: Build Project
@@ -179,27 +121,40 @@ jobs:
             export CC=/usr/bin/clang
           fi
 
-          cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ..
+          cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DDOCS=FALSE ..
            make -j$(nproc)
-        working-directory: /home/runner/work/pgagroal/pgagroal/
+
+      - name: Create test user
+        run: |
+          useradd -m -s /bin/bash runner
+          echo "runner ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+          chown -R runner:runner $GITHUB_WORKSPACE
 
       - name: Testsuite
         id: test
         run: |
+          # Ensure /tmp directories are writable by runner
+          mkdir -p /tmp/pgagroal-test/log /tmp/pgagroal-test/pg_log /tmp/pgagroal-test/coverage
+          chown -R runner:runner /tmp/pgagroal-test
+
+          # Build the test command with appropriate env vars
+          TEST_ENV="export PATH=/usr/pgsql-17/bin:\$PATH"
+
           if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.build_type }}" = "Debug" ]; then
-             export LLVM_PROFILE_FILE="/tmp/pgagroal-test/coverage/code-%p.profraw"
+            TEST_ENV="$TEST_ENV && export LLVM_PROFILE_FILE='/tmp/pgagroal-test/coverage/code-%p.profraw'"
           fi
+
           if [ "${{ matrix.compiler }}" = "gcc" ] && [ "${{ matrix.build_type }}" = "Debug" ]; then
-            ASAN_LIB=$(gcc -print-file-name=libasan.so)
+            # On Rocky Linux, gcc -print-file-name=libasan.so returns a linker script stub.
+            # Find the actual versioned DSO instead.
+            ASAN_LIB=$(find /usr/lib64 -name 'libasan.so.*' -not -name '*.py' 2>/dev/null | head -1)
             if [ -n "$ASAN_LIB" ] && [ -f "$ASAN_LIB" ]; then
-              echo "Using GCC AddressSanitizer preload for Debug build"
-              export ASAN_OPTIONS=verify_asan_link_order=0
-              export LD_PRELOAD=$ASAN_LIB
-              export ASAN_OPTIONS=detect_leaks=0,verify_asan_link_order=0
+              echo "Using GCC AddressSanitizer preload: $ASAN_LIB"
+              TEST_ENV="$TEST_ENV && export ASAN_OPTIONS=detect_leaks=0,verify_asan_link_order=0 && export LD_PRELOAD=$ASAN_LIB"
             fi
           fi
-          $(which bash) ./check.sh run-configs-ci-nonbuild
-        working-directory: /home/runner/work/pgagroal/pgagroal/build
+
+          su - runner -c "cd $GITHUB_WORKSPACE && $TEST_ENV && bash ./build/check.sh run-configs-ci-nonbuild"
 
       - name: Report coverage summary
         if: matrix.compiler == 'clang' && matrix.build_type == 'Debug'
@@ -224,16 +179,8 @@ jobs:
         with:
           name: logs-${{ matrix.compiler }}-${{ matrix.build_type }}
           path: |
-           /home/runner/work/pgagroal/pgagroal/log
+           ${{ github.workspace }}/log
            /tmp/pgagroal-test/*
-          retention-days: 90
-
-      - name: Upload Generated Documentation Artifact
-        if: matrix.compiler == 'gcc' && matrix.build_type == 'Release'
-        uses: actions/upload-artifact@v5
-        with:
-          name: generated-docs
-          path: /home/runner/work/pgagroal/pgagroal/build/doc
           retention-days: 90
 
   build-macos:

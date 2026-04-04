@@ -20,7 +20,7 @@ podman run -p 5432:5432 --name pgagroal-test-postgresql17 -d \
 -e PG_REPL_USER_NAME=repl \
 -e PG_REPL_PASSWORD=password \
 -e PG_LOG_LEVEL=debug5 \
-pgagroal-test-postgresql17-rocky9
+pgagroal-test-postgresql17-rocky10
 
 # psql to pgagroal-test-postgresql17
 psql -h localhost -p 5432 -U myuser mydb

@@ -31,7 +31,7 @@ set -eo pipefail
 # Variables
 ENV_PGVERSION="${TEST_PG_VERSION:-17}"
 export TEST_PG_VERSION="${TEST_PG_VERSION:-17}"
-IMAGE_NAME="pgagroal-test-postgresql${ENV_PGVERSION}-rocky9"
+IMAGE_NAME="pgagroal-test-postgresql${ENV_PGVERSION}-rocky10"
 CONTAINER_NAME="pgagroal-test-postgresql${ENV_PGVERSION}"
 
 SCRIPT_DIR="$(realpath "$(dirname "${BASH_SOURCE[0]}")")"
@@ -71,15 +71,26 @@ STANDBY2_PORT=7434
 # Use existing PGAGROAL_PORT if already set, otherwise default
 PGAGROAL_PORT=${PGAGROAL_PORT:-6432}
 
-# Detect container engine: Docker or Podman
-if command -v podman &> /dev/null; then
-  CONTAINER_ENGINE="podman"
-elif command -v docker &> /dev/null; then
-  CONTAINER_ENGINE="sudo docker"
+# Use sudo only when not running as root (CI containers run as root)
+if [ "$(id -u)" -eq 0 ]; then
+  SUDO=""
 else
-  echo "Neither Docker nor Podman is installed. Please install one to proceed."
-  exit 1
-fi 
+  SUDO="sudo"
+fi
+
+# Detect container engine: Docker or Podman
+# Called lazily since CI mode does not need containers
+detect_container_engine() {
+  if command -v podman &> /dev/null; then
+    CONTAINER_ENGINE="podman"
+  elif command -v docker &> /dev/null; then
+    CONTAINER_ENGINE="$SUDO docker"
+  else
+    echo "Neither Docker nor Podman is installed. Please install one to proceed."
+    exit 1
+  fi
+}
+
 
  # Port conflict resolution functions
 stop_pgagroal() {
@@ -314,17 +325,17 @@ remove_postgresql_container() {
 start_postgresql() {
   echo "Setting up PostgreSQL $ENV_PGVERSION directory"
   set +e
-  sudo rm -Rf /conf /pgconf /pgdata /pgwal
-  sudo cp -R $TEST_PG_DIRECTORY/root /
-  sudo ls /root
-  sudo mkdir -p /conf /pgconf /pgdata /pgwal /pglog
+  $SUDO rm -Rf /conf /pgconf /pgdata /pgwal
+  $SUDO cp -R $TEST_PG_DIRECTORY/root /
+  $SUDO ls /root
+  $SUDO mkdir -p /conf /pgconf /pgdata /pgwal /pglog
 
-  sudo cp -R $TEST_PG_DIRECTORY/conf/* /conf/
-  sudo ls /conf
-  sudo chown -R postgres:postgres /conf /pgconf /pgdata /pgwal /pglog
-  sudo chmod -R 777 /conf /pgconf /pgdata /pgwal /pglog /root
-  sudo chmod +x /root/usr/bin/run-postgresql-local
-  sudo mkdir -p /root/usr/local/bin
+  $SUDO cp -R $TEST_PG_DIRECTORY/conf/* /conf/
+  $SUDO ls /conf
+  $SUDO chown -R postgres:postgres /conf /pgconf /pgdata /pgwal /pglog
+  $SUDO chmod -R 777 /conf /pgconf /pgdata /pgwal /pglog /root
+  $SUDO chmod +x /root/usr/bin/run-postgresql-local
+  $SUDO mkdir -p /root/usr/local/bin
 
   echo "Setting up env variables"
   export PG_DATABASE=${PG_DATABASE}
@@ -336,7 +347,11 @@ start_postgresql() {
   export PG_UTF8_USER_PASSWORD=${PG_UTF8_USER_PASSWORD}
   export PG_UTF8_DATABASE=${PG_UTF8_DATABASE}
 
-  sudo -E -u postgres /root/usr/bin/run-postgresql-local
+  if [ "$(id -u)" -eq 0 ]; then
+    runuser -m -u postgres -- /root/usr/bin/run-postgresql-local
+  else
+    sudo -E -u postgres /root/usr/bin/run-postgresql-local
+  fi
   set -e
 }
 
@@ -469,7 +484,7 @@ execute_testcases() {
    fi
    
    echo "Starting pgagroal server in daemon mode"
-   $EXECUTABLE_DIRECTORY/pgagroal -c $CONFIGURATION_DIRECTORY/pgagroal.conf -a $CONFIGURATION_DIRECTORY/pgagroal_hba.conf -u $CONFIGURATION_DIRECTORY/pgagroal_users.conf -l $CONFIGURATION_DIRECTORY/pgagroal_databases.conf -F $CONFIGURATION_DIRECTORY/pgagroal_frontend_users.conf -d
+   $EXECUTABLE_DIRECTORY/pgagroal -c $CONFIGURATION_DIRECTORY/pgagroal.conf -a $CONFIGURATION_DIRECTORY/pgagroal_hba.conf -u $CONFIGURATION_DIRECTORY/pgagroal_users.conf -l $CONFIGURATION_DIRECTORY/pgagroal_databases.conf -F $CONFIGURATION_DIRECTORY/pgagroal_frontend_users.conf -d 2>$LOG_DIR/pgagroal-startup-stderr.log
    echo "Wait for pgagroal to be ready"
    sleep 10
    
@@ -484,6 +499,10 @@ execute_testcases() {
          echo "pgagroal server not started ... not ok"
          echo "Checking logs:"
          tail -20 $LOG_DIR/pgagroal.log 2>/dev/null || echo "Log file not found"
+         echo "Checking startup stderr:"
+         cat $LOG_DIR/pgagroal-startup-stderr.log 2>/dev/null || echo "No stderr output"
+         echo "Checking pgagroal config used:"
+         cat $CONFIGURATION_DIRECTORY/pgagroal.conf 2>/dev/null || echo "Config not found"
          exit 1
       fi
       sleep 2
@@ -542,6 +561,14 @@ run_multiple_config_tests() {
             
             # Update port to match our PostgreSQL container
             sed -i "s|port = 5432|port = $PORT|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
+
+            # Rocky CI runs inside a container where io_uring may be unavailable
+            # even when the config explicitly requests it. Keep the checked-in
+            # configs as-is and only force epoll for CI runs.
+            if [[ $MODE == "ci" ]] && grep -q "^[[:space:]]*ev_backend[[:space:]]*=[[:space:]]*io_uring[[:space:]]*$" "$CONFIGURATION_DIRECTORY/pgagroal.conf"; then
+               echo "CI mode: overriding ev_backend=io_uring to epoll for configuration $config_name"
+               sed -i "s|^[[:space:]]*ev_backend[[:space:]]*=[[:space:]]*io_uring[[:space:]]*$|ev_backend = epoll|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
+            fi
             
             # Stop any running pgagroal instance before starting new config
             stop_pgagroal
@@ -620,7 +647,7 @@ failover_prepare_dirs() {
   for dir in "$FAILOVER_BASE/pglog" "$FAILOVER_BASE/pglog/primary" "$FAILOVER_BASE/pglog/standby1" "$FAILOVER_BASE/pglog/standby2"; do
     if [ -d "$dir" ]; then
       $CONTAINER_ENGINE unshare chown -R ${POSTGRES_UID}:${POSTGRES_UID} "$dir" 2>/dev/null || \
-      sudo chown -R ${POSTGRES_UID}:${POSTGRES_UID} "$dir" 2>/dev/null || \
+      $SUDO chown -R ${POSTGRES_UID}:${POSTGRES_UID} "$dir" 2>/dev/null || \
       echo "Warning: Could not change ownership of $dir"
     fi
   done
@@ -914,7 +941,7 @@ failover_cleanup() {
   if [ -d "$FAILOVER_BASE" ]; then
     rm -rf "$FAILOVER_BASE" 2>/dev/null || {
       echo "Warning: Could not remove $FAILOVER_BASE, trying with sudo..."
-      sudo rm -rf "$FAILOVER_BASE" 2>/dev/null || true
+      $SUDO rm -rf "$FAILOVER_BASE" 2>/dev/null || true
     }
   fi
   
@@ -988,11 +1015,11 @@ run_failover_tests() {
 
 do_setup() {
   local always_build="${1:-}"
-  echo "Building PostgreSQL $ENV_PGVERSION image if necessary"
-  if $CONTAINER_ENGINE image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-    echo "Image $IMAGE_NAME exists, skip building"
-  else
-    if [[ $MODE != "ci" ]]; then
+  if [[ $MODE != "ci" ]]; then
+    echo "Building PostgreSQL $ENV_PGVERSION image if necessary"
+    if $CONTAINER_ENGINE image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+      echo "Image $IMAGE_NAME exists, skip building"
+    else
       build_postgresql_image
     fi
   fi
@@ -1025,7 +1052,7 @@ do_setup() {
     echo "pgbench found: $(which pgbench)"
   fi
   chmod -R 777 "$PGAGROAL_ROOT_DIR"
-  if [[ "$always_build" == "force" ]] || [[ "$1" != "ci-nonbuild" && "$1" != "run-configs-ci-nonbuild" ]]; then
+  if [[ "$always_build" == "force" ]] || [[ "$SUBCOMMAND" != "ci-nonbuild" && "$SUBCOMMAND" != "run-configs-ci-nonbuild" ]]; then
    echo "Building pgagroal"
    mkdir -p "$PROJECT_DIRECTORY/build"
    cd "$PROJECT_DIRECTORY/build"
@@ -1138,6 +1165,7 @@ while [[ $# -gt 0 ]]; do
          shift
          ;;
       failover-tests)
+         detect_container_engine
          run_failover_tests
          exit 0
          ;;
@@ -1182,13 +1210,15 @@ done
 
 if [[ -n "$SUBCOMMAND" ]]; then
   if [[ "$SUBCOMMAND" == "build" ]]; then
+    detect_container_engine
     do_setup force
     exit 0
   fi
   if [[ "$SUBCOMMAND" == "setup" ]]; then
+    detect_container_engine
     build_postgresql_image
     # Install LLVM coverage dependencies or GCC dependencies
-    sudo dnf install -y \
+    $SUDO dnf install -y \
       cmake \
       make \
       libev libev-devel \
@@ -1203,7 +1233,7 @@ if [[ -n "$SUBCOMMAND" ]]; then
       libarchive libarchive-devel
     if [[ $MODE != "gcc" ]]; then
       echo "Installing LLVM coverage tools..."
-      sudo dnf install -y \
+      $SUDO dnf install -y \
         clang \
         clang-analyzer \
         llvm \
@@ -1211,16 +1241,18 @@ if [[ -n "$SUBCOMMAND" ]]; then
         libasan-static
     else
       echo "Using GCC mode (no LLVM coverage tools)"
-      sudo dnf install -y gcc gcc-c++
+      $SUDO dnf install -y gcc gcc-c++
     fi
 
     echo "Setup complete"
   elif [[ "$SUBCOMMAND" == "clean" ]]; then
+    detect_container_engine
     rm -Rf $COVERAGE_DIR
     cleanup
     cleanup_postgresql_image
     rm -Rf $PGAGROAL_ROOT_DIR
   elif [[ "$SUBCOMMAND" == "run-configs" ]]; then
+    detect_container_engine
     trap cleanup EXIT SIGINT
     run_tests "run-configs"
   elif [[ "$SUBCOMMAND" == "ci" ]]; then
@@ -1250,6 +1282,7 @@ if [[ -n "$SUBCOMMAND" ]]; then
   fi
 else
    # If no subcommand is provided, run tests (full suite or with -t/-m filter)
+   detect_container_engine
    trap cleanup EXIT SIGINT
    run_tests
 fi

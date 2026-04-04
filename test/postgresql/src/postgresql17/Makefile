@@ -1,12 +1,13 @@
 # Makefile for pgagroal PostgreSQL 17 test container
 
-IMAGE_NAME = pgagroal-test-postgresql17-rocky9
+IMAGE_NAME = pgagroal-test-postgresql17-rocky10
 CONTAINER_NAME = pgagroal-test-postgresql17
 
 # Detect container engine
 CONTAINER_ENGINE := $(shell \
 	if command -v podman >/dev/null 2>&1; then echo podman; \
-	elif command -v docker >/dev/null 2>&1; then echo "sudo docker"; \
+	elif command -v docker >/dev/null 2>&1; then \
+		if [ "$$(id -u)" -eq 0 ]; then echo docker; else echo "sudo docker"; fi; \
 	else echo "Neither Docker nor Podman is installed" >&2; exit 1; \
 	fi)
 
