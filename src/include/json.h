@@ -36,6 +36,7 @@ extern "C" {
 /* pgagroal */
 #include <pgagroal.h>
 #include <deque.h>
+#include <utils.h>
 #include <value.h>
 
 /* System */
@@ -254,6 +255,35 @@ pgagroal_json_read_file(char* path, struct json** obj);
  */
 int
 pgagroal_json_write_file(char* path, struct json* obj);
+
+/**
+ * Put an enum value as a nested JSON object { "value": N, "string_value": "label" }
+ * @param res The JSON object
+ * @param key The key
+ * @param value The numeric enum value
+ * @param to_str The converter function
+ */
+void
+pgagroal_json_put_enum_value(struct json* res, char* key, int value, int (*to_str)(char*, int));
+
+/**
+ * Put a time value as a nested JSON object { "value": N, "string_value": "Ns" }
+ * @param res The JSON object
+ * @param key The key
+ * @param t The time value
+ * @param format The time format (e.g., FORMAT_TIME_S, FORMAT_TIME_MS)
+ */
+void
+pgagroal_json_put_time_value(struct json* res, char* key, pgagroal_time_t t, enum pgagroal_time_format_t format);
+
+/**
+ * Put a size value as a nested JSON object { "value": N, "string_value": "NB" }
+ * @param res The JSON object
+ * @param key The key
+ * @param bytes The size in bytes
+ */
+void
+pgagroal_json_put_size_value(struct json* res, char* key, unsigned int bytes);
 
 #ifdef __cplusplus
 }

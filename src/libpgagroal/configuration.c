@@ -5281,7 +5281,6 @@ to_validation(char* where, int value)
 
    return 0;
 }
-
 /**
  * An utility function to convert the enumeration of values for the hugepage setting
  * into one of its possible string descriptions.
@@ -6576,31 +6575,31 @@ add_configuration_response(struct json* res)
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_PORT, (uintptr_t)config->common.port, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_UNIX_SOCKET_DIR, (uintptr_t)config->unix_socket_dir, ValueString);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS, (uintptr_t)config->common.metrics, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_AGE, (uintptr_t)pgagroal_time_convert(config->common.metrics_cache_max_age, FORMAT_TIME_S), ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, (uintptr_t)config->common.metrics_cache_max_size, ValueInt64);
+   pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_AGE, config->common.metrics_cache_max_age, FORMAT_TIME_S);
+   pgagroal_json_put_size_value(res, CONFIGURATION_ARGUMENT_METRICS_CACHE_MAX_SIZE, config->common.metrics_cache_max_size);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MANAGEMENT, (uintptr_t)config->management, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_CONSOLE, (uintptr_t)config->console, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_TYPE, (uintptr_t)config->common.log_type, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_LEVEL, (uintptr_t)config->common.log_level, ValueInt64);
+   pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_LOG_TYPE, config->common.log_type, to_log_type);
+   pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_LOG_LEVEL, config->common.log_level, to_log_level);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_PATH, (uintptr_t)config->common.log_path, ValueString);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_ROTATION_AGE, (uintptr_t)pgagroal_time_convert(config->common.log_rotation_age, FORMAT_TIME_S), ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_ROTATION_SIZE, (uintptr_t)config->common.log_rotation_size, ValueInt64);
+   pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_LOG_ROTATION_AGE, config->common.log_rotation_age, FORMAT_TIME_S);
+   pgagroal_json_put_size_value(res, CONFIGURATION_ARGUMENT_LOG_ROTATION_SIZE, config->common.log_rotation_size);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_LINE_PREFIX, (uintptr_t)config->common.log_line_prefix, ValueString);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_MODE, (uintptr_t)config->common.log_mode, ValueInt64);
+   pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_LOG_MODE, config->common.log_mode, to_log_mode);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_CONNECTIONS, (uintptr_t)config->common.log_connections, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_DISCONNECTIONS, (uintptr_t)config->common.log_disconnections, ValueBool);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, (uintptr_t)pgagroal_time_convert(config->blocking_timeout, FORMAT_TIME_S), ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, (uintptr_t)pgagroal_time_convert(config->idle_timeout, FORMAT_TIME_S), ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_TIMEOUT, (uintptr_t)pgagroal_time_convert(config->rotate_frontend_password_timeout, FORMAT_TIME_S), ValueInt64);
+   pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, config->blocking_timeout, FORMAT_TIME_S);
+   pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, config->idle_timeout, FORMAT_TIME_S);
+   pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_TIMEOUT, config->rotate_frontend_password_timeout, FORMAT_TIME_S);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_LENGTH, (uintptr_t)config->rotate_frontend_password_length, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_CONNECTION_AGE, (uintptr_t)pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S), ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_VALIDATION, (uintptr_t)config->validation, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_BACKGROUND_INTERVAL, (uintptr_t)pgagroal_time_convert(config->background_interval, FORMAT_TIME_S), ValueInt64);
+   pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_MAX_CONNECTION_AGE, config->max_connection_age, FORMAT_TIME_S);
+   pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_VALIDATION, config->validation, to_validation);
+   pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_BACKGROUND_INTERVAL, config->background_interval, FORMAT_TIME_S);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_RETRIES, (uintptr_t)config->max_retries, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_CONNECTIONS, (uintptr_t)config->max_connections, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ALLOW_UNKNOWN_USERS, (uintptr_t)config->allow_unknown_users, ValueBool);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_AUTHENTICATION_TIMEOUT, (uintptr_t)pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_PIPELINE, (uintptr_t)config->pipeline, ValueInt64);
+   pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_AUTHENTICATION_TIMEOUT, config->common.authentication_timeout, FORMAT_TIME_S);
+   pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_PIPELINE, config->pipeline, to_pipeline);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_AUTH_QUERY, (uintptr_t)config->authquery, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_FAILOVER, (uintptr_t)config->failover, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_FAILOVER_SCRIPT, (uintptr_t)config->failover_script, ValueString);
@@ -6616,11 +6615,11 @@ add_configuration_response(struct json* res)
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_KEEP_ALIVE, (uintptr_t)config->keep_alive, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_NODELAY, (uintptr_t)config->nodelay, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_BACKLOG, (uintptr_t)config->backlog, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_HUGEPAGE, (uintptr_t)config->common.hugepage, ValueInt64);
+   pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_HUGEPAGE, config->common.hugepage, to_hugepage);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TRACKER, (uintptr_t)config->tracker, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TRACK_PREPARED_STATEMENTS, (uintptr_t)config->track_prepared_statements, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_PIDFILE, (uintptr_t)config->pidfile, ValueString);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, (uintptr_t)config->update_process_title, ValueInt64);
+   pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, config->update_process_title, to_update_process_title);
 }
 
 static void

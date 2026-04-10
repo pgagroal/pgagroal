@@ -1729,15 +1729,36 @@ get_config_key_result(char* config_key, struct json* j, uintptr_t* r, int32_t ou
       else if (!strcmp(key, iter->key))
       {
          // Handle single or two-part keys
-         config_value = pgagroal_value_to_string(iter->value, FORMAT_TEXT, NULL, 0);
          if (iter->value->type == ValueJSON)
          {
-            struct json* server_data = NULL;
-            pgagroal_json_clone((struct json*)iter->value->data, &server_data);
-            pgagroal_json_put(filtered_response, key, (uintptr_t)server_data, iter->value->type);
+            struct json* nested_obj = (struct json*)iter->value->data;
+
+            /* Handle enriched values formatted as { "value": N, "string_value": "..." } */
+            if (pgagroal_json_contains_key(nested_obj, "string_value"))
+            {
+               /* Extract the string value for text output */
+               config_value = strdup((char*)pgagroal_json_get(nested_obj, "string_value"));
+
+               if (output_format == MANAGEMENT_OUTPUT_FORMAT_JSON)
+               {
+                  /* Emit the full nested object in JSON mode */
+                  struct json* cloned = NULL;
+                  pgagroal_json_clone(nested_obj, &cloned);
+                  pgagroal_json_put(filtered_response, key, (uintptr_t)cloned, ValueJSON);
+               }
+            }
+            else
+            {
+               /* Handle regular JSON objects */
+               struct json* server_data = NULL;
+               config_value = pgagroal_value_to_string(iter->value, FORMAT_TEXT, NULL, 0);
+               pgagroal_json_clone(nested_obj, &server_data);
+               pgagroal_json_put(filtered_response, key, (uintptr_t)server_data, ValueJSON);
+            }
          }
          else
          {
+            config_value = pgagroal_value_to_string(iter->value, FORMAT_TEXT, NULL, 0);
             pgagroal_json_put(filtered_response, key, (uintptr_t)iter->value->data, iter->value->type);
          }
          break;

@@ -805,6 +805,77 @@ error:
    return 1;
 }
 
+void
+pgagroal_json_put_enum_value(struct json* res, char* key, int value, int (*to_str)(char*, int))
+{
+   struct json* obj = NULL;
+   char str_buf[MISC_LENGTH];
+
+   memset(str_buf, 0, MISC_LENGTH);
+
+   if (pgagroal_json_create(&obj))
+   {
+      pgagroal_json_put(res, key, (uintptr_t)value, ValueInt64);
+      return;
+   }
+
+   pgagroal_json_put(obj, "value", (uintptr_t)value, ValueInt64);
+
+   if (!to_str(str_buf, value))
+   {
+      pgagroal_json_put(obj, "string_value", (uintptr_t)str_buf, ValueString);
+   }
+
+   pgagroal_json_put(res, key, (uintptr_t)obj, ValueJSON);
+}
+
+void
+pgagroal_json_put_time_value(struct json* res, char* key, pgagroal_time_t t, enum pgagroal_time_format_t format)
+{
+   struct json* obj = NULL;
+   char* str = NULL;
+   int64_t converted;
+
+   converted = pgagroal_time_convert(t, format);
+
+   if (pgagroal_json_create(&obj))
+   {
+      pgagroal_json_put(res, key, (uintptr_t)converted, ValueInt64);
+      return;
+   }
+
+   pgagroal_json_put(obj, "value", (uintptr_t)converted, ValueInt64);
+
+   if (!pgagroal_time_format(t, format, &str))
+   {
+      pgagroal_json_put(obj, "string_value", (uintptr_t)str, ValueString);
+      free(str);
+   }
+
+   pgagroal_json_put(res, key, (uintptr_t)obj, ValueJSON);
+}
+
+void
+pgagroal_json_put_size_value(struct json* res, char* key, unsigned int bytes)
+{
+   struct json* obj = NULL;
+   char str_buf[MISC_LENGTH];
+
+   memset(str_buf, 0, MISC_LENGTH);
+
+   if (pgagroal_json_create(&obj))
+   {
+      pgagroal_json_put(res, key, (uintptr_t)bytes, ValueInt64);
+      return;
+   }
+
+   pgagroal_json_put(obj, "value", (uintptr_t)bytes, ValueInt64);
+   snprintf(str_buf, MISC_LENGTH, "%uB", bytes);
+   pgagroal_json_put(obj, "string_value", (uintptr_t)str_buf, ValueString);
+
+   pgagroal_json_put(res, key, (uintptr_t)obj, ValueJSON);
+}
+
 static bool
 type_allowed(enum value_type type)
 {

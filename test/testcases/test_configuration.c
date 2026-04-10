@@ -28,6 +28,7 @@
  */
 #include <pgagroal.h>
 #include <configuration.h>
+#include <json.h>
 #include <tscommon.h>
 #include <mctf.h>
 #include <utils.h>
@@ -531,5 +532,109 @@ MCTF_TEST(test_configuration_server_section_keys)
    MCTF_ASSERT_INT_EQ(ret, 1, cleanup, "primary=maybe should be rejected in server section");
 
 cleanup:
+   MCTF_FINISH();
+}
+
+static int
+test_enum_to_str(char* where, int value)
+{
+   if (!where)
+   {
+      return 1;
+   }
+
+   switch (value)
+   {
+      case 0:
+         snprintf(where, MISC_LENGTH, "%s", "off");
+         break;
+      case 1:
+         snprintf(where, MISC_LENGTH, "%s", "foreground");
+         break;
+      case 2:
+         snprintf(where, MISC_LENGTH, "%s", "background");
+         break;
+      default:
+         return 1;
+   }
+
+   return 0;
+}
+
+MCTF_TEST(test_configuration_json_put_enum_value)
+{
+   struct json* res = NULL;
+   struct json* nested = NULL;
+
+   pgagroal_json_create(&res);
+
+   pgagroal_json_put_enum_value(res, "validation", 1, test_enum_to_str);
+
+   nested = (struct json*)pgagroal_json_get(res, "validation");
+   MCTF_ASSERT_PTR_NONNULL(nested, cleanup, "nested object should exist");
+   MCTF_ASSERT(pgagroal_json_contains_key(nested, "value"), cleanup, "should contain 'value' key");
+   MCTF_ASSERT(pgagroal_json_contains_key(nested, "string_value"), cleanup, "should contain 'string_value' key");
+   MCTF_ASSERT_INT_EQ((int)pgagroal_json_get(nested, "value"), 1, cleanup, "value should be 1");
+   MCTF_ASSERT_STR_EQ((char*)pgagroal_json_get(nested, "string_value"), "foreground", cleanup, "string_value should be 'foreground'");
+
+cleanup:
+   pgagroal_json_destroy(res);
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_json_put_time_value)
+{
+   struct json* res = NULL;
+   struct json* nested = NULL;
+
+   pgagroal_json_create(&res);
+
+   // Seconds
+   pgagroal_json_put_time_value(res, "idle_timeout", PGAGROAL_TIME_SEC(30), FORMAT_TIME_S);
+
+   nested = (struct json*)pgagroal_json_get(res, "idle_timeout");
+   MCTF_ASSERT_PTR_NONNULL(nested, cleanup, "seconds: nested object should exist");
+
+   MCTF_ASSERT(pgagroal_json_contains_key(nested, "value"), cleanup, "seconds: should contain 'value' key");
+   MCTF_ASSERT(pgagroal_json_contains_key(nested, "string_value"), cleanup, "seconds: should contain 'string_value' key");
+
+   MCTF_ASSERT_INT_EQ((int)pgagroal_json_get(nested, "value"), 30, cleanup, "seconds: value should be 30");
+   MCTF_ASSERT_STR_EQ((char*)pgagroal_json_get(nested, "string_value"), "30s", cleanup, "seconds: string_value should be '30s'");
+
+   // Minutes
+   pgagroal_json_put_time_value(res, "blocking_timeout", PGAGROAL_TIME_MIN(5), FORMAT_TIME_MIN);
+
+   nested = (struct json*)pgagroal_json_get(res, "blocking_timeout");
+   MCTF_ASSERT_PTR_NONNULL(nested, cleanup, "minutes: nested object should exist");
+
+   MCTF_ASSERT(pgagroal_json_contains_key(nested, "value"), cleanup, "minutes: should contain 'value' key");
+   MCTF_ASSERT(pgagroal_json_contains_key(nested, "string_value"), cleanup, "minutes: should contain 'string_value' key");
+
+   MCTF_ASSERT_INT_EQ((int)pgagroal_json_get(nested, "value"), 5, cleanup, "minutes: value should be 5");
+   MCTF_ASSERT_STR_EQ((char*)pgagroal_json_get(nested, "string_value"), "5m", cleanup, "minutes: string_value should be '5m'");
+
+cleanup:
+   pgagroal_json_destroy(res);
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_configuration_json_put_size_value)
+{
+   struct json* res = NULL;
+   struct json* nested = NULL;
+
+   pgagroal_json_create(&res);
+
+   pgagroal_json_put_size_value(res, "buffer_size", 4096);
+
+   nested = (struct json*)pgagroal_json_get(res, "buffer_size");
+   MCTF_ASSERT_PTR_NONNULL(nested, cleanup, "nested object should exist");
+   MCTF_ASSERT(pgagroal_json_contains_key(nested, "value"), cleanup, "should contain 'value' key");
+   MCTF_ASSERT(pgagroal_json_contains_key(nested, "string_value"), cleanup, "should contain 'string_value' key");
+   MCTF_ASSERT_INT_EQ((int)pgagroal_json_get(nested, "value"), 4096, cleanup, "value should be 4096");
+   MCTF_ASSERT_STR_EQ((char*)pgagroal_json_get(nested, "string_value"), "4096B", cleanup, "string_value should be '4096B'");
+
+cleanup:
+   pgagroal_json_destroy(res);
    MCTF_FINISH();
 }
