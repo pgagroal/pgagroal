@@ -116,6 +116,7 @@ static int to_bool(char* where, bool value);
 static int to_int(char* where, int value);
 static int to_update_process_title(char* where, int value);
 static int to_validation(char* where, int value);
+static int to_hugepage(char* where, int value);
 static int to_pipeline(char* where, int value);
 static int to_log_mode(char* where, int value);
 static int to_log_level(char* where, int value);
@@ -4847,7 +4848,7 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       }
       else if (!strncmp(key, "hugepage", MISC_LENGTH))
       {
-         return to_bool(buffer, config->common.hugepage);
+         return to_hugepage(buffer, config->common.hugepage);
       }
       else if (!strncmp(key, "track_prepared_statements", MISC_LENGTH))
       {
@@ -5275,6 +5276,38 @@ to_validation(char* where, int value)
          break;
       case VALIDATION_BACKGROUND:
          snprintf(where, MISC_LENGTH, "%s", "background");
+         break;
+   }
+
+   return 0;
+}
+
+/**
+ * An utility function to convert the enumeration of values for the hugepage setting
+ * into one of its possible string descriptions.
+ *
+ * @param where the buffer used to store the stringy thing
+ * @param value the config->common.hugepage setting
+ * @return 0 on success, 1 otherwise
+ */
+static int
+to_hugepage(char* where, int value)
+{
+   if (!where || value < 0)
+   {
+      return 1;
+   }
+
+   switch (value)
+   {
+      case HUGEPAGE_OFF:
+         snprintf(where, MISC_LENGTH, "%s", "off");
+         break;
+      case HUGEPAGE_TRY:
+         snprintf(where, MISC_LENGTH, "%s", "try");
+         break;
+      case HUGEPAGE_ON:
+         snprintf(where, MISC_LENGTH, "%s", "on");
          break;
    }
 
@@ -6583,7 +6616,7 @@ add_configuration_response(struct json* res)
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_KEEP_ALIVE, (uintptr_t)config->keep_alive, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_NODELAY, (uintptr_t)config->nodelay, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_BACKLOG, (uintptr_t)config->backlog, ValueInt64);
-   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_HUGEPAGE, (uintptr_t)config->common.hugepage, ValueChar);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_HUGEPAGE, (uintptr_t)config->common.hugepage, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TRACKER, (uintptr_t)config->tracker, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TRACK_PREPARED_STATEMENTS, (uintptr_t)config->track_prepared_statements, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_PIDFILE, (uintptr_t)config->pidfile, ValueString);
