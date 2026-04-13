@@ -766,6 +766,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
       if (pgagroal_time_is_valid(config->blocking_timeout))
       {
          pgagroal_log_warn("pgagroal: Using blocking_timeout for the transaction pipeline is not recommended");
+         pgagroal_log_warn("pgagroal: See doc/PIPELINES.md for transaction pipeline configuration guidance");
       }
 
       if (pgagroal_time_is_valid(config->idle_timeout))
