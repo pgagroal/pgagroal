@@ -15,6 +15,14 @@ pipeline = auto
 pgagroal will choose either the performance or the session pipeline
 based on the configuration settings by default.
 
+When `pipeline = auto` is used, the performance pipeline is selected by
+default. pgagroal downgrades to the session pipeline at startup when any
+of the following are configured:
+
+* `tls = on`
+* `failover = on`
+* `disconnect_client` is greater than 0
+
 # Performance
 
 The performance pipeline is fastest pipeline as it is a minimal implementation
@@ -94,16 +102,31 @@ __Performance considerations__
 Clients may need to wait for a connection between transactions leading to a higher
 latency.
 
-__Important__
+__Important behavioral differences__
 
-Make sure that the `blocking_timeout` settings to set to 0. Otherwise active clients
-may timeout during their workload. Likewise it is best to disable idle connection timeout 
-and max connection age by setting `idle_timeout` and `max_connection_age` to 0.
+The transaction pipeline has several behaviors that differ from the session
+and performance pipelines. Users should be aware of these before enabling
+it.
+
+* `max_connection_age` does not terminate transaction-mode connections on
+  return to the pool or from the periodic reaper. It is only applied to
+  transaction-mode connections indirectly via the validation path when
+  `validation = foreground` or `validation = background`.
+* `idle_timeout` does not terminate transaction-mode connections from the
+  periodic reaper. It is only applied via the validation path.
+* `blocking_timeout` applies to the transaction pipeline. If the pool is
+  exhausted, active clients may time out during their workload. Set
+  `blocking_timeout = 0` for the transaction pipeline.
+* `DISCARD ALL` is not issued when a connection is returned to the pool in
+  transaction mode. Session state such as `SET`, temporary tables and
+  cursors is not reset between clients sharing the same backend
+  connection.
+* The `disconnect_client` and `allow_unknown_users` settings are not
+  supported.
 
 It is highly recommended that you prefill all connections for each user.
-
-The transaction pipeline doesn't support the `disconnect_client` or
-`allow_unknown_users` settings.
+Because `idle_timeout` and `max_connection_age` have limited effect in
+transaction mode, it is best to set both to 0.
 
 Select the transaction pipeline by
 

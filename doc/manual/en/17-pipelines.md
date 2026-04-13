@@ -10,8 +10,13 @@ The pipeline is defined in `pgagroal.conf` under the setting:
 pipeline = auto
 ```
 
-[**pgagroal**][pgagroal] will choose either the performance or the session pipeline
-based on the configuration settings by default.
+When `pipeline = auto` is used, the performance pipeline is selected by
+default. [**pgagroal**][pgagroal] downgrades to the session pipeline at
+startup when any of the following are configured:
+
+* `tls = on`
+* `failover = on`
+* `disconnect_client` is greater than 0
 
 ## Performance Pipeline
 

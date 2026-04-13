@@ -46,13 +46,13 @@ The available keys and their accepted values are reported in the table below.
 | rotate_frontend_password_timeout | 0 | String | No | The amount of time after which the passwords of frontend users are updated periodically. If this value is specified without units, it is taken as seconds. It supports the following units as suffixes: 'S' for seconds (default), 'M' for minutes, 'H' for hours, 'D' for days, and 'W' for weeks. (disable = 0) |
 | rotate_frontend_password_length | 8 | Int | No | The length of the randomized frontend password |
 | max_connection_age | 0 | String | No | The maximum amount of time that a connection will live. If this value is specified without units, it is taken as seconds. It supports the following units as suffixes: 'S' for seconds (default), 'M' for minutes, 'H' for hours, 'D' for days, and 'W' for weeks. (disable = 0) |
-| validation | `off` | String | No | Should connection validation be performed. Valid options: `off`, `foreground` and `background` |
+| validation | `off` | String | No | Should connection validation be performed. Valid options: `off`, `foreground` and `background`. With the default `off`, connections are not actively checked before reuse and stale or broken connections can be handed to clients. Set to `background` to have a periodic scan validate idle connections, or to `foreground` to validate a connection before it is handed out. |
 | background_interval | 300 | String | No | The interval between background validation scans. If this value is specified without units, it is taken as seconds. It supports the following units as suffixes: 'S' for seconds (default), 'M' for minutes, 'H' for hours, 'D' for days, and 'W' for weeks. |
 | max_retries | 5 | Int | No | The maximum number of iterations to obtain a connection |
 | max_connections | 100 | Int | No | The maximum number of connections to PostgreSQL (max 10000) |
-| allow_unknown_users | `true` | Bool | No | Allow unknown users to connect |
+| allow_unknown_users | `true` | Bool | No | Allow unknown users to connect. The default is `true`, which permits clients whose user is not listed in `pgagroal_users.conf` to reach the pooler and authenticate against PostgreSQL. Set to `false` to reject unknown users at the pooler. This setting is not supported by the transaction pipeline. |
 | authentication_timeout | 5 | String | No | The amount of time the process will wait for valid credentials. If this value is specified without units, it is taken as seconds. It supports the following units as suffixes: 'S' for seconds (default), 'M' for minutes, 'H' for hours, 'D' for days, and 'W' for weeks. |
-| pipeline | `auto` | String | No | The pipeline type (`auto`, `performance`, `session`, `transaction`) |
+| pipeline | `auto` | String | No | The pipeline type (`auto`, `performance`, `session`, `transaction`). With `auto`, the performance pipeline is selected by default and pgagroal downgrades to the session pipeline when `tls`, `failover`, or `disconnect_client` is enabled. See [Pipelines](./17-pipelines.md) for details on each pipeline. |
 | auth_query | `off` | Bool | No | Enable authentication query |
 | failover | `off` | Bool | No | Enable failover support |
 | failover_script | | String | No | The failover script to execute |
