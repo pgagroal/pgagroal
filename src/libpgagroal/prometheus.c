@@ -1489,6 +1489,10 @@ home_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "  <p>\n");
    data = pgagroal_append(data, "   The number of failed servers. Only set if failover is enabled\n");
    data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <h2>pgagroal_fips_enabled</h2>\n");
+   data = pgagroal_append(data, "  <p>\n");
+   data = pgagroal_append(data, "   Whether FIPS is enabled for the server (1 = enabled, 0 = disabled)\n");
+   data = pgagroal_append(data, "  </p>\n");
    data = pgagroal_append(data, "  <h2>pgagroal_wait_time</h2>\n");
    data = pgagroal_append(data, "  <p>\n");
    data = pgagroal_append(data, "   The waiting time of clients\n");
@@ -2476,6 +2480,21 @@ general_information(prometheus_metrics_container_t* container)
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->client_wait_time));
    data = pgagroal_append(data, "\n");
    add_metric_to_art(container->general_metrics, "pgagroal_wait_time", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
+   data = pgagroal_append(data, "#HELP pgagroal_fips_enabled Whether FIPS is enabled for the server (1 = enabled, 0 = disabled)\n");
+   data = pgagroal_append(data, "#TYPE pgagroal_fips_enabled gauge\n");
+   for (int i = 0; i < config->number_of_servers; i++)
+   {
+      data = pgagroal_append(data, "pgagroal_fips_enabled{server=\"");
+      data = pgagroal_append(data, config->servers[i].name);
+      data = pgagroal_append(data, "\"} ");
+      data = pgagroal_append_ulong(data, config->servers[i].fips_enabled ? 1UL : 0UL);
+      data = pgagroal_append(data, "\n");
+   }
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_fips_enabled", data, NULL, NULL, 0);
    free(data);
    data = NULL;
 

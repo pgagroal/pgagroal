@@ -395,6 +395,7 @@ struct server
    unsigned int failures;        /**< The number of failures */
    atomic_schar auth_type;       /**< The authentication type used for health check */
    int lineno;                   /**< The line number within the configuration file */
+   bool fips_enabled;            /**< Whether FIPS is enabled */
 } __attribute__((aligned(64)));
 
 /** @struct connection

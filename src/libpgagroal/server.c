@@ -29,6 +29,7 @@
 /* pgagroal */
 #include <pgagroal.h>
 #include <deque.h>
+#include <fips.h>
 #include <logging.h>
 #include <message.h>
 #include <pool.h>
@@ -568,6 +569,7 @@ pgagroal_update_server_state(int slot, int socket, SSL* ssl)
 
    pgagroal_deque_destroy(server_parameters);
    pgagroal_clear_message(tmsg);
+   pgagroal_fips_check(slot, socket, ssl);
 
    return 0;
 
