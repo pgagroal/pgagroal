@@ -211,6 +211,8 @@ status_details(bool details, struct json* response)
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_PORT, (uintptr_t)config->servers[i].port, ValueInt32);
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_STATE, (uintptr_t)pgagroal_server_state_as_string(config->servers[i].state), ValueString);
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_HEALTH, (uintptr_t)health_str, ValueString);
+      pgagroal_json_put(js, MANAGEMENT_ARGUMENT_MAJOR_VERSION, (uintptr_t)config->servers[i].version, ValueInt32);
+      pgagroal_json_put(js, MANAGEMENT_ARGUMENT_SYSTEM_IDENTIFIER, (uintptr_t)config->servers[i].system_identifier, ValueString);
 
       pgagroal_json_append(servers, (uintptr_t)js, ValueJSON);
    }

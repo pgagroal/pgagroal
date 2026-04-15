@@ -386,6 +386,7 @@ struct server
    int port;                     /**< The port of the server */
    int version;                  /**< The major version of the server */
    int minor_version;            /**< The minor version of the server */
+   char system_identifier[64];   /**< The system identifier of the server */
    bool tls;                     /**< Use TLS if possible */
    char tls_cert_file[MAX_PATH]; /**< TLS certificate path */
    char tls_key_file[MAX_PATH];  /**< TLS key path */

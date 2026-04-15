@@ -2470,6 +2470,23 @@ general_information(prometheus_metrics_container_t* container)
    pgagroal_log_debug("Prometheus: Done appending server health");
    data = pgagroal_append(data, "\n");
 
+   data = pgagroal_append(data, "#HELP pgagroal_server_version The PostgreSQL major version for each server\n");
+   data = pgagroal_append(data, "#TYPE pgagroal_server_version gauge\n");
+   for (int i = 0; i < config->number_of_servers; i++)
+   {
+      if (config->servers[i].version <= 0)
+      {
+         continue;
+      }
+
+      data = pgagroal_append(data, "pgagroal_server_version{server=\"");
+      data = pgagroal_append(data, config->servers[i].name);
+      data = pgagroal_append(data, "\"} ");
+      data = pgagroal_append_int(data, config->servers[i].version);
+      data = pgagroal_append(data, "\n");
+   }
+   data = pgagroal_append(data, "\n");
+
    data = pgagroal_append(data, "#HELP pgagroal_wait_time The waiting time of clients\n");
    data = pgagroal_append(data, "#TYPE pgagroal_wait_time gauge\n");
    data = pgagroal_append(data, "pgagroal_wait_time ");

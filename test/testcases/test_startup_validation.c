@@ -284,3 +284,44 @@ cleanup:
    memcpy(config, &backup, sizeof(struct main_configuration));
    MCTF_FINISH();
 }
+
+// single server: verify pg_control_version and system_identifier are populated after startup validation
+MCTF_TEST(test_startup_validation_single_server_pg_control_version_and_system_identifier)
+{
+   struct main_configuration* config;
+   struct main_configuration backup;
+   char path[MAX_PATH];
+   int ret;
+
+   config = (struct main_configuration*)shmem;
+
+   /* Save original state */
+   memcpy(&backup, config, sizeof(struct main_configuration));
+
+   MCTF_ASSERT(build_test_conf_path("14", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   pgagroal_init_configuration(config);
+   ret = pgagroal_read_configuration(config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
+
+   /* Override server host/port to point to the live test instance */
+   snprintf(config->servers[0].host, MISC_LENGTH, "%s", backup.servers[0].host);
+   config->servers[0].port = backup.servers[0].port;
+
+   ret = pgagroal_check_server_identifiers();
+
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
+                      "check_server_identifiers should succeed for a single valid server");
+
+   MCTF_ASSERT(config->servers[0].version > 0, cleanup,
+               "server version should be populated from pg_control_version after startup validation");
+
+   MCTF_ASSERT(strlen(config->servers[0].system_identifier) > 0, cleanup,
+               "server system_identifier should be populated alongside version after startup validation");
+
+cleanup:
+   /* Restore original config */
+   memcpy(config, &backup, sizeof(struct main_configuration));
+   MCTF_FINISH();
+}

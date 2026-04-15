@@ -51,7 +51,7 @@
 
 static int failover(int old_primary);
 static int process_server_parameters(int server, struct deque* server_parameters);
-static int query_system_identifier(int server_idx, char* identifier, size_t id_size);
+static int query_system_identifier(int server_idx, char* identifier, size_t id_size, int* pg_version);
 
 /**
  * Check server system identifiers for duplicates.
@@ -66,6 +66,7 @@ pgagroal_check_server_identifiers(void)
 {
    struct main_configuration* config;
    char identifiers[NUMBER_OF_SERVERS][64];
+   int versions[NUMBER_OF_SERVERS];
    int num_servers;
 
    config = (struct main_configuration*)shmem;
@@ -74,11 +75,6 @@ pgagroal_check_server_identifiers(void)
    if (config->startup_validation == STARTUP_VALIDATION_OFF)
    {
       pgagroal_log_debug("Startup validation: off, skipping identifier check");
-      return 0;
-   }
-
-   if (num_servers < 2)
-   {
       return 0;
    }
 
@@ -99,9 +95,11 @@ pgagroal_check_server_identifiers(void)
 
    for (int i = 0; i < num_servers; i++)
    {
+      versions[i] = 0;
+
       memset(identifiers[i], 0, sizeof(identifiers[i]));
 
-      if (query_system_identifier(i, identifiers[i], sizeof(identifiers[i])))
+      if (query_system_identifier(i, identifiers[i], sizeof(identifiers[i]), &versions[i]))
       {
          if (config->startup_validation == STARTUP_VALIDATION_ON)
          {
@@ -112,6 +110,14 @@ pgagroal_check_server_identifiers(void)
 
          pgagroal_log_warn("Could not query system_identifier for server [%s] (%s:%d)",
                            config->servers[i].name, config->servers[i].host, config->servers[i].port);
+      }
+      else
+      {
+         if (versions[i] > 0)
+         {
+            config->servers[i].version = versions[i] / 100;
+         }
+         memcpy(config->servers[i].system_identifier, identifiers[i], sizeof(config->servers[i].system_identifier));
       }
    }
 
@@ -137,6 +143,44 @@ pgagroal_check_server_identifiers(void)
                                config->servers[j].name, config->servers[j].host, config->servers[j].port,
                                identifiers[i]);
             return 1;
+         }
+      }
+   }
+
+   /* Check for version mismatches against the primary server */
+   int primary_server = -1;
+
+   for (int i = 0; i < num_servers; i++)
+   {
+      if (versions[i] == 0)
+      {
+         continue;
+      }
+
+      if (config->servers[i].state == SERVER_PRIMARY)
+      {
+         primary_server = i;
+         break;
+      }
+   }
+
+   if (primary_server != -1)
+   {
+      for (int i = 0; i < num_servers; i++)
+      {
+         if (i == primary_server || versions[i] == 0)
+         {
+            continue;
+         }
+
+         if (versions[i] != versions[primary_server])
+         {
+            pgagroal_log_warn("Server [%s] (%s:%d) (version %d) differs from primary [%s] (%s:%d) "
+                              "(version %d)",
+                              config->servers[i].name, config->servers[i].host, config->servers[i].port,
+                              versions[i] / 100,
+                              config->servers[primary_server].name, config->servers[primary_server].host,
+                              config->servers[primary_server].port, versions[primary_server] / 100);
          }
       }
    }
@@ -334,7 +378,7 @@ error:
 }
 
 static int
-query_system_identifier(int server_idx, char* identifier, size_t id_size)
+query_system_identifier(int server_idx, char* identifier, size_t id_size, int* pg_version)
 {
    struct main_configuration* config;
    struct server* srv;
@@ -351,7 +395,7 @@ query_system_identifier(int server_idx, char* identifier, size_t id_size)
    if (pgagroal_server_query_execute(server_idx,
                                      config->health_check_user,
                                      config->health_check_user,
-                                     "SELECT system_identifier FROM pg_control_system()",
+                                     "SELECT system_identifier, pg_control_version FROM pg_control_system()",
                                      NULL, &fd) != 0)
    {
       return 1;
@@ -389,6 +433,27 @@ query_system_identifier(int server_idx, char* identifier, size_t id_size)
                   memcpy(identifier, msg->data + dr_offset, col_len);
                   identifier[col_len] = '\0';
                }
+
+               if (col_len > 0)
+               {
+                  dr_offset += col_len;
+               }
+            }
+
+            /* Parse pg_control_version (second column) */
+            if (num_cols >= 2 && pg_version != NULL)
+            {
+               int col_len2 = pgagroal_read_int32(msg->data + dr_offset);
+               dr_offset += 4;
+
+               if (col_len2 > 0)
+               {
+                  char ver_buf[32];
+                  int copy_len = col_len2 < (int)sizeof(ver_buf) - 1 ? col_len2 : (int)sizeof(ver_buf) - 1;
+                  memcpy(ver_buf, msg->data + dr_offset, copy_len);
+                  ver_buf[copy_len] = '\0';
+                  *pg_version = atoi(ver_buf);
+               }
             }
          }
          else if (type_q == 'Z')
@@ -425,8 +490,9 @@ query_system_identifier(int server_idx, char* identifier, size_t id_size)
 
    pgagroal_disconnect(fd);
 
-   pgagroal_log_debug("system_identifier: Server [%s] (%s:%d) = %s",
-                      srv->name, srv->host, srv->port, identifier);
+   pgagroal_log_debug("system_identifier: Server [%s] (%s:%d) = %s, pg_control_version = %d",
+                      srv->name, srv->host, srv->port, identifier,
+                      pg_version != NULL ? *pg_version : 0);
 
    return strlen(identifier) > 0 ? 0 : 1;
 
