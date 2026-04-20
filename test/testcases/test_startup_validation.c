@@ -146,49 +146,77 @@ cleanup:
    MCTF_FINISH();
 }
 
-// duplicate system_identifier detection (same cluster, different server names)
-MCTF_TEST(test_server_validation_duplicate_system_identifier)
+// duplicate system_identifier with primary=on + primary=off: should pass
+MCTF_TEST(test_server_validation_duplicate_system_identifier_primary_on_off)
 {
    struct main_configuration* config;
+   struct main_configuration backup;
+   char path[MAX_PATH];
    int ret;
-   int orig_count;
-   struct server orig_servers[NUMBER_OF_SERVERS];
-   char orig_health_check_user[MAX_USERNAME_LENGTH];
 
    config = (struct main_configuration*)shmem;
 
    /* Save original state */
-   orig_count = config->number_of_servers;
-   memcpy(orig_servers, config->servers, sizeof(orig_servers));
-   memcpy(orig_health_check_user, config->health_check_user, MAX_USERNAME_LENGTH);
+   memcpy(&backup, config, sizeof(struct main_configuration));
 
-   /* Set health_check_user to postgres */
-   snprintf(config->health_check_user, MAX_USERNAME_LENGTH, "postgres");
+   MCTF_ASSERT(build_test_conf_path("15", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
 
-   /* Set up two servers pointing to the same instance */
-   config->number_of_servers = 2;
-   memset(&config->servers[0], 0, sizeof(struct server));
-   memset(&config->servers[1], 0, sizeof(struct server));
+   pgagroal_init_configuration(config);
+   ret = pgagroal_read_configuration(config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
 
-   snprintf(config->servers[0].name, MISC_LENGTH, "server_a");
-   snprintf(config->servers[0].host, MISC_LENGTH, "%s", orig_servers[0].host);
-   config->servers[0].port = orig_servers[0].port;
-
-   snprintf(config->servers[1].name, MISC_LENGTH, "server_b");
-   snprintf(config->servers[1].host, MISC_LENGTH, "%s", orig_servers[0].host);
-   config->servers[1].port = orig_servers[0].port;
+   /* Point both servers to the same live instance to force equal system_identifier */
+   snprintf(config->servers[0].host, MISC_LENGTH, "%s", backup.servers[0].host);
+   config->servers[0].port = backup.servers[0].port;
+   snprintf(config->servers[1].host, MISC_LENGTH, "%s", backup.servers[0].host);
+   config->servers[1].port = backup.servers[0].port;
 
    ret = pgagroal_check_server_identifiers();
 
-   /* Restore original config */
-   config->number_of_servers = orig_count;
-   memcpy(config->servers, orig_servers, sizeof(orig_servers));
-   memcpy(config->health_check_user, orig_health_check_user, MAX_USERNAME_LENGTH);
-
-   MCTF_ASSERT(ret != 0, cleanup,
-               "check_server_identifiers should fail for two servers pointing to the same cluster");
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
+                      "check_server_identifiers should pass when only one duplicate is primary");
 
 cleanup:
+   /* Restore original config */
+   memcpy(config, &backup, sizeof(struct main_configuration));
+   MCTF_FINISH();
+}
+
+// duplicate system_identifier with primary=off + primary=off: should fail
+MCTF_TEST(test_server_validation_duplicate_system_identifier_primary_off_off)
+{
+   struct main_configuration* config;
+   struct main_configuration backup;
+   char path[MAX_PATH];
+   int ret;
+
+   config = (struct main_configuration*)shmem;
+
+   /* Save original state */
+   memcpy(&backup, config, sizeof(struct main_configuration));
+
+   MCTF_ASSERT(build_test_conf_path("16", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   pgagroal_init_configuration(config);
+   ret = pgagroal_read_configuration(config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
+
+   /* Point both servers to the same live instance to force equal system_identifier */
+   snprintf(config->servers[0].host, MISC_LENGTH, "%s", backup.servers[0].host);
+   config->servers[0].port = backup.servers[0].port;
+   snprintf(config->servers[1].host, MISC_LENGTH, "%s", backup.servers[0].host);
+   config->servers[1].port = backup.servers[0].port;
+
+   ret = pgagroal_check_server_identifiers();
+
+   MCTF_ASSERT(ret != 0, cleanup,
+               "check_server_identifiers should fail when duplicate non-primary servers share identifier");
+
+cleanup:
+   /* Restore original config */
+   memcpy(config, &backup, sizeof(struct main_configuration));
    MCTF_FINISH();
 }
 

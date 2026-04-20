@@ -104,6 +104,15 @@ There can be up to `64` host sections, each with an unique name and different co
 
 Note, that if `host` starts with a `/` it represents a path and [**pgagroal**](https://github.com/pgagroal/pgagroal) will connect using a Unix Domain Socket.
 
+### system_identifier duplicate behavior
+
+At startup, pgagroal checks each configured server's PostgreSQL `system_identifier` when `startup_validation` is enabled (and `health_check_user` is configured according to the selected mode).
+
+- If two non-primary servers (`primary = off`) expose the same `system_identifier`, startup validation fails.
+- If a duplicate pair includes a server with `primary = on`, startup validation does not fail for that pair.
+
+This behavior is consistent with PostgreSQL replication semantics: a standby created from a primary backup remains part of the same cluster and therefore shares the same `system_identifier` as its primary.
+
 ## pgagroal_hba.conf
 
 The `pgagroal_hba` configuration controls access to [**pgagroal**](https://github.com/pgagroal/pgagroal) through host-based authentication.

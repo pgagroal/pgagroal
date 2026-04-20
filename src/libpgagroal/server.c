@@ -123,18 +123,24 @@ pgagroal_check_server_identifiers(void)
 
    for (int i = 0; i < num_servers; i++)
    {
-      if (!strlen(identifiers[i]))
+      signed char state_i = atomic_load(&config->servers[i].state);
+
+      if (!strlen(identifiers[i]) ||
+          state_i == SERVER_PRIMARY ||
+          state_i == SERVER_NOTINIT_PRIMARY)
       {
          continue;
       }
-
       for (int j = i + 1; j < num_servers; j++)
       {
-         if (!strlen(identifiers[j]))
+         signed char state_j = atomic_load(&config->servers[j].state);
+
+         if (!strlen(identifiers[j]) ||
+             state_j == SERVER_PRIMARY ||
+             state_j == SERVER_NOTINIT_PRIMARY)
          {
             continue;
          }
-
          if (!strcmp(identifiers[i], identifiers[j]))
          {
             pgagroal_log_fatal("Servers [%s] (%s:%d) and [%s] (%s:%d) have the same system_identifier (%s) "
