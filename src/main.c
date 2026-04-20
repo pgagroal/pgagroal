@@ -147,15 +147,22 @@ shutdown_mgt(bool remove)
 
    config = (struct main_configuration*)shmem;
 
-   pgagroal_io_stop(&io_mgt.watcher);
-   pgagroal_disconnect(unix_management_socket);
-   errno = 0;
+   if (io_mgt.watcher.fds.worker.rcv_fd != -1 ||
+       io_mgt.watcher.fds.worker.snd_fd != -1)
+   {
+      pgagroal_io_stop(&io_mgt.watcher);
+   }
+   if (unix_management_socket != -1)
+   {
+      pgagroal_disconnect(unix_management_socket);
+      unix_management_socket = -1;
+   }
+  
    if (remove)
    {
       pgagroal_remove_unix_socket(config->unix_socket_dir, MAIN_UDS);
    }
-   errno = 0;
-}
+  }
 
 static void
 start_transfer(void)
@@ -174,14 +181,20 @@ shutdown_transfer(bool remove)
 
    config = (struct main_configuration*)shmem;
 
-   pgagroal_io_stop(&io_transfer.watcher);
-   pgagroal_disconnect(unix_transfer_socket);
-   errno = 0;
+   if (io_mgt.watcher.fds.worker.rcv_fd != -1 ||
+      io_mgt.watcher.fds.worker.snd_fd != -1)
+   {
+      pgagroal_io_stop(&io_mgt.watcher);
+   }
+   if (unix_management_socket != -1)
+   {
+      pgagroal_disconnect(unix_management_socket);
+      unix_management_socket = -1;
+   }
    if (remove)
    {
       pgagroal_remove_unix_socket(config->unix_socket_dir, TRANSFER_UDS);
    }
-   errno = 0;
 }
 
 static void
@@ -205,13 +218,16 @@ shutdown_uds(bool remove)
    memset(&pgsql, 0, sizeof(pgsql));
    snprintf(&pgsql[0], sizeof(pgsql), PG_UDS);
 
-   pgagroal_disconnect(unix_pgsql_socket);
-   errno = 0;
+   if (unix_pgsql_socket >= 0)
+   {
+      pgagroal_disconnect(unix_pgsql_socket);
+      unix_pgsql_socket = -1;
+   }
+
    if (remove)
    {
       pgagroal_remove_unix_socket(config->unix_socket_dir, &pgsql[0]);
    }
-   errno = 0;
 }
 
 static void
@@ -260,8 +276,11 @@ shutdown_metrics(void)
 {
    for (int i = 0; i < metrics_fds_length; i++)
    {
-      pgagroal_disconnect(io_metrics[i].socket);
-      errno = 0;
+      if (io_metrics[i].socket >= 0)
+      {
+         pgagroal_disconnect(io_metrics[i].socket);
+         io_metrics[i].socket = -1;
+      }
    }
 }
 
@@ -285,8 +304,11 @@ shutdown_management(bool remove __attribute__((unused)))
 {
    for (int i = 0; i < management_fds_length; i++)
    {
-      pgagroal_disconnect(io_management[i].socket);
-      errno = 0;
+      if (io_management[i].socket >= 0)
+      {
+         pgagroal_disconnect(io_management[i].socket);
+         io_management[i].socket = -1;
+      }
    }
 }
 

@@ -480,9 +480,7 @@ pgagroal_io_stop(struct io_watcher* watcher)
 
    if (i >= loop->events_nr)
    {
-      pgagroal_log_warn("pgagroal_io_stop: watcher not found in events list (fd rcv=%d, snd=%d, events_nr=%d) - possible double-stop",
-                        watcher->fds.worker.rcv_fd, watcher->fds.worker.snd_fd, loop->events_nr);
-      return PGAGROAL_EVENT_RC_ERROR;
+     return PGAGROAL_EVENT_RC_OK;
    }
 
    int rc = io_stop(watcher);
@@ -1083,21 +1081,30 @@ ev_io_uring_handler(struct io_uring_cqe* cqe)
       case PGAGROAL_EVENT_TYPE_MAIN:
          io = (struct io_watcher*)watcher;
          if (cqe->res < 0)
-         {
-            pgagroal_log_error("io_uring: accept error: %s", strerror(-cqe->res));
-            if (pgagroal_event_loop_is_running())
-            {
+	 {
+   	    int err = -cqe->res;
+  	    if (err == EBADF || err == ENOTSOCK || err == ECANCELED)
+   	    {
+      	       pgagroal_log_debug("io_uring: accept ignored during reload: %s", strerror(err));
+               return PGAGROAL_EVENT_RC_OK;
+   	    }
+
+   	    pgagroal_log_error("io_uring: accept error: %s", strerror(err));
+
+   	    if (pgagroal_event_loop_is_running())
+   	    {
                ev_io_uring_io_start(io);
-            }
-            return PGAGROAL_EVENT_RC_OK;
-         }
+   	    }
+	
+   	    return PGAGROAL_EVENT_RC_OK;
+	 }																										
          io->fds.main.client_fd = cqe->res;
          io->cb(io);
 
          if (!(cqe->flags & IORING_CQE_F_MORE))
          {
             pgagroal_log_debug("io_uring: multishot accept ended: rearming");
-            if (pgagroal_event_loop_is_running())
+            if (pgagroal_event_loop_is_running() && io->fds.main.listen_fd != -1)
             {
                ev_io_uring_io_start(io);
             }
@@ -1478,11 +1485,18 @@ ev_epoll_io_handler(struct io_watcher* watcher)
          client_fd = accept(watcher->fds.main.listen_fd, NULL, NULL);
          if (client_fd == -1)
          {
-            if (errno != EAGAIN && errno != EWOULDBLOCK)
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-               pgagroal_log_error("accept error: %s", strerror(errno));
-               return PGAGROAL_EVENT_RC_ERROR;
+               return PGAGROAL_EVENT_RC_OK;
             }
+
+            if (errno == EBADF || errno == ENOTSOCK)
+            {
+               return PGAGROAL_EVENT_RC_OK;
+            }
+
+            pgagroal_log_error("accept error: %s", strerror(errno));
+            return PGAGROAL_EVENT_RC_ERROR;
          }
          else
          {
