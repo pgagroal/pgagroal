@@ -71,7 +71,8 @@ flush [mode] [database]
   If no [database] name is specified, applies to all databases.
 
 ping
-  Verifies if pgagroal is up and running
+  Verifies if pgagroal is up and running and checks connectivity to configured PostgreSQL servers.
+  With JSON output, the response includes per-server Host, Port, Status, Primary, and **Behind** on standbys.
 
 enable [database]
   Enable the specified database, or all databases if not specified
@@ -86,7 +87,7 @@ shutdown [mode]
     - 'cancel': avoid a previously issued 'shutdown gracefully'
 
 status [details]
-  Status of pgagroal, with optional details
+  Status of pgagroal, with optional details. Per-server fields match **ping**. **details** adds limits and per-connection rows.
 
 switch-to <server>
   Switches to the specified primary server

@@ -66,8 +66,7 @@ pgagroal-cli flush pgbench   # pgagroal-cli flush gracefully pgbench
 ```
 
 ### ping
-The `ping` command checks if [**pgagroal**](https://github.com/pgagroal/pgagroal) is running.
-In case of success, the command does not print anything on the standard output unless the `--verbose` flag is used.
+The `ping` command checks if [**pgagroal**](https://github.com/pgagroal/pgagroal) is running and verifies connectivity to configured PostgreSQL servers.
 
 Command
 
@@ -88,6 +87,10 @@ In the case [**pgagroal**](https://github.com/pgagroal/pgagroal) is not running,
 pgagroal-cli ping          # $? = 1
 Connection error on /tmp
 ```
+
+With **JSON** output (`-F json` / `--format json`), the response includes a **`Servers`** object: one entry per configured backend. For each server you get **`Host`**, **`Port`**, **`Status`** (`Running` if PostgreSQL accepted the connectivity check, else `Down`), and **`Primary`** (`Yes`, `No`, or `Unknown`).
+
+**`Behind`**: only on **standby** (replica) backends—replication lag in **bytes** (WAL received but not yet replayed there). **`0`** means caught up. **Omitted** for primaries, when the server is down, or when lag cannot be read (for example, authentication failure). For password methods (SCRAM, MD5), configure **`health_check_user`** and the matching entry in **`pgagroal_users.conf`** so the check can log in.
 
 ### enable
 Enables a database (or all databases).
@@ -163,6 +166,8 @@ pgagroal-cli status
 ```
 
 With the `details` subcommand, a more verbose output is printed with a detail about every connection.
+
+For each configured PostgreSQL server, **`status`** and **`status details`** include the same connectivity summary as **`ping`** (host, port, running/down, primary vs standby, and **`Behind`** on standbys—see [ping](#ping)).
 
 Example
 

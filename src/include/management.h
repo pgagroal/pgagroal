@@ -97,6 +97,7 @@ extern "C" {
  */
 #define MANAGEMENT_ARGUMENT_ACTIVE_CONNECTIONS  "ActiveConnections"
 #define MANAGEMENT_ARGUMENT_APPNAME             "AppName"
+#define MANAGEMENT_ARGUMENT_BEHIND              "Behind"
 #define MANAGEMENT_ARGUMENT_CLIENT_VERSION      "ClientVersion"
 #define MANAGEMENT_ARGUMENT_COMMAND             "Command"
 #define MANAGEMENT_ARGUMENT_COMPRESSION         "Compression"
@@ -121,6 +122,7 @@ extern "C" {
 #define MANAGEMENT_ARGUMENT_PASSWORD            "Password"
 #define MANAGEMENT_ARGUMENT_PID                 "PID"
 #define MANAGEMENT_ARGUMENT_PORT                "Port"
+#define MANAGEMENT_ARGUMENT_PRIMARY             "Primary"
 #define MANAGEMENT_ARGUMENT_RESTART             "Restart"
 #define MANAGEMENT_ARGUMENT_SERVER              "Server"
 #define MANAGEMENT_ARGUMENT_SERVERS             "Servers"
@@ -131,7 +133,6 @@ extern "C" {
 #define MANAGEMENT_ARGUMENT_HEALTH              "Health"
 #define MANAGEMENT_ARGUMENT_STATUS              "Status"
 #define MANAGEMENT_ARGUMENT_TIME                "Time"
-#define MANAGEMENT_ARGUMENT_TIMESTAMP           "Timestamp"
 #define MANAGEMENT_ARGUMENT_TIMESTAMP           "Timestamp"
 #define MANAGEMENT_ARGUMENT_TOTAL_CONNECTIONS   "TotalConnections"
 #define MANAGEMENT_ARGUMENT_USERNAME            "Username"

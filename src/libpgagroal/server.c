@@ -32,9 +32,9 @@
 #include <logging.h>
 #include <message.h>
 #include <pool.h>
+#include <queries.h>
 #include <security.h>
 #include <server.h>
-#include <message.h>
 #include <network.h>
 #include <utils.h>
 #include <value.h>
@@ -393,7 +393,6 @@ query_system_identifier(int server_idx, char* identifier, size_t id_size, int* p
    int status;
    bool query_ready = false;
    int offset_q;
-   char buffer[8];
 
    config = (struct main_configuration*)shmem;
    srv = &config->servers[server_idx];
@@ -401,7 +400,7 @@ query_system_identifier(int server_idx, char* identifier, size_t id_size, int* p
    if (pgagroal_server_query_execute(server_idx,
                                      config->health_check_user,
                                      config->health_check_user,
-                                     "SELECT system_identifier, pg_control_version FROM pg_control_system()",
+                                     (char*)pgagroal_queries_system_identifier(),
                                      NULL, &fd) != 0)
    {
       return 1;
@@ -489,11 +488,7 @@ query_system_identifier(int server_idx, char* identifier, size_t id_size, int* p
       }
    }
 
-   /* Send Terminate */
-   buffer[0] = 'X';
-   pgagroal_write_int32(buffer + 1, 4);
-   pgagroal_write_socket(NULL, fd, buffer, 5);
-
+   (void)pgagroal_write_terminate(NULL, fd);
    pgagroal_disconnect(fd);
 
    pgagroal_log_debug("system_identifier: Server [%s] (%s:%d) = %s, pg_control_version = %d",
@@ -512,6 +507,102 @@ error:
       pgagroal_disconnect(fd);
    }
    return 1;
+}
+
+int
+pgagroal_server_get_connectivity_info(int server, char** status, char** primary, int64_t* behind_bytes)
+{
+   int fd = -1;
+   bool in_recovery = false;
+   char recovery_value[16];
+   char behind_value[64];
+   char* endptr = NULL;
+   struct main_configuration* config = (struct main_configuration*)shmem;
+
+   *status = "Down";
+   *primary = "Unknown";
+   *behind_bytes = -1;
+
+   if (server < 0 || server >= config->number_of_servers)
+   {
+      return 1;
+   }
+
+   if (strlen(config->health_check_user) == 0)
+   {
+      pgagroal_log_debug("ping/status: health_check_user is not configured, cannot perform complete server connectivity checks");
+      return 0;
+   }
+
+   if (pgagroal_server_query_execute(server,
+                                     config->health_check_user,
+                                     config->health_check_user,
+                                     (char*)pgagroal_queries_is_in_recovery(),
+                                     NULL, &fd))
+   {
+      goto done;
+   }
+
+   *status = "Running";
+
+   if (pgagroal_read_query_first_column_text(fd, recovery_value, sizeof(recovery_value)))
+   {
+      (void)pgagroal_write_terminate(NULL, fd);
+      pgagroal_disconnect(fd);
+      fd = -1;
+      goto done;
+   }
+
+   in_recovery = (recovery_value[0] == 't');
+   *primary = in_recovery ? "No" : "Yes";
+   (void)pgagroal_write_terminate(NULL, fd);
+   pgagroal_disconnect(fd);
+   fd = -1;
+
+   if (!in_recovery)
+   {
+      return 0;
+   }
+
+   if (pgagroal_server_query_execute(server,
+                                     config->health_check_user,
+                                     config->health_check_user,
+                                     (char*)pgagroal_queries_replication_lag_bytes(),
+                                     NULL, &fd))
+   {
+      return 0;
+   }
+
+   if (pgagroal_read_query_first_column_text(fd, behind_value, sizeof(behind_value)))
+   {
+      *behind_bytes = -1;
+   }
+   else if (behind_value[0] == '\0')
+   {
+      *behind_bytes = -1;
+   }
+   else
+   {
+      errno = 0;
+      *behind_bytes = (int64_t)strtoll(behind_value, &endptr, 10);
+      if (errno != 0 || endptr == behind_value || *endptr != '\0')
+      {
+         *behind_bytes = -1;
+      }
+   }
+
+   (void)pgagroal_write_terminate(NULL, fd);
+   pgagroal_disconnect(fd);
+   fd = -1;
+
+done:
+   if (fd != -1)
+   {
+      (void)pgagroal_write_terminate(NULL, fd);
+      pgagroal_disconnect(fd);
+   }
+
+   return 0;
 }
 
 int

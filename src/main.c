@@ -1943,12 +1943,43 @@ accept_mgt_cb(struct io_watcher* watcher)
    else if (id == MANAGEMENT_PING)
    {
       struct json* response = NULL;
+      struct json* servers = NULL;
 
       pgagroal_log_debug("pgagroal: Management ping");
 
       start_time = time(NULL);
 
       pgagroal_management_create_response(payload, -1, &response);
+      pgagroal_json_create(&servers);
+
+      for (int i = 0; i < config->number_of_servers; i++)
+      {
+         struct json* sobj = NULL;
+         char* srv_status = NULL;
+         char* srv_primary = NULL;
+         int64_t behind_bytes = -1;
+
+         if (strlen(config->servers[i].name) == 0)
+         {
+            continue;
+         }
+
+         pgagroal_server_get_connectivity_info(i, &srv_status, &srv_primary, &behind_bytes);
+
+         pgagroal_json_create(&sobj);
+         pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_HOST, (uintptr_t)config->servers[i].host, ValueString);
+         pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_PORT, (uintptr_t)config->servers[i].port, ValueInt32);
+         pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t)srv_status, ValueString);
+         pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_PRIMARY, (uintptr_t)srv_primary, ValueString);
+         if (behind_bytes >= 0)
+         {
+            pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_BEHIND, (uintptr_t)behind_bytes, ValueInt64);
+         }
+
+         pgagroal_json_put(servers, config->servers[i].name, (uintptr_t)sobj, ValueJSON);
+      }
+
+      pgagroal_json_put(response, MANAGEMENT_ARGUMENT_SERVERS, (uintptr_t)servers, ValueJSON);
 
       end_time = time(NULL);
 
