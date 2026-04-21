@@ -114,6 +114,18 @@ uintptr_t
 pgagroal_art_search(struct art* t, char* key);
 
 /**
+ * Perform a prefix search in the ART tree, storing all matching string keys in the internal nodes.
+ * Matches will be dynamically allocated string copies, which must be freed by the caller.
+ * @param t The tree
+ * @param prefix The prefix string to search for
+ * @param matches [out] Pointer to array of strings (allocated internally)
+ * @param max_matches Maximum number of matches to return (sets a limit on array allocation)
+ * @return Number of matching elements found, or -1 on error (invalid arguments)
+ */
+int
+pgagroal_art_prefix_search(struct art* t, char* prefix, char*** matches, int max_matches);
+
+/**
  * Searches for a value in the ART tree, and also returns its type
  * @param t The tree
  * @param key The key

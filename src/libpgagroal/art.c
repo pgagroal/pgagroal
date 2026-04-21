@@ -368,6 +368,107 @@ pgagroal_art_contains_key(struct art* t, char* key)
    return val != NULL;
 }
 
+struct prefix_search_state
+{
+   char*** matches;
+   int max_matches;
+   int current_count;
+   uint32_t key_len;
+   char* prefix;
+};
+
+static int
+prefix_search_cb(void* param, const char* key, struct value* value)
+{
+   struct prefix_search_state* state = (struct prefix_search_state*)param;
+   (void)value;
+
+   if (state->current_count >= state->max_matches)
+   {
+      return 1;
+   }
+
+   (*state->matches)[state->current_count] = pgagroal_append(NULL, (char*)key);
+   state->current_count++;
+
+   return 0;
+}
+
+int
+pgagroal_art_prefix_search(struct art* t, char* prefix, char*** matches, int max_matches)
+{
+   struct art_node* node = NULL;
+   struct art_node** child = NULL;
+   uint32_t depth = 0;
+   uint32_t key_len = 0;
+   unsigned char* key = (unsigned char*)prefix;
+   struct prefix_search_state state;
+   struct art_leaf* min_leaf = NULL;
+
+   if (t == NULL || t->root == NULL || matches == NULL || max_matches <= 0)
+   {
+      return -1;
+   }
+
+   *matches = malloc((max_matches + 1) * sizeof(char*));
+   if (*matches == NULL)
+   {
+      return -1;
+   }
+   memset(*matches, 0, (max_matches + 1) * sizeof(char*));
+
+   state.matches = matches;
+   state.max_matches = max_matches;
+   state.current_count = 0;
+   state.prefix = prefix;
+
+   if (prefix == NULL || strlen(prefix) == 0)
+   {
+      art_node_iterate(t->root, prefix_search_cb, &state);
+      return state.current_count;
+   }
+
+   key_len = strlen(prefix);
+   state.key_len = key_len;
+   node = t->root;
+
+   while (node != NULL)
+   {
+      if (IS_LEAF(node))
+      {
+         struct art_leaf* leaf = GET_LEAF(node);
+         if (leaf->key_len >= key_len && strncmp((char*)leaf->key, prefix, key_len) == 0)
+         {
+            prefix_search_cb(&state, (char*)leaf->key, leaf->value);
+         }
+         return state.current_count;
+      }
+
+      uint32_t cpl = check_prefix_partial(node, key, depth, key_len);
+      if (cpl < min(node->prefix_len, MAX_PREFIX_LEN) && depth + cpl < key_len)
+      {
+         return state.current_count;
+      }
+
+      depth += node->prefix_len;
+      if (depth >= key_len)
+      {
+         min_leaf = node_get_minimum(node);
+         if (min_leaf != NULL && min_leaf->key_len >= key_len && strncmp((char*)min_leaf->key, prefix, key_len) == 0)
+         {
+            art_node_iterate(node, prefix_search_cb, &state);
+         }
+         return state.current_count;
+      }
+
+      child = node_get_child(node, key[depth]);
+      node = child != NULL ? *child : NULL;
+      depth++;
+   }
+
+   return state.current_count;
+}
+
 int
 pgagroal_art_insert(struct art* t, char* key, uintptr_t value, enum value_type type)
 {
