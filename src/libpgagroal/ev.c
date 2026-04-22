@@ -260,6 +260,9 @@ pgagroal_event_loop_init(void)
       pgagroal_log_fatal("calloc error: %s", strerror(errno));
       return NULL;
    }
+
+   atomic_init(&loop->running, false);
+   atomic_init(&loop->forked, false);
    sigemptyset(&loop->sigset);
 
    if (!context_is_set)
@@ -345,6 +348,8 @@ pgagroal_event_loop_fork(void)
 
    /* no need to empty sigset */
    rc = loop_fork();
+
+   atomic_store(&loop->forked, true);
 
    return rc;
 }
@@ -469,6 +474,11 @@ pgagroal_io_stop(struct io_watcher* watcher)
    int i;
 
    assert(loop != NULL && watcher != NULL);
+
+   if (atomic_load(&loop->forked))
+   {
+      return PGAGROAL_EVENT_RC_OK;
+   }
 
    for (i = 0; i < loop->events_nr; i++)
    {
@@ -1035,7 +1045,7 @@ ev_io_uring_loop(void)
 static int
 ev_io_uring_fork(void)
 {
-   return 0;
+   return PGAGROAL_EVENT_RC_OK;
 }
 
 static int
