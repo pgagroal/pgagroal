@@ -285,7 +285,7 @@ MCTF_TEST(test_deque_sort)
       MCTF_ASSERT(!pgagroal_deque_add(dq, tag, index[i], ValueInt32), cleanup, "add should succeed");
    }
 
-   pgagroal_deque_sort(dq);
+   pgagroal_deque_sort(dq, NULL);
 
    MCTF_ASSERT(!pgagroal_deque_iterator_create(dq, &iter), cleanup, "iterator create should succeed");
 
@@ -296,6 +296,76 @@ MCTF_TEST(test_deque_sort)
       MCTF_ASSERT_STR_EQ(iter->tag, tag, cleanup, "iterator tag should match count");
       cnt++;
    }
+
+cleanup:
+   pgagroal_deque_iterator_destroy(iter);
+   pgagroal_deque_destroy(dq);
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_deque_custom_sort_values)
+{
+   struct deque* dq = NULL;
+   struct deque_iterator* iter = NULL;
+   int cnt = 0;
+
+   int index[6] = {2, 1, 3, 5, 4, 0};
+
+   MCTF_ASSERT(!pgagroal_deque_create(false, &dq), cleanup, "custom deque creation failed");
+
+   for (int i = 0; i < 6; i++)
+   {
+      MCTF_ASSERT(!pgagroal_deque_add(dq, NULL, index[i], ValueInt32), cleanup, "add failed");
+   }
+
+   pgagroal_deque_sort(dq, pgagroal_value_compare);
+
+   MCTF_ASSERT(!pgagroal_deque_iterator_create(dq, &iter), cleanup, "iterator creation failed");
+
+   while (pgagroal_deque_iterator_next(iter))
+   {
+      MCTF_ASSERT_INT_EQ(pgagroal_value_data(iter->value), cnt, cleanup, "sorted value mismatch");
+      cnt++;
+   }
+
+cleanup:
+   pgagroal_deque_iterator_destroy(iter);
+   pgagroal_deque_destroy(dq);
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_deque_sort_mixed_and_edge_cases)
+{
+   struct deque* dq = NULL;
+   struct deque_iterator* iter = NULL;
+
+   MCTF_ASSERT(!pgagroal_deque_create(false, &dq), cleanup, "custom deque creation failed");
+
+   pgagroal_deque_add(dq, "tag1", (uintptr_t)100, ValueInt32);
+   pgagroal_deque_add(dq, "tag2", (uintptr_t)"zebra", ValueString);
+   pgagroal_deque_add(dq, "tag3", (uintptr_t)5, ValueInt32);
+   pgagroal_deque_add(dq, "tag4", (uintptr_t)"apple", ValueString);
+
+   pgagroal_deque_add(dq, NULL, (uintptr_t)50, ValueInt32);
+
+   pgagroal_deque_sort(dq, pgagroal_value_compare);
+
+   MCTF_ASSERT(!pgagroal_deque_iterator_create(dq, &iter), cleanup, "iterator creation failed");
+
+   pgagroal_deque_iterator_next(iter);
+   MCTF_ASSERT_INT_EQ(pgagroal_value_data(iter->value), 5, cleanup, "Mixed sort failed: expected 5");
+
+   pgagroal_deque_iterator_next(iter);
+   MCTF_ASSERT_INT_EQ(pgagroal_value_data(iter->value), 50, cleanup, "Mixed sort failed: expected 50");
+
+   pgagroal_deque_iterator_next(iter);
+   MCTF_ASSERT_INT_EQ(pgagroal_value_data(iter->value), 100, cleanup, "Mixed sort failed: expected 100");
+
+   pgagroal_deque_iterator_next(iter);
+   MCTF_ASSERT_STR_EQ((char*)pgagroal_value_data(iter->value), "apple", cleanup, "Mixed sort failed: expected apple");
+
+   pgagroal_deque_iterator_next(iter);
+   MCTF_ASSERT_STR_EQ((char*)pgagroal_value_data(iter->value), "zebra", cleanup, "Mixed sort failed: expected zebra");
 
 cleanup:
    pgagroal_deque_iterator_destroy(iter);

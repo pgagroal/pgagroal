@@ -43,6 +43,7 @@ Somye Mahajan <mahajan.somye@gmail.com>
 Bhawesh Panwar <panwarbhawesh1112@gmail.com>
 Frank Heikens <frank@elevarq.com>
 Sakshi Aggarwal <sakshiaggarwal2706@gmail.com>
+Ameen Sakr <ameensakr623@gmail.com>
 ```
 
 ## Committers

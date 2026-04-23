@@ -190,6 +190,15 @@ pgagroal_value_to_ref(enum value_type type);
 char*
 pgagroal_value_type_to_string(enum value_type type);
 
+/**
+ * Compare two values based on their type
+ * @param a The first value
+ * @param b The second value
+ * @return -1 if a < b, 0 if a == b, 1 if a > b
+ */
+int
+pgagroal_value_compare(struct value* a, struct value* b);
+
 #ifdef __cplusplus
 }
 #endif

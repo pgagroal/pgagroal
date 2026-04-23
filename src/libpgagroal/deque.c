@@ -78,10 +78,10 @@ static struct deque_node*
 get_middle(struct deque_node* node);
 
 static struct deque_node*
-deque_sort(struct deque_node* node);
+deque_sort(struct deque_node* node, compare_cb cmp);
 
 static struct deque_node*
-deque_merge(struct deque_node* node1, struct deque_node* node2);
+deque_merge(struct deque_node* node1, struct deque_node* node2, compare_cb cmp);
 
 static int
 tag_compare(char* tag1, char* tag2);
@@ -344,7 +344,7 @@ pgagroal_deque_list(struct deque* deque)
 }
 
 void
-pgagroal_deque_sort(struct deque* deque)
+pgagroal_deque_sort(struct deque* deque, compare_cb compare)
 {
    deque_write_lock(deque);
    if (deque == NULL || deque->start == NULL || deque->end == NULL || deque->size <= 1)
@@ -360,7 +360,7 @@ pgagroal_deque_sort(struct deque* deque)
    last->next = NULL;
    deque->start->next = NULL;
    deque->end->prev = NULL;
-   node = deque_sort(first);
+   node = deque_sort(first, compare);
    deque->start->next = node;
    node->prev = deque->start;
    while (node->next != NULL)
@@ -777,7 +777,7 @@ get_middle(struct deque_node* node)
 }
 
 static struct deque_node*
-deque_sort(struct deque_node* node)
+deque_sort(struct deque_node* node, compare_cb cmp)
 {
    struct deque_node* mid = NULL;
    struct deque_node* prevmid = NULL;
@@ -791,13 +791,13 @@ deque_sort(struct deque_node* node)
    prevmid = mid->prev;
    mid->prev = NULL;
    prevmid->next = NULL;
-   node1 = deque_sort(node);
-   node2 = deque_sort(mid);
-   return deque_merge(node1, node2);
+   node1 = deque_sort(node, cmp);
+   node2 = deque_sort(mid, cmp);
+   return deque_merge(node1, node2, cmp);
 }
 
 static struct deque_node*
-deque_merge(struct deque_node* node1, struct deque_node* node2)
+deque_merge(struct deque_node* node1, struct deque_node* node2, compare_cb cmp)
 {
    struct deque_node* node = NULL;
    struct deque_node* left = node1;
@@ -814,7 +814,18 @@ deque_merge(struct deque_node* node1, struct deque_node* node2)
    }
    while (left != NULL && right != NULL)
    {
-      if (tag_compare(left->tag, right->tag) <= 0)
+      int cmp_result = 0;
+
+      if (cmp != NULL)
+      {
+         cmp_result = cmp(left->data, right->data);
+      }
+      else
+      {
+         cmp_result = tag_compare(left->tag, right->tag);
+      }
+
+      if (cmp_result <= 0)
       {
          next = left->next;
          if (node == NULL)

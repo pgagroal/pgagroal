@@ -31,6 +31,7 @@
 #include <json.h>
 #include <utils.h>
 #include <value.h>
+#include <logging.h>
 
 /* System */
 #include <inttypes.h>
@@ -643,4 +644,84 @@ mem_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char* t
    ret = pgagroal_append(ret, buf);
 
    return ret;
+}
+
+int
+pgagroal_value_compare(struct value* a, struct value* b)
+{
+   if (a == NULL && b == NULL)
+   {
+      return 0;
+   }
+   if (a == NULL)
+   {
+      return -1;
+   }
+   if (b == NULL)
+   {
+      return 1;
+   }
+
+   if (a->type != b->type)
+   {
+      pgagroal_log_warn("Value: Type mismatch %s vs %s", pgagroal_value_type_to_string(a->type), pgagroal_value_type_to_string(b->type));
+      return (a->type < b->type) ? -1 : 1;
+   }
+
+   switch (a->type)
+   {
+      case ValueString:
+      case ValueStringRef:
+      case ValueBASE64:
+      case ValueBASE64Ref:
+      {
+         char* val_a = (char*)a->data;
+         char* val_b = (char*)b->data;
+         if (val_a == NULL && val_b == NULL)
+         {
+            return 0;
+         }
+         if (val_a == NULL)
+         {
+            return -1;
+         }
+         if (val_b == NULL)
+         {
+            return 1;
+         }
+         return strcmp(val_a, val_b);
+      }
+
+      case ValueFloat:
+      {
+         float val_a = pgagroal_value_to_float(a->data);
+         float val_b = pgagroal_value_to_float(b->data);
+
+         if (val_a < val_b)
+         {
+            return -1;
+         }
+         if (val_a > val_b)
+         {
+            return 1;
+         }
+         return 0;
+      }
+      case ValueDouble:
+      {
+         double val_a = pgagroal_value_to_double(a->data);
+         double val_b = pgagroal_value_to_double(b->data);
+         return (val_a > val_b) - (val_a < val_b);
+      }
+      default:
+         if (a->data < b->data)
+         {
+            return -1;
+         }
+         if (a->data > b->data)
+         {
+            return 1;
+         }
+         return 0;
+   }
 }
