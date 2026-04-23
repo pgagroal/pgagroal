@@ -52,16 +52,21 @@
 volatile int exit_code = WORKER_FAILURE;
 
 static void signal_callback(void);
+static void pause_callback(void);
+static void resume_callback(void);
 
 void
 pgagroal_worker(int client_fd, char* address, char** argv)
 {
    struct event_loop* loop = NULL;
    struct signal_info signal_watcher;
+   struct signal_info pause_watcher;
+   struct signal_info resume_watcher;
    struct worker_io client_io;
    struct worker_io server_io;
    time_t start_time;
    bool started = false;
+   bool paused = false;
    int auth_status;
    struct main_configuration* config;
    struct pipeline p;
@@ -172,6 +177,14 @@ pgagroal_worker(int client_fd, char* address, char** argv)
       signal_watcher.slot = slot;
       pgagroal_signal_start(&signal_watcher.sig_w);
 
+      pgagroal_signal_init(&pause_watcher.sig_w, pause_callback, SIGUSR1);
+      pause_watcher.slot = slot;
+      pgagroal_signal_start(&pause_watcher.sig_w);
+
+      pgagroal_signal_init(&resume_watcher.sig_w, resume_callback, SIGUSR2);
+      resume_watcher.slot = slot;
+      pgagroal_signal_start(&resume_watcher.sig_w);
+
       p.start(loop, &client_io);
       started = true;
 
@@ -181,8 +194,84 @@ pgagroal_worker(int client_fd, char* address, char** argv)
          pgagroal_io_start(&server_io.io);
       }
 
-      pgagroal_event_loop_run();
+      while (true)
+      {
+         pgagroal_event_loop_run();
+         if (exit_code == WORKER_PAUSED)
+         {
+            if (paused)
+            {
+               exit_code = WORKER_FAILURE;
+               continue;
+            }
+            paused = true;
+            pgagroal_io_pause(&client_io.io);
+            pgagroal_log_debug("pgagroal_worker: slot %d paused", slot);
+            exit_code = WORKER_FAILURE;
+         }
+         else if (exit_code == WORKER_RESUME)
+         {
+            if (!paused)
+            {
+               exit_code = WORKER_FAILURE;
+               continue;
+            }
+            pgagroal_log_debug("pgagroal_worker: slot %d resuming", slot);
+            paused = false;
 
+            if (pgagroal_socket_isvalid(config->connections[slot].fd))
+            {
+               pgagroal_log_debug("pgagroal_worker: slot %d backend alive", slot);
+            }
+            else
+            {
+               pgagroal_log_debug("pgagroal_worker: slot %d backend gone, reauthenticating", slot);
+
+               if (config->pipeline != PIPELINE_TRANSACTION)
+               {
+                  pgagroal_io_stop(&server_io.io);
+               }
+               pgagroal_disconnect(config->connections[slot].fd);
+
+               if (pgagroal_reauth_slot(slot, &server_ssl) == AUTH_SUCCESS)
+               {
+                  pgagroal_log_debug("pgagroal_worker: slot %d reauth success", slot);
+                  pgagroal_event_worker_init(&client_io.io, client_fd, config->connections[slot].fd, p.client);
+
+                  client_io.server_fd = config->connections[slot].fd;
+                  client_io.server_ssl = server_ssl;
+
+                  if (config->pipeline != PIPELINE_TRANSACTION)
+                  {
+                     pgagroal_event_worker_init(&server_io.io, config->connections[slot].fd, client_fd, p.server);
+                     server_io.client_fd = client_fd;
+                     server_io.server_fd = config->connections[slot].fd;
+                     server_io.slot = slot;
+                     server_io.client_ssl = client_ssl;
+                     server_io.server_ssl = server_ssl;
+                     pgagroal_io_start(&server_io.io);
+                  }
+               }
+               else
+               {
+                  pgagroal_log_error("pgagroal_worker: slot %d reauth failed", slot);
+                  exit_code = WORKER_SERVER_FAILURE;
+                  break;
+               }
+            }
+
+            pgagroal_io_resume(&client_io.io);
+
+            pgagroal_log_info("resume: signalling worker for slot %d (pid %d)",
+                              slot, config->connections[slot].pid);
+            exit_code = WORKER_FAILURE;
+            continue;
+         }
+         else
+         {
+            break; /* real exit */
+         }
+      }
       if (config->pipeline == PIPELINE_TRANSACTION)
       {
          /* The slot may have been updated */
@@ -325,5 +414,19 @@ static void
 signal_callback(void)
 {
    exit_code = WORKER_SHUTDOWN;
+   pgagroal_event_loop_break();
+}
+
+static void
+pause_callback(void)
+{
+   exit_code = WORKER_PAUSED;
+   pgagroal_event_loop_break();
+}
+
+static void
+resume_callback(void)
+{
+   exit_code = WORKER_RESUME;
    pgagroal_event_loop_break();
 }

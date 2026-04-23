@@ -326,6 +326,20 @@ void
 pgagroal_prometheus_server_error(int server);
 
 /**
+ * Record a successful pause for a server (management pause path)
+ * @param server The server index
+ */
+void
+pgagroal_prometheus_server_pause(int server);
+
+/**
+ * Record a successful resume for a server (management resume path)
+ * @param server The server index
+ */
+void
+pgagroal_prometheus_server_resume(int server);
+
+/**
  * Count failed servers
  */
 void

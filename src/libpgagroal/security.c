@@ -645,6 +645,166 @@ error:
 }
 
 int
+pgagroal_reauth_slot(int slot, SSL** server_ssl)
+{
+   int server_fd = -1;
+   int auth_type = -1;
+   signed char server_state;
+   struct main_configuration* config = NULL;
+   struct message* startup_msg = NULL;
+   struct message* msg = NULL;
+   int status = -1;
+   int ret = -1;
+   char* username = NULL;
+   char* database = NULL;
+   char* password = NULL;
+   int server = -1;
+
+   config = (struct main_configuration*)shmem;
+
+   /* Free any existing server TLS context before overwriting the pointer */
+   if (*server_ssl != NULL)
+   {
+      pgagroal_close_ssl(*server_ssl);
+   }
+   *server_ssl = NULL;
+
+   if (slot < 0 || slot >= config->max_connections)
+   {
+      return AUTH_ERROR;
+   }
+
+   username = (char*)&config->connections[slot].username;
+   database = (char*)&config->connections[slot].database;
+   server = config->connections[slot].server;
+
+   if (server < 0)
+   {
+      pgagroal_log_warn("reauth_slot: slot %d has no server bound", slot);
+      return AUTH_ERROR;
+   }
+   password = get_frontend_password(username);
+   if (password == NULL)
+   {
+      password = pgagroal_get_user_password(username);
+   }
+
+   if (password == NULL)
+   {
+      pgagroal_log_info("reauth_slot: user '%s' not found in configurations; cannot silently reauth slot %d", username, slot);
+      return AUTH_ERROR;
+   }
+
+   if (config->servers[server].host[0] == '/')
+   {
+      char pgsql[MISC_LENGTH];
+
+      memset(&pgsql, 0, sizeof(pgsql));
+      snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->servers[server].port);
+      ret = pgagroal_connect_unix_socket(config->servers[server].host, &pgsql[0], &server_fd);
+   }
+   else
+   {
+      ret = pgagroal_connect(config->servers[server].host, config->servers[server].port, &server_fd, config->keep_alive, config->nodelay);
+   }
+
+   if (ret)
+   {
+      pgagroal_log_error("reauth_slot: no connection to %s:%d for slot %d",
+                         config->servers[server].host, config->servers[server].port, slot);
+      goto error;
+   }
+
+   config->connections[slot].fd = server_fd;
+   config->connections[slot].has_security = SECURITY_INVALID;
+   for (int i = 0; i < NUMBER_OF_SECURITY_MESSAGES; i++)
+   {
+      config->connections[slot].security_lengths[i] = 0;
+      memset(&config->connections[slot].security_messages[i], 0, SECURITY_BUFFER_SIZE);
+   }
+   config->connections[slot].backend_pid = 0;
+   config->connections[slot].backend_secret = 0;
+
+   if (establish_client_tls_connection(server, server_fd, server_ssl) != AUTH_SUCCESS)
+   {
+      pgagroal_log_error("reauth_slot: TLS negotiation failed for slot %d (server %d)", slot, server);
+      goto error;
+   }
+
+   status = pgagroal_create_startup_message(username, database, &startup_msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   status = pgagroal_write_message(*server_ssl, server_fd, startup_msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   status = pgagroal_read_block_message(*server_ssl, server_fd, &msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   get_auth_type(msg, &auth_type);
+   pgagroal_log_trace("reauth_slot: auth type %d", auth_type);
+
+   if (auth_type == -1)
+   {
+      goto error;
+   }
+   if (auth_type != SECURITY_TRUST && auth_type != SECURITY_PASSWORD && auth_type != SECURITY_SCRAM256)
+   {
+      goto error;
+   }
+
+   if (server_authenticate(msg, auth_type, username, password, slot, *server_ssl))
+   {
+      goto error;
+   }
+
+   server_state = atomic_load(&config->servers[server].state);
+   if (server_state == SERVER_NOTINIT || server_state == SERVER_NOTINIT_PRIMARY)
+   {
+      pgagroal_update_server_state(slot, server_fd, *server_ssl);
+      pgagroal_server_status();
+   }
+
+   pgagroal_log_debug("reauth_slot: SUCCESS slot=%d user=%s db=%s server=%d fd=%d",
+                      slot, username, database, server, server_fd);
+
+   atomic_store(&config->states[slot], STATE_IN_USE);
+
+   pgagroal_free_message(startup_msg);
+   pgagroal_clear_message(msg);
+
+   return AUTH_SUCCESS;
+
+error:
+   pgagroal_log_debug("reauth_slot: ERROR slot=%d", slot);
+
+   if (*server_ssl != NULL)
+   {
+      pgagroal_close_ssl(*server_ssl);
+      *server_ssl = NULL;
+   }
+
+   if (server_fd != -1)
+   {
+      pgagroal_disconnect(server_fd);
+      config->connections[slot].fd = -1;
+   }
+
+   pgagroal_free_message(startup_msg);
+   pgagroal_clear_message(msg);
+
+   return AUTH_ERROR;
+}
+
+int
 pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
 {
    int status = MESSAGE_STATUS_ERROR;
