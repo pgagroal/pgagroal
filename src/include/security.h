@@ -71,6 +71,15 @@ int
 pgagroal_prefill_auth(char* username, char* password, char* database, int* slot, SSL** server_ssl);
 
 /**
+ * @param slot The slot to reauth (must currently be in STATE_PAUSED with
+ *             username, database and server fields populated)
+ * @param server_ssl The server SSL context (output)
+ * @return AUTH_SUCCESS upon success, AUTH_ERROR otherwise
+ */
+int
+pgagroal_reauth_slot(int slot, SSL** server_ssl);
+
+/**
  * Authenticate a remote management user
  * @param client_fd The descriptor
  * @param address The client address

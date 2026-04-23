@@ -62,6 +62,8 @@
 #define COMMAND_CLEAR_SERVER   "clear-server"
 #define COMMAND_DISABLEDB      "disable-db"
 #define COMMAND_ENABLEDB       "enable-db"
+#define COMMAND_PAUSE          "pause"
+#define COMMAND_RESUME         "resume"
 #define COMMAND_FLUSH          "flush"
 #define COMMAND_GRACEFULLY     "shutdown-gracefully"
 #define COMMAND_PING           "ping"
@@ -87,6 +89,8 @@ static void help_clear(void);
 static void help_conf(void);
 static void help_disabledb(void);
 static void help_enabledb(void);
+static void help_pause(void);
+static void help_resume(void);
 static void help_flush(void);
 static void help_ping(void);
 static void help_shutdown(void);
@@ -100,6 +104,8 @@ static int conf_set(SSL* ssl, int socket, char* config_key, char* config_value, 
 static int details(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int disabledb(SSL* ssl, int socket, char* database, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int enabledb(SSL* ssl, int socket, char* database, uint8_t compression, uint8_t encryption, int32_t output_format);
+static int pause_cmd(SSL* ssl, int socket, int32_t mode, char* server, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format);
+static int resume_cmd(SSL* ssl, int socket, char* server, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int flush(SSL* ssl, int socket, int32_t mode, char* database, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int gracefully(SSL* ssl, int socket, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int pgagroal_shutdown(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
@@ -161,6 +167,45 @@ const struct pgagroal_command command_table[] = {
       .default_argument = "all",
       .deprecated = false,
       .log_message = "<disable> [%s]",
+   },
+   {
+      .command = "pause",
+      .subcommand = "",
+      .accepted_argument_count = {0, 1},
+      .action = MANAGEMENT_PAUSE,
+      .mode = PAUSE_MODE_GRACEFULLY,
+      .default_argument = "*",
+      .deprecated = false,
+      .log_message = "<pause gracefully> [%s]",
+   },
+   {
+      .command = "pause",
+      .subcommand = "gracefully",
+      .accepted_argument_count = {0, 1},
+      .action = MANAGEMENT_PAUSE,
+      .mode = PAUSE_MODE_GRACEFULLY,
+      .default_argument = "*",
+      .deprecated = false,
+      .log_message = "<pause gracefully> [%s]",
+   },
+   {
+      .command = "pause",
+      .subcommand = "all",
+      .accepted_argument_count = {0, 1},
+      .action = MANAGEMENT_PAUSE,
+      .mode = PAUSE_MODE_ALL,
+      .default_argument = "*",
+      .deprecated = false,
+      .log_message = "<pause all> [%s]",
+   },
+   {
+      .command = "resume",
+      .subcommand = "",
+      .accepted_argument_count = {0, 1},
+      .action = MANAGEMENT_RESUME,
+      .default_argument = "*",
+      .deprecated = false,
+      .log_message = "<resume> [%s]",
    },
    {
       .command = "shutdown",
@@ -345,8 +390,8 @@ usage(void)
    printf("  -C, --compress none|gz|zstd|lz4|bz2          Compress the wire protocol\n");
    printf("  -E, --encrypt none|aes|aes256|aes192|aes128  Encrypt the wire protocol using AES-GCM\n");
    printf("                |aes256gcm|aes192gcm|aes128gcm (Note: non-GCM AES modes are not supported)\n");
-   printf("  -T, --timeout DURATION                       Deadline for 'shutdown [gracefully]' and\n");
-   printf("                                                 'flush [gracefully]'. DURATION is a non-negative\n");
+   printf("  -T, --timeout DURATION                       Deadline for 'shutdown [gracefully]',\n");
+   printf("                                                 'flush [gracefully]', and 'pause [gracefully]'. DURATION is a non-negative\n");
    printf("                                                 number with an optional unit suffix:\n");
    printf("                                                 s (seconds, default), m (minutes), h (hours),\n");
    printf("                                                 d (days), w (weeks). E.g. '30', '30s', '5m',\n");
@@ -370,6 +415,10 @@ usage(void)
    printf("  ping                     Verifies if pgagroal is up and checks PostgreSQL server connectivity\n");
    printf("  enable   [database]      Enables the specified databases (or all databases)\n");
    printf("  disable  [database]      Disables the specified databases (or all databases)\n");
+   printf("  pause    [server]        Pauses the specified servers (or Pause all servers)\n");
+   printf("                           With '--timeout DURATION' on 'gracefully', pgagroal forces an\n");
+   printf("                           immediate pause (all) on expiry.\n");
+   printf("  resume   [server]        Resumes the specified servers (or Resume all servers)\n");
    printf("  shutdown [mode]          Stops pgagroal pooler. The [mode] can be:\n");
    printf("                           - 'gracefully' (default) waits for active connections to quit\n");
    printf("                           - 'immediate' forces connections to close and terminate\n");
@@ -799,6 +848,14 @@ username:
    {
       exit_code = disabledb(s_ssl, socket, parsed.args[0], compression, encryption, output_format);
    }
+   else if (parsed.cmd->action == MANAGEMENT_PAUSE)
+   {
+      exit_code = pause_cmd(s_ssl, socket, parsed.cmd->mode, parsed.args[0], timeout, compression, encryption, output_format);
+   }
+   else if (parsed.cmd->action == MANAGEMENT_RESUME)
+   {
+      exit_code = resume_cmd(s_ssl, socket, parsed.args[0], compression, encryption, output_format);
+   }
    else if (parsed.cmd->action == MANAGEMENT_GRACEFULLY)
    {
       exit_code = gracefully(s_ssl, socket, timeout, compression, encryption, output_format);
@@ -942,6 +999,35 @@ help_enabledb(void)
 }
 
 static void
+help_pause(void)
+{
+   printf("Pause traffic at the pooler for a server or all servers\n");
+   printf("  pgagroal-cli pause [gracefully|all] [<server>]\n");
+   printf("  pgagroal-cli pause [gracefully] [<server>] --timeout <DURATION>\n");
+   printf("    '--timeout' bounds a graceful pause; DURATION overrides 'flush_timeout' from pgagroal.conf.\n");
+   printf("    DURATION is a non-negative number with an optional unit suffix: s (seconds, default), m (minutes),\n");
+   printf("    h (hours), d (days), w (weeks); e.g. '30', '30s', '5m', '1h', '2d', '1w'.\n");
+   printf("    Omit '--timeout' to fall back to 'flush_timeout' from pgagroal.conf. '--timeout 0' explicitly\n");
+   printf("    disables the timer (pause runs unbounded), same meaning as 'flush_timeout = 0' in the conf.\n");
+   printf("    When 'flush_timeout' is not set in pgagroal.conf, the built-in default (60s) applies.\n");
+   printf("    On expiry remaining marked connections are terminated (pause all). If no client currently\n");
+   printf("    holds a connection, the pause completes immediately and no timer is armed.\n");
+   printf("\n");
+   printf("Policies:\n");
+   printf("  gracefully  Refuse new clients, evict idle backend connections,\n");
+   printf("              wait until all active sessions finish naturally (default).\n");
+   printf("  all         As gracefully, plus cancel active sessions. Client sockets\n");
+   printf("              are preserved; backends are reauthenticated on resume.\n");
+}
+
+static void
+help_resume(void)
+{
+   printf("Resume traffic at the pooler for a server or all servers\n");
+   printf("  pgagroal-cli resume [<server>]\n");
+}
+
+static void
 help_conf(void)
 {
    printf("Manage the configuration\n");
@@ -1004,6 +1090,14 @@ display_helper(char* command)
    else if (!strcmp(command, COMMAND_ENABLEDB))
    {
       help_enabledb();
+   }
+   else if (!strcmp(command, COMMAND_PAUSE))
+   {
+      help_pause();
+   }
+   else if (!strcmp(command, COMMAND_RESUME))
+   {
+      help_resume();
    }
    else if (!strcmp(command, COMMAND_FLUSH))
    {
@@ -1080,6 +1174,46 @@ static int
 disabledb(SSL* ssl, int socket, char* database, uint8_t compression, uint8_t encryption, int32_t output_format)
 {
    if (pgagroal_management_request_disabledb(ssl, socket, database, compression, encryption, output_format))
+   {
+      goto error;
+   }
+
+   if (process_result(ssl, socket, output_format))
+   {
+      goto error;
+   }
+
+   return 0;
+
+error:
+
+   return 1;
+}
+
+static int
+pause_cmd(SSL* ssl, int socket, int32_t mode, char* server, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format)
+{
+   if (pgagroal_management_request_pause(ssl, socket, mode, server, timeout, compression, encryption, output_format))
+   {
+      goto error;
+   }
+
+   if (process_result(ssl, socket, output_format))
+   {
+      goto error;
+   }
+
+   return 0;
+
+error:
+
+   return 1;
+}
+
+static int
+resume_cmd(SSL* ssl, int socket, char* server, uint8_t compression, uint8_t encryption, int32_t output_format)
+{
+   if (pgagroal_management_request_resume(ssl, socket, server, compression, encryption, output_format))
    {
       goto error;
    }
@@ -2055,6 +2189,12 @@ translate_command(int32_t cmd_code)
          break;
       case MANAGEMENT_ENABLEDB:
          command_output = pgagroal_append(command_output, COMMAND_ENABLEDB);
+         break;
+      case MANAGEMENT_PAUSE:
+         command_output = pgagroal_append(command_output, COMMAND_PAUSE);
+         break;
+      case MANAGEMENT_RESUME:
+         command_output = pgagroal_append(command_output, COMMAND_RESUME);
          break;
       case MANAGEMENT_FLUSH:
          command_output = pgagroal_append(command_output, COMMAND_FLUSH);

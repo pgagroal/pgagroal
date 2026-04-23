@@ -28,6 +28,26 @@ The mode of pipeline
 
 The number of errors for servers
 
+**pgagroal_server_pause_total**
+
+The number of successful pause operations per server
+
+**pgagroal_server_resume_total**
+
+The number of successful resume operations per server
+
+**pgagroal_server_pause_state**
+
+The pause state of the server (0 = running, 1 = paused)
+
+**pgagroal_pause_pending_active_connections**
+
+The number of slots still in use on a paused server (0 when fully drained)
+
+**pgagroal_server_last_paused_timestamp**
+
+The Unix time when the server was paused (0 if running). The pause duration is derived in PromQL as `time() - pgagroal_server_last_paused_timestamp`
+
 **pgagroal_logging_info**
 
 The number of INFO logging statements

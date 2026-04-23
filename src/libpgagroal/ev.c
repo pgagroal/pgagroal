@@ -71,6 +71,7 @@ static int (*loop_destroy)(void);
 
 static int (*io_start)(struct io_watcher*);
 static int (*io_stop)(struct io_watcher*);
+static int (*io_pause)(struct io_watcher*);
 
 static void signal_handler(int signum, siginfo_t* info, void* p);
 
@@ -92,6 +93,7 @@ static int ev_io_uring_setup_buffers(void);
 
 static int ev_io_uring_io_start(struct io_watcher*);
 static int ev_io_uring_io_stop(struct io_watcher*);
+static int ev_io_uring_io_pause(struct io_watcher*);
 
 static int ev_io_uring_periodic_init(struct periodic_watcher*, int64_t, int64_t);
 static int ev_io_uring_periodic_start(struct periodic_watcher*);
@@ -106,6 +108,7 @@ static int ev_epoll_handler(void*);
 
 static int ev_epoll_io_start(struct io_watcher*);
 static int ev_epoll_io_stop(struct io_watcher*);
+static int ev_epoll_io_pause(struct io_watcher*);
 static int ev_epoll_io_handler(struct io_watcher*);
 
 static int ev_epoll_periodic_init(struct periodic_watcher*, int64_t, int64_t);
@@ -123,6 +126,7 @@ static int ev_kqueue_handler(struct kevent*);
 
 static int ev_kqueue_io_start(struct io_watcher*);
 static int ev_kqueue_io_stop(struct io_watcher*);
+static int ev_kqueue_io_pause(struct io_watcher*);
 static int ev_kqueue_io_handler(struct kevent*);
 
 static int ev_kqueue_periodic_init(struct periodic_watcher*, int64_t, int64_t);
@@ -223,6 +227,7 @@ setup_ops(void)
       loop_start = ev_io_uring_loop;
       io_start = ev_io_uring_io_start;
       io_stop = ev_io_uring_io_stop;
+      io_pause = ev_io_uring_io_pause;
       periodic_init = ev_io_uring_periodic_init;
       periodic_start = ev_io_uring_periodic_start;
       periodic_stop = ev_io_uring_periodic_stop;
@@ -243,6 +248,7 @@ setup_ops(void)
       loop_start = ev_epoll_loop;
       io_start = ev_epoll_io_start;
       io_stop = ev_epoll_io_stop;
+      io_pause = ev_epoll_io_pause;
       periodic_init = ev_epoll_periodic_init;
       periodic_start = ev_epoll_periodic_start;
       periodic_stop = ev_epoll_periodic_stop;
@@ -257,6 +263,7 @@ setup_ops(void)
       loop_start = ev_kqueue_loop;
       io_start = ev_kqueue_io_start;
       io_stop = ev_kqueue_io_stop;
+      io_pause = ev_kqueue_io_pause;
       periodic_init = ev_kqueue_periodic_init;
       periodic_start = ev_kqueue_periodic_start;
       periodic_stop = ev_kqueue_periodic_stop;
@@ -435,6 +442,11 @@ pgagroal_event_loop_is_running(void)
 {
    return atomic_load(&loop->running);
 }
+bool
+pgagroal_io_paused(struct io_watcher* watcher)
+{
+   return watcher->paused;
+}
 
 int
 pgagroal_event_accept_init(struct io_watcher* watcher, int listen_fd, io_cb cb)
@@ -539,6 +551,74 @@ pgagroal_io_stop(struct io_watcher* watcher)
    return PGAGROAL_EVENT_RC_OK;
 }
 
+int
+pgagroal_io_pause(struct io_watcher* watcher)
+{
+   int found_idx = -1;
+
+   if (event_loop_called_from_child("pgagroal_io_pause"))
+      return PGAGROAL_EVENT_RC_OK;
+
+   assert(loop != NULL && watcher != NULL);
+
+   if (watcher->paused)
+   {
+      pgagroal_log_warn("pgagroal_io_pause: watcher already paused (fd rcv=%d)",
+                        watcher->fds.worker.rcv_fd);
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
+
+   for (int i = 0; i < loop->events_nr; i++)
+   {
+      if (watcher == (struct io_watcher*)loop->events[i])
+      {
+         found_idx = i;
+         break;
+      }
+   }
+
+   if (found_idx < 0)
+   {
+      pgagroal_log_warn("pgagroal_io_pause: watcher not found (fd rcv=%d)",
+                        watcher->fds.worker.rcv_fd);
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
+
+   int rc = io_pause(watcher);
+   if (rc != PGAGROAL_EVENT_RC_OK)
+   {
+      pgagroal_log_error("pgagroal_io_pause: io_pause failed %d", rc);
+      return rc;
+   }
+
+   watcher->paused = true;
+
+   for (int j = found_idx; j < loop->events_nr - 1; j++)
+      loop->events[j] = loop->events[j + 1];
+   loop->events_nr--;
+   loop->events[loop->events_nr] = NULL;
+
+   return PGAGROAL_EVENT_RC_OK;
+}
+int
+pgagroal_io_resume(struct io_watcher* watcher)
+{
+   if (event_loop_called_from_child("pgagroal_io_resume"))
+      return PGAGROAL_EVENT_RC_OK;
+
+   assert(loop != NULL && watcher != NULL);
+
+   if (!pgagroal_io_paused(watcher))
+   {
+      pgagroal_log_warn("pgagroal_io_resume: watcher not paused (fd rcv=%d)",
+                        watcher->fds.worker.rcv_fd);
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
+
+   watcher->paused = false;
+
+   return pgagroal_io_start(watcher);
+}
 int
 pgagroal_periodic_init(struct periodic_watcher* watcher, periodic_cb cb,
                        int64_t msec, int64_t repeat_ms)
@@ -933,6 +1013,24 @@ ev_io_uring_io_stop(struct io_watcher* target)
 }
 
 static int
+ev_io_uring_io_pause(struct io_watcher* watcher)
+{
+   struct io_uring_sqe* sqe = io_uring_get_sqe(&loop->ring_rcv);
+   if (!sqe)
+   {
+      pgagroal_log_error("io_uring: no SQE available for cancel (fd=%d)",
+                         watcher->fds.worker.rcv_fd);
+      return PGAGROAL_EVENT_RC_ERROR;
+   }
+
+   io_uring_prep_cancel(sqe, (void*)watcher, 0);
+   io_uring_sqe_set_data(sqe, NULL);
+   io_uring_submit(&loop->ring_rcv);
+
+   return PGAGROAL_EVENT_RC_OK;
+}
+
+static int
 ev_io_uring_periodic_init(struct periodic_watcher* watcher, int64_t msec, int64_t repeat_ms)
 {
    watcher->repeat_ms = repeat_ms;
@@ -1187,6 +1285,7 @@ ev_io_uring_handler(struct io_uring_cqe* cqe)
          break;
       case PGAGROAL_EVENT_TYPE_WORKER:
          io = (struct io_watcher*)watcher;
+
          msg = pgagroal_get_watcher_message(io);
          if (cqe->res <= 0)
          {
@@ -1210,8 +1309,8 @@ ev_io_uring_handler(struct io_uring_cqe* cqe)
             rc = PGAGROAL_EVENT_RC_OK;
             io->cb(io);
 
-            /* Only rearm if loop is still running and connection is good */
-            if (pgagroal_event_loop_is_running())
+            /* Only rearm if loop is still running, connection is good, and not paused */
+            if (pgagroal_event_loop_is_running() && !pgagroal_io_paused(io))
             {
                ev_io_uring_io_start(io);
             }
@@ -1552,6 +1651,13 @@ ev_epoll_io_stop(struct io_watcher* watcher)
 }
 
 static int
+ev_epoll_io_pause(struct io_watcher* watcher)
+{
+   /* epoll DEL — fd stays open */
+   return ev_epoll_io_stop(watcher);
+}
+
+static int
 ev_epoll_io_handler(struct io_watcher* watcher)
 {
    int client_fd = -1;
@@ -1846,6 +1952,13 @@ ev_kqueue_io_stop(struct io_watcher* watcher)
    }
 
    return PGAGROAL_EVENT_RC_OK;
+}
+
+static int
+ev_kqueue_io_pause(struct io_watcher* watcher)
+{
+   /* kqueue EV_DELETE — fd stays open */
+   return ev_kqueue_io_stop(watcher);
 }
 
 static int

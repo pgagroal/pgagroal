@@ -162,6 +162,9 @@ extern "C" {
 #define FLUSH_GRACEFULLY               1
 #define FLUSH_ALL                      2
 
+#define PAUSE_MODE_GRACEFULLY          0
+#define PAUSE_MODE_ALL                 1
+
 #define VALIDATION_OFF                 0
 #define VALIDATION_FOREGROUND          1
 #define VALIDATION_BACKGROUND          2
@@ -400,6 +403,9 @@ struct server
    unsigned int failures;        /**< The number of failures */
    atomic_schar auth_type;       /**< The authentication type used for health check */
    int lineno;                   /**< The line number within the configuration file */
+   bool paused;                  /**< The server state */
+   time_t last_paused;           /**< The last time the server paused */
+   time_t last_resumed;          /**< The last time the server resumed */
 } __attribute__((aligned(64)));
 
 #define FOREACH_SERVER for (int i = 0; i < config->number_of_servers; i++)
@@ -620,6 +626,8 @@ struct main_prometheus
    atomic_ullong network_received; /**< The bytes received from servers */
 
    atomic_ulong server_error[NUMBER_OF_SERVERS];          /**< The number of errors for a server */
+   atomic_ulong server_pause_total[NUMBER_OF_SERVERS];    /**< Successful pause operations per server */
+   atomic_ulong server_resume_total[NUMBER_OF_SERVERS];   /**< Successful resume operations per server */
    atomic_ulong failed_servers;                           /**< The number of failed servers */
    struct certificate_metrics cert_metrics;               /**< TLS certificate metrics */
    struct prometheus_connection prometheus_connections[]; /**< The number of prometheus connections (FMA) */
@@ -706,7 +714,8 @@ struct main_configuration
    bool all_disabled;                                      /**< Are all databases disabled */
    char disabled[NUMBER_OF_DISABLED][MAX_DATABASE_LENGTH]; /**< Which databases are disabled */
 
-   int pipeline; /**< The pipeline type */
+   bool all_paused; /**< Are all servers paused */
+   int pipeline;    /**< The pipeline type */
 
    bool failover;                            /**< Is failover enabled */
    char failover_script[MISC_LENGTH];        /**< The failover script */
@@ -780,6 +789,16 @@ struct flush_timeout_slot
    bool in_use;                        /**< Is timeout slot in use */
    char database[MAX_DATABASE_LENGTH]; /**< The database name */
    struct timespec expires_at;         /**< Slot expires at */
+};
+
+/** @struct pause_timeout_slot
+ * Defines a timeout for each server
+ */
+struct pause_timeout_slot
+{
+   bool in_use;
+   char server[MISC_LENGTH];
+   struct timespec expires_at; /* CLOCK_MONOTONIC */
 };
 
 #ifdef __cplusplus

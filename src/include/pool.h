@@ -131,6 +131,42 @@ void
 pgagroal_request_flush(SSL* ssl, int client_fd, uint8_t compression, uint8_t encryption, struct json* payload);
 
 /**
+ * @param mode One of PAUSE_MODE_GRACEFULLY / PAUSE_MODE_ALL
+ * @param server Server name, or "*" / NULL for all servers
+ */
+void
+pgagroal_pause(int mode, char* server);
+
+/**
+ * Resume a paused server or entire pool
+ * @param server Server name, or "*" / NULL for all servers
+ */
+void
+pgagroal_resume(char* server);
+
+/**
+ * @param ssl The SSL connection
+ * @param client_fd The client
+ * @param compression The compress method for wire protocol
+ * @param encryption The encrypt method for wire protocol
+ * @param payload The payload
+ */
+void
+pgagroal_request_pause(SSL* ssl, int client_fd, uint8_t compression, uint8_t encryption, struct json* payload);
+
+/**
+ * Resume handler for management child process.
+ * Resumes the server/pool, sends the response, and exits.
+ * @param ssl The SSL connection
+ * @param client_fd The client
+ * @param compression The compress method for wire protocol
+ * @param encryption The encrypt method for wire protocol
+ * @param payload The payload
+ */
+void
+pgagroal_request_resume(SSL* ssl, int client_fd, uint8_t compression, uint8_t encryption, struct json* payload);
+
+/**
  * Prefill the pool
  * @param initial Use initial size
  */

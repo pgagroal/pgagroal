@@ -147,6 +147,7 @@ struct io_watcher
       int __fds[2];
    } fds;                                  /**< Set of file descriptors used for I/O */
    bool ssl;                               /**< Indicates if SSL/TLS is used on this connection. */
+   bool paused;                            /**< Indicates if I/O is paused. */
    struct message* msg;                    /**< Per-watcher message buffer to avoid global state races */
    void (*cb)(struct io_watcher* watcher); /**< Event callback. */
 };
@@ -322,6 +323,36 @@ pgagroal_io_start(struct io_watcher* watcher);
  */
 int
 pgagroal_io_stop(struct io_watcher* watcher);
+
+/**
+ * Pause the watcher for an IO event in the event loop.
+ *
+ * Unlike pgagroal_io_stop, this is intended to be reversible via
+ * pgagroal_io_resume. The watcher is marked as paused and removed from
+ * the active events list.
+ *
+ * For epoll and kqueue backends, the file descriptor is removed from
+ * the polling interest list but remains open.
+ * For io_uring, an asynchronous cancel request is submitted for the watcher.
+ *
+ * @param watcher Pointer to the io event watcher struct
+ * @return Return code
+ */
+int
+pgagroal_io_pause(struct io_watcher* watcher);
+
+/**
+ * Resume a paused watcher for an IO event in the event loop.
+ *
+ * This reverses the effect of pgagroal_io_pause. The watcher is marked as
+ * unpaused, re-added to the active events list, and the underlying polling
+ * mechanism is instructed to resume monitoring the file descriptor.
+ *
+ * @param watcher Pointer to the io event watcher struct
+ * @return Return code
+ */
+int
+pgagroal_io_resume(struct io_watcher* watcher);
 
 /**
  * Initialize the watcher for periodic timeout events

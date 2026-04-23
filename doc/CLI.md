@@ -23,7 +23,7 @@ Available options are the following ones:
 -P, --password PASSWORD  Set the password
 -L, --logfile FILE       Set the log file
 -F, --format  text|json  Set the output format
--T, --timeout DURATION   Deadline for 'shutdown [gracefully]' / 'flush [gracefully]'.
+-T, --timeout DURATION   Deadline for 'shutdown [gracefully]', 'flush [gracefully]', and 'pause [gracefully]'.
                          DURATION is a non-negative number with an optional unit suffix:
                          's' (seconds, default), 'm' (minutes), 'h' (hours),
                          'd' (days), 'w' (weeks). E.g. '30', '30s', '5m', '1h', '2d', '1w'.
@@ -145,6 +145,47 @@ Example
 
 ```
 pgagroal-cli disable
+```
+
+### pause
+Pauses traffic at the pooler for a server or all servers.
+
+It supports the following operating policies:
+- `gracefully` (the default) refuses new clients, evicts idle backend connections, and waits until all active sessions finish naturally;
+- `all` actively terminates backend queries (using PostgreSQL cancel requests) but preserves the client sockets. Backends are reauthenticated on resume.
+
+A deadline may be bound to a graceful pause via the global `-T, --timeout DURATION` option. If the deadline expires, pgagroal escalates to `pause all`. When `--timeout` is omitted, pgagroal falls back to the `flush_timeout` value from `pgagroal.conf`.
+
+Command
+
+```
+pgagroal-cli pause [gracefully|all] [<server>|*]
+pgagroal-cli pause [gracefully] [<server>|*] --timeout <DURATION>
+```
+
+Example
+
+```
+pgagroal-cli pause
+pgagroal-cli pause gracefully my_server
+pgagroal-cli pause all
+pgagroal-cli pause --timeout 30
+```
+
+### resume
+Resumes traffic at the pooler for a previously paused server (or all servers).
+
+Command
+
+```
+pgagroal-cli resume [<server>|*]
+```
+
+Example
+
+```
+pgagroal-cli resume
+pgagroal-cli resume my_server
 ```
 
 ### shutdown
