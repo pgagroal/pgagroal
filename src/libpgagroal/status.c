@@ -191,6 +191,7 @@ status_details(bool details, struct json* response)
    pgagroal_json_put(response, MANAGEMENT_ARGUMENT_MAX_CONNECTIONS, (uintptr_t)config->max_connections, ValueUInt32);
 
    pgagroal_json_put(response, MANAGEMENT_ARGUMENT_NUMBER_OF_SERVERS, (uintptr_t)config->number_of_servers, ValueInt32);
+   pgagroal_json_put(response, MANAGEMENT_ARGUMENT_ALL_PAUSED, (uintptr_t)config->all_paused, ValueBool);
 
    pgagroal_json_create(&servers);
 
@@ -228,6 +229,10 @@ status_details(bool details, struct json* response)
       pgagroal_json_put(js, MANAGEMENT_ARGUMENT_PRIMARY, (uintptr_t)srv_primary, ValueString);
       if (behind_bytes >= 0)
          pgagroal_json_put(js, MANAGEMENT_ARGUMENT_BEHIND, (uintptr_t)behind_bytes, ValueInt64);
+
+      pgagroal_json_put(js, MANAGEMENT_ARGUMENT_PAUSED, (uintptr_t)config->servers[i].paused, ValueBool);
+      pgagroal_json_put(js, MANAGEMENT_ARGUMENT_LAST_PAUSED, (uintptr_t)(int64_t)config->servers[i].last_paused, ValueInt64);
+      pgagroal_json_put(js, MANAGEMENT_ARGUMENT_LAST_RESUMED, (uintptr_t)(int64_t)config->servers[i].last_resumed, ValueInt64);
 
       pgagroal_json_put(servers, config->servers[i].name, (uintptr_t)js, ValueJSON);
    }

@@ -92,6 +92,9 @@ extern "C" {
 #define MANAGEMENT_UPDATE_USER     21
 #define MANAGEMENT_REMOVE_USER     22
 #define MANAGEMENT_LIST_USERS      23
+
+#define MANAGEMENT_PAUSE           24
+#define MANAGEMENT_RESUME          25
 /**
  * Management arguments
  */
@@ -107,6 +110,11 @@ extern "C" {
 #define MANAGEMENT_ARGUMENT_DATABASE            "Database"
 #define MANAGEMENT_ARGUMENT_DATABASES           "Databases"
 #define MANAGEMENT_ARGUMENT_ENABLED             "Enabled"
+#define MANAGEMENT_ARGUMENT_RESUMED             "Resumed"
+#define MANAGEMENT_ARGUMENT_PAUSED              "Paused"
+#define MANAGEMENT_ARGUMENT_ALL_PAUSED          "AllPaused"
+#define MANAGEMENT_ARGUMENT_LAST_PAUSED         "LastPaused"
+#define MANAGEMENT_ARGUMENT_LAST_RESUMED        "LastResumed"
 #define MANAGEMENT_ARGUMENT_ENCRYPTION          "Encryption"
 #define MANAGEMENT_ARGUMENT_ERROR               "Error"
 #define MANAGEMENT_ARGUMENT_FD                  "FD"
@@ -149,6 +157,12 @@ extern "C" {
 
 #define MANAGEMENT_ERROR_FLUSH_NOFORK                       200
 #define MANAGEMENT_ERROR_FLUSH_NETWORK                      201
+
+#define MANAGEMENT_ERROR_PAUSE_NOFORK                       210
+#define MANAGEMENT_ERROR_PAUSE_UNKNOWN_SERVER               211
+
+#define MANAGEMENT_ERROR_RESUME_NOFORK                      212
+#define MANAGEMENT_ERROR_RESUME_UNKNOWN_SERVER              213
 
 #define MANAGEMENT_ERROR_STATUS_NOFORK                      700
 #define MANAGEMENT_ERROR_STATUS_NETWORK                     701
@@ -262,6 +276,32 @@ pgagroal_management_request_enabledb(SSL* ssl, int socket, char* database, uint8
  */
 int
 pgagroal_management_request_disabledb(SSL* ssl, int socket, char* database, uint8_t compression, uint8_t encryption, int32_t output_format);
+
+/**
+ * Management operation: Pause server
+ * @param ssl The SSL connection
+ * @param socket The socket descriptor
+ * @param server The server
+ * @param compression The compress method for wire protocol
+ * @param encryption The encrypt method for wire protocol (None or *_GCM)
+ * @param output_format The output format
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_management_request_pause(SSL* ssl, int socket, char* server, uint8_t compression, uint8_t encryption, int32_t output_format);
+
+/**
+ * Management operation: Resume server
+ * @param ssl The SSL connection
+ * @param socket The socket descriptor
+ * @param server The server
+ * @param compression The compress method for wire protocol
+ * @param encryption The encrypt method for wire protocol (None or *_GCM)
+ * @param output_format The output format
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_management_request_resume(SSL* ssl, int socket, char* server, uint8_t compression, uint8_t encryption, int32_t output_format);
 
 /**
  * Management operation: Gracefully

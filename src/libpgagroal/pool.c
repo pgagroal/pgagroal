@@ -139,7 +139,16 @@ start:
 
             if (can_reuse)
             {
-               *slot = i;
+               signed char pause_srv = config->connections[i].server;
+
+               if (pause_srv >= 0 && (config->all_paused || config->servers[pause_srv].paused))
+               {
+                  atomic_store(&config->states[i], STATE_FREE);
+               }
+               else
+               {
+                  *slot = i;
+               }
             }
             else
             {
@@ -195,7 +204,10 @@ start:
 
             goto error;
          }
-
+         while (config->all_paused || (server >= 0 && config->servers[server].paused))
+         {
+            SLEEP(500000000L);
+         }
          pgagroal_log_debug("connect: server %d", server);
 
          if (config->servers[server].host[0] == '/')

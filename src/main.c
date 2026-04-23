@@ -1851,6 +1851,261 @@ accept_mgt_cb(struct io_watcher* watcher)
 
       pgagroal_management_response_ok(NULL, client_fd, start_time, end_time, compression, encryption, payload);
    }
+   else if (id == MANAGEMENT_PAUSE)
+   {
+      struct json* req = NULL;
+      struct json* res = NULL;
+      struct json* servers = NULL;
+      char* server = NULL;
+      time_t now;
+      int flush_server = -1;
+
+      pgagroal_log_debug("pgagroal: Management pause: ");
+      pgagroal_pool_status();
+
+      start_time = time(NULL);
+
+      req = (struct json*)pgagroal_json_get(payload, MANAGEMENT_CATEGORY_REQUEST);
+      server = (char*)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_SERVER);
+
+      pgagroal_management_create_response(payload, -1, &res);
+      pgagroal_json_create(&servers);
+
+      if (!strcmp("*", server))
+      {
+         struct json* js = NULL;
+
+         now = time(NULL);
+         config->all_paused = true;
+         for (int i = 0; i < config->number_of_servers; i++)
+         {
+            if (strlen(config->servers[i].name) > 0)
+            {
+               config->servers[i].paused = true;
+               config->servers[i].last_paused = now;
+               bool all_done;
+               do
+               {
+                  all_done = true;
+                  for (int j = 0; j < config->max_connections; j++)
+                  {
+                     if (config->connections[j].server == i &&
+                         atomic_load(&config->states[j]) == STATE_IN_USE)
+                     {
+                        all_done = false;
+                        break;
+                     }
+                  }
+                  if (!all_done)
+                  {
+                     SLEEP(500000000L);
+                  }
+               }
+               while (!all_done);
+
+               /* Flush all existing backend connections gracefully */
+               pid = fork();
+               if (pid == -1)
+               {
+                  config->all_paused = false;
+                  pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_PAUSE_NOFORK, compression, encryption, payload);
+                  pgagroal_log_error("Pause: No fork (%d)", MANAGEMENT_ERROR_PAUSE_NOFORK);
+                  pgagroal_json_destroy(servers);
+                  pgagroal_json_destroy(res);
+                  goto error;
+               }
+               else if (pid == 0)
+               {
+                  pgagroal_flush_server(i);
+               }
+               else
+               {
+                  pgagroal_prometheus_server_pause(i);
+               }
+            }
+            pgagroal_json_create(&js);
+
+            pgagroal_json_put(js, MANAGEMENT_ARGUMENT_SERVER, (uintptr_t)server, ValueString);
+            pgagroal_json_put(js, MANAGEMENT_ARGUMENT_RESUMED, (uintptr_t)false, ValueBool);
+
+            pgagroal_json_append(servers, (uintptr_t)js, ValueJSON);
+         }
+      }
+      else
+      {
+         bool found = false;
+
+         for (int i = 0; !found && i < config->number_of_servers; i++)
+         {
+            struct json* js = NULL;
+
+            if (strlen(config->servers[i].name) == 0)
+            {
+               continue;
+            }
+
+            if (!strcmp(config->servers[i].name, server))
+            {
+               now = time(NULL);
+               config->servers[i].paused = true;
+               config->servers[i].last_paused = now;
+               flush_server = i;
+
+               bool all_done = false;
+               while (!all_done)
+               {
+                  all_done = true;
+                  for (int j = 0; j < config->max_connections; j++)
+                  {
+                     if (config->connections[j].server == i &&
+                         atomic_load(&config->states[j]) == STATE_IN_USE)
+                     {
+                        all_done = false;
+                        break;
+                     }
+                  }
+                  if (!all_done)
+                  {
+                     SLEEP(500000000L);
+                  }
+               }
+
+               pgagroal_json_create(&js);
+
+               pgagroal_json_put(js, MANAGEMENT_ARGUMENT_SERVER, (uintptr_t)server, ValueString);
+               pgagroal_json_put(js, MANAGEMENT_ARGUMENT_RESUMED, (uintptr_t)false, ValueBool);
+
+               pgagroal_json_append(servers, (uintptr_t)js, ValueJSON);
+               found = true;
+            }
+         }
+
+         if (!found)
+         {
+            pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_PAUSE_UNKNOWN_SERVER, compression, encryption, payload);
+            pgagroal_log_error("Pause: Unknown server %s", server);
+            pgagroal_json_destroy(servers);
+            pgagroal_json_destroy(res);
+            goto error;
+         }
+
+         /* Flush this server's existing backend connections gracefully */
+         pid = fork();
+         if (pid == -1)
+         {
+            config->servers[flush_server].paused = false;
+            pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_PAUSE_NOFORK, compression, encryption, payload);
+            pgagroal_log_error("Pause: No fork (%d)", MANAGEMENT_ERROR_PAUSE_NOFORK);
+            pgagroal_json_destroy(servers);
+            pgagroal_json_destroy(res);
+            goto error;
+         }
+         else if (pid == 0)
+         {
+            pgagroal_flush_server((int_fast8_t)flush_server);
+         }
+         else
+         {
+            pgagroal_prometheus_server_pause((int)flush_server);
+         }
+      }
+
+      pgagroal_json_put(res, MANAGEMENT_ARGUMENT_SERVERS, (uintptr_t)servers, ValueJSON);
+
+      end_time = time(NULL);
+
+      pgagroal_management_response_ok(NULL, client_fd, start_time, end_time, compression, encryption, payload);
+   }
+   else if (id == MANAGEMENT_RESUME)
+   {
+      struct json* req = NULL;
+      struct json* res = NULL;
+      struct json* servers = NULL;
+      char* server = NULL;
+      time_t now;
+
+      pgagroal_log_debug("pgagroal: Management resume: ");
+      pgagroal_pool_status();
+
+      start_time = time(NULL);
+
+      req = (struct json*)pgagroal_json_get(payload, MANAGEMENT_CATEGORY_REQUEST);
+      server = (char*)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_SERVER);
+
+      pgagroal_management_create_response(payload, -1, &res);
+      pgagroal_json_create(&servers);
+
+      if (!strcmp("*", server))
+      {
+         struct json* js = NULL;
+
+         now = time(NULL);
+         config->all_paused = false;
+         for (int i = 0; i < config->number_of_servers; i++)
+         {
+            if (strlen(config->servers[i].name) > 0)
+            {
+               config->servers[i].paused = false;
+               config->servers[i].last_resumed = now;
+               pgagroal_prometheus_server_resume(i);
+            }
+         }
+
+         pgagroal_json_create(&js);
+
+         pgagroal_json_put(js, MANAGEMENT_ARGUMENT_SERVER, (uintptr_t)server, ValueString);
+         pgagroal_json_put(js, MANAGEMENT_ARGUMENT_RESUMED, (uintptr_t)true, ValueBool);
+
+         pgagroal_json_append(servers, (uintptr_t)js, ValueJSON);
+      }
+      else
+      {
+         bool found = false;
+
+         for (int i = 0; !found && i < config->number_of_servers; i++)
+         {
+            struct json* js = NULL;
+
+            if (strlen(config->servers[i].name) == 0)
+            {
+               continue;
+            }
+
+            if (!strcmp(config->servers[i].name, server))
+            {
+               now = time(NULL);
+               config->servers[i].paused = false;
+               config->servers[i].last_resumed = now;
+               pgagroal_prometheus_server_resume(i);
+
+               pgagroal_json_create(&js);
+
+               pgagroal_json_put(js, MANAGEMENT_ARGUMENT_SERVER, (uintptr_t)server, ValueString);
+               pgagroal_json_put(js, MANAGEMENT_ARGUMENT_RESUMED, (uintptr_t)true, ValueBool);
+
+               pgagroal_json_append(servers, (uintptr_t)js, ValueJSON);
+               found = true;
+            }
+         }
+
+         if (!found)
+         {
+            pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_RESUME_UNKNOWN_SERVER, compression, encryption, payload);
+            pgagroal_log_error("Resume: Unknown server %s", server);
+            pgagroal_json_destroy(servers);
+            pgagroal_json_destroy(res);
+            goto error;
+         }
+      }
+
+      pgagroal_prefill_if_can(true, false);
+
+      pgagroal_json_put(res, MANAGEMENT_ARGUMENT_SERVERS, (uintptr_t)servers, ValueJSON);
+
+      end_time = time(NULL);
+
+      pgagroal_management_response_ok(NULL, client_fd, start_time, end_time, compression, encryption, payload);
+   }
    else if (id == MANAGEMENT_GRACEFULLY)
    {
       pgagroal_log_debug("pgagroal: Management gracefully");
