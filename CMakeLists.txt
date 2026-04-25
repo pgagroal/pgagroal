@@ -137,6 +137,11 @@ else ()
 endif()
 
 find_package(Rst2man)
+
+
+
+
+
 if (RST2MAN_FOUND)
   message(STATUS "rst2man found")
 else ()

@@ -3,12 +3,21 @@
 # RST2MAN_EXECUTABLE - path to the rst2man program
 
 find_program(RST2MAN_EXECUTABLE
-  NAMES rst2man rst2man.py rst2man-3 rst2man-3.py
-  DOC "The Python Docutils generator of Unix Manpages from reStructuredText"
+ NAMES rst2man rst2man-3.11 rst2man-3.10 rst2man-3.9 rst2man-3.py
+ DOC "The Python Docutils generator of Unix Manpages from reStructuredText"
 )
 
+
+
+
+
+
+
+
+
+
 if (RST2MAN_EXECUTABLE)
-  # Get the version string
+  #Get the version string
   execute_process(
     COMMAND ${RST2MAN_EXECUTABLE} --version
     OUTPUT_VARIABLE rst2man_version_str
