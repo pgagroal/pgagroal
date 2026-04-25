@@ -571,3 +571,16 @@ endif()
 target_link_libraries(pgagroal-vault-bin pgagroal)
 
 install(TARGETS pgagroal-vault-bin DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+#
+# Build pgagroal-config
+#
+add_executable(pgagroal-config-bin config.c ${RESOURCE_OBJECT})
+if (CMAKE_C_LINK_PIE_SUPPORTED)
+  set_target_properties(pgagroal-config-bin PROPERTIES LINKER_LANGUAGE C POSITION_INDEPENDENT_CODE TRUE OUTPUT_NAME pgagroal-config)
+else()
+  set_target_properties(pgagroal-config-bin PROPERTIES LINKER_LANGUAGE C POSITION_INDEPENDENT_CODE FALSE OUTPUT_NAME pgagroal-config)
+endif()
+target_link_libraries(pgagroal-config-bin pgagroal)
+
+install(TARGETS pgagroal-config-bin DESTINATION ${CMAKE_INSTALL_BINDIR})

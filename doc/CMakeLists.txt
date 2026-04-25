@@ -19,6 +19,8 @@ if (RST2MAN_FOUND)
   set(PGAGROAL_VAULT_DST_FILE "${CMAKE_CURRENT_BINARY_DIR}/pgagroal-vault.1")
   set(PGAGROAL_VAULT_CONF_SRC_FILE "${CMAKE_CURRENT_SOURCE_DIR}/man/pgagroal_vault.conf.5.rst")
   set(PGAGROAL_VAULT_CONF_DST_FILE "${CMAKE_CURRENT_BINARY_DIR}/pgagroal_vault.conf.5")
+  set(PGAGROAL_CONFIG_SRC_FILE "${CMAKE_CURRENT_SOURCE_DIR}/man/pgagroal-config.1.rst")
+  set(PGAGROAL_CONFIG_DST_FILE "${CMAKE_CURRENT_BINARY_DIR}/pgagroal-config.1")
 
   # pgagroal.1
   add_custom_command(
@@ -84,6 +86,14 @@ if (RST2MAN_FOUND)
     COMMENT "Generating man page: pgagroal_vault.conf.5"
   )
 
+  # pgagroal-config.1
+  add_custom_command(
+    OUTPUT ${PGAGROAL_CONFIG_DST_FILE}
+    COMMAND ${RST2MAN_EXECUTABLE} ${PGAGROAL_CONFIG_SRC_FILE} ${PGAGROAL_CONFIG_DST_FILE}
+    DEPENDS ${PGAGROAL_CONFIG_SRC_FILE}
+    COMMENT "Generating man page: pgagroal-config.1"
+  )
+
   # Group man page outputs into a target
   add_custom_target(manpages ALL
     DEPENDS
@@ -95,6 +105,7 @@ if (RST2MAN_FOUND)
     ${PGAGROAL_HBA_CONF_DST_FILE}
     ${PGAGROAL_DATABASES_CONF_DST_FILE}
     ${PGAGROAL_VAULT_CONF_DST_FILE}
+    ${PGAGROAL_CONFIG_DST_FILE}
   )
 
   add_dependencies(man manpages)
@@ -116,6 +127,7 @@ if (RST2MAN_FOUND)
   install(FILES ${PGAGROAL_HBA_CONF_DST_FILE} DESTINATION share/man/man5)
   install(FILES ${PGAGROAL_DATABASES_CONF_DST_FILE} DESTINATION share/man/man5)
   install(FILES ${PGAGROAL_VAULT_CONF_DST_FILE} DESTINATION share/man/man5)
+  install(FILES ${PGAGROAL_CONFIG_DST_FILE} DESTINATION share/man/man1)
 endif()
 
 #

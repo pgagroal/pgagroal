@@ -128,6 +128,24 @@ extern "C" {
 #define CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE             "update_process_title"
 #define CONFIGURATION_ARGUMENT_PRIMARY                          "primary"
 
+// Configuration default values
+#define CONFIGURATION_DEFAULT_HOST            "*"
+#define CONFIGURATION_DEFAULT_PORT            "2345"
+#define CONFIGURATION_DEFAULT_UNIX_SOCKET_DIR "/tmp/"
+#define CONFIGURATION_DEFAULT_METRICS         "5081"
+#define CONFIGURATION_DEFAULT_MANAGEMENT      "5082"
+#define CONFIGURATION_DEFAULT_LOG_TYPE        "file"
+#define CONFIGURATION_DEFAULT_LOG_LEVEL       "info"
+#define CONFIGURATION_DEFAULT_LOG_PATH        "/tmp/pgagroal.log"
+#define CONFIGURATION_DEFAULT_MAX_CONNECTIONS "100"
+#define CONFIGURATION_DEFAULT_IDLE_TIMEOUT    "600"
+#define CONFIGURATION_DEFAULT_VALIDATION      "off"
+#define CONFIGURATION_DEFAULT_EV_BACKEND      "auto"
+
+#define CONFIGURATION_DEFAULT_SERVER_HOST     "localhost"
+#define CONFIGURATION_DEFAULT_SERVER_PORT     "5432"
+#define CONFIGURATION_DEFAULT_SERVER_USER     "pgagroal"
+
 // HBA configuration argument constants
 #define CONFIGURATION_ARGUMENT_HBA_TYPE     "type"
 #define CONFIGURATION_ARGUMENT_HBA_DATABASE "database"
