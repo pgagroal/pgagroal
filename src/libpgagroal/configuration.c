@@ -717,6 +717,9 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
 
       if (config->failover || tls || config->disconnect_client > 0)
       {
+         const char* reason = config->failover ? "failover is enabled" : tls ? "TLS is enabled"
+                                                                             : "disconnect_client is enabled";
+         pgagroal_log_info("pgagroal: pipeline=auto selected session pipeline because %s", reason);
          config->pipeline = PIPELINE_SESSION;
       }
       else
