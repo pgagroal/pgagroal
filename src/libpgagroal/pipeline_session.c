@@ -251,9 +251,9 @@ session_periodic(void)
 
                   if (ret == 0)
                   {
-                     pgagroal_log_debug("Cancel request for %s/%s using slot %d (pid %d secret %d)",
+                     pgagroal_log_debug("Cancel request for %s/%s using slot %d (pid %d)",
                                         config->connections[i].database, config->connections[i].username,
-                                        i, config->connections[i].backend_pid, config->connections[i].backend_secret);
+                                        i, config->connections[i].backend_pid);
 
                      pgagroal_write_message(NULL, socket, cancel_msg);
                   }
