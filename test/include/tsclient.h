@@ -64,6 +64,19 @@ int
 pgagroal_tsclient_destroy();
 
 /**
+ * Reset shared memory to the initial configuration state.
+ *
+ * Calls pgagroal_init_configuration() followed by
+ * pgagroal_read_configuration() to re-apply the test configuration file.
+ * This provides per-test isolation: call it before or after each test that
+ * modifies configuration values so subsequent tests start from a known state.
+ *
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_tsclient_reset_shmem(void);
+
+/**
  * A wrapper around pgbench specific to our usecase [benchmark options supported: '-c', '-j', '-t']
  * Execute a pgbench command for a set of instructions, assuming we are connecting to the 1st server
  * @param database name of the database
