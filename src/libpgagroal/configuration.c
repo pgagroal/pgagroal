@@ -1676,7 +1676,7 @@ pgagroal_read_users_configuration(void* shm, char* filename)
       goto error;
    }
 
-   if (pgagroal_get_master_key(&master_key))
+   if (pgagroal_get_master_key(NULL, &master_key))
    {
       status = PGAGROAL_CONFIGURATION_STATUS_KO;
       goto error;
@@ -1815,7 +1815,7 @@ pgagroal_read_frontend_users_configuration(void* shm, char* filename)
       goto error;
    }
 
-   if (pgagroal_get_master_key(&master_key))
+   if (pgagroal_get_master_key(NULL, &master_key))
    {
       status = PGAGROAL_CONFIGURATION_STATUS_KO;
       goto error;
@@ -1979,7 +1979,7 @@ pgagroal_read_admins_configuration(void* shm, char* filename)
       goto error;
    }
 
-   if (pgagroal_get_master_key(&master_key))
+   if (pgagroal_get_master_key(NULL, &master_key))
    {
       status = PGAGROAL_CONFIGURATION_STATUS_KO;
       goto error;
@@ -2113,7 +2113,7 @@ pgagroal_vault_read_users_configuration(void* shm, char* filename)
       goto error;
    }
 
-   if (pgagroal_get_master_key(&master_key))
+   if (pgagroal_get_master_key(NULL, &master_key))
    {
       status = PGAGROAL_CONFIGURATION_STATUS_KO;
       goto error;
@@ -2262,7 +2262,7 @@ pgagroal_read_superuser_configuration(void* shm, char* filename)
       goto error;
    }
 
-   if (pgagroal_get_master_key(&master_key))
+   if (pgagroal_get_master_key(NULL, &master_key))
    {
       status = PGAGROAL_CONFIGURATION_STATUS_KO;
       goto error;
