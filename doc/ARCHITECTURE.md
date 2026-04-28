@@ -293,12 +293,9 @@ The pipeline is defined in [pipeline_transaction.c](../src/libpgagroal/pipeline_
 The main process of [**pgagroal**](https://github.com/pgagroal/pgagroal) supports the following signals `SIGTERM`, `SIGINT` and `SIGALRM`
 as a mechanism for shutting down. The `SIGTRAP` signal will put [**pgagroal**](https://github.com/pgagroal/pgagroal) into graceful shutdown, meaning that
 exisiting connections are allowed to finish their session. The `SIGABRT` is used to request a core dump (`abort()`).
-The `SIGHUP` signal will trigger a full reload of the configuration. When `SIGHUP` is received, [**pgagroal**](https://github.com/pgagroal/pgagroal) will re-read the configuration from the configuration files on disk and apply any changes that can be handled at runtime. This is the standard way to apply changes made to the configuration files.
+The `SIGHUP` signal will trigger a full reload of the configuration. When `SIGHUP` is received, [**pgagroal**](https://github.com/pgagroal/pgagroal) will re-read the configuration from the configuration files on disk and apply any changes that can be handled at runtime. If a structural configuration change (like a port change) is detected, it will be ignored and a restart will be required to apply it. The in-memory configuration will continue to reflect the running state for these parameters.
 
-In contrast, the `SIGUSR1` signal will trigger a service reload, but **does not** re-read the configuration files. Instead, `SIGUSR1` restarts sockets and listeners using the current in-memory configuration. This is useful for applying certain changes (such as re-opening sockets or refreshing listeners) without modifying or reloading the configuration from disk. Any changes made to the configuration files will **not** be picked up when using `SIGUSR1`; only the configuration already loaded in memory will be used.
-
-Use `SIGHUP` when you want to apply changes from updated configuration files.  
-Use `SIGUSR1` when you want to restart services without changing the current configuration.
+The `SIGUSR1` signal is used to refresh the system-level side effects of the configuration without reading from disk, such as performing log file rotation and managing worker processes (e.g. health check). It applies changes made directly to shared memory (via `conf set`) to the running instance. Use this to ensure log files are correctly handled by external tools like `logrotate` or to trigger dynamic process management.
 
 The child processes support `SIGQUIT` as a mechanism to shutdown. This will not shutdown the pool itself.
 
@@ -313,11 +310,14 @@ However, some configuration settings requires a full restart of [**pgagroal**](h
 
 * `hugepage`
 * `ev_backend`
-* `log_path`
-* `log_type`
 * `max_connections`
 * `pipeline`
+* `host`
+* `port`
 * `unix_socket_dir`
+* `metrics`
+* `management`
+* `console`
 * `pidfile`
 * Limit rules defined by `pgagroal_databases.conf`
 * TLS rules defined by server section

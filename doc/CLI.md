@@ -416,7 +416,7 @@ pgagroal-cli conf set max_connections 1000 --format json
     "message": "Configuration change requires restart. Current values preserved.",
     "requested_value": "1000",
     "restart_required": true,
-    "status": "success_restart_required"
+    "status": "restart_required"
   }
 }
 ```
@@ -426,17 +426,11 @@ pgagroal-cli conf set max_connections 1000 --format json
 ### **Important**
 
 > **Warning:**  
-> When changing critical parameters such as the **main port**, **metrics port**, **management port**, or **unix_socket_dir**, you must choose values carefully.
+> When changing critical structural parameters such as the **main port (host, port)**, **metrics**, **management**, **console**, or **unix_socket_dir**, the changes cannot be applied to the active proxying engine without a restart.
 >
-> If you set a port or socket to a value that is already in use or unavailable, the reload will fail. In this case, the CLI may still report "success" because the configuration was accepted, but the server will **not** be listening on the new port or socket.  
+> In these cases, the CLI will return a **Restart Required** (`status: restart_required`) response and will **not** modify the configuration (neither on disk nor in memory). This ensures that the configuration correctly reflects the actually running state of the daemon. To apply these changes, you must manually edit the configuration files and restart the `pgagroal` service.
 >
-> **How to recover:**  
-> If you accidentally set a port or socket to an unavailable value, simply use the `conf set` command again to set it to a valid, available value. The server process will remain running and can be reconfigured as needed.
->
-> **Recommendation:**  
-> - Avoid setting ports or sockets to values that are already in use by other services.
-> - Always verify the availability of the desired port or socket before applying changes.
-> - Review server logs for detailed error messages if a configuration change does not take effect as expected.
+> Note: The `conf set` command is **in-memory only**; it does not persist changes to the configuration files on disk.
 >
 > **Multiple Entries in `limit` or `hba`:**  
 > If your configuration contains multiple entries with the **same database name** in the `limit` section or the **same username** in the `hba` section,  
