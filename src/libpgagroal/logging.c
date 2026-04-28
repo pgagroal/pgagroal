@@ -247,7 +247,7 @@ log_file_open(void)
          log_rotation_disable();
       }
 
-      log_file = fopen(current_log_path, config->log_mode == PGAGROAL_LOGGING_MODE_APPEND ? "a" : "w");
+      log_file = fopen(current_log_path, (config->log_mode == PGAGROAL_LOGGING_MODE_CREATE && log_file == NULL) ? "w" : "a");
 
       if (!log_file)
       {
