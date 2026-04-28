@@ -100,15 +100,12 @@ start:
    do_init = false;
    has_lock = false;
 
-   connections = atomic_fetch_add(&config->active_connections, 1);
-
-   if (best_rule >= 0)
-   {
-      // increment the active connections for the current limit rule
-      atomic_fetch_add(&config->limits[best_rule].active_connections, 1);
-   }
-
-   has_lock = true;
+   /* Fast-path bail when the pool is likely saturated. The counter is
+    * read non-mutating; the slot array (below) is the source of truth.
+    * Counter inflation cannot occur because we do not increment until
+    * a slot has actually been acquired.
+    */
+   connections = atomic_load(&config->active_connections);
    if (connections >= config->max_connections)
    {
       goto retry;
@@ -140,6 +137,12 @@ start:
             if (can_reuse)
             {
                *slot = i;
+               atomic_fetch_add(&config->active_connections, 1);
+               if (best_rule >= 0)
+               {
+                  atomic_fetch_add(&config->limits[best_rule].active_connections, 1);
+               }
+               has_lock = true;
             }
             else
             {
@@ -169,6 +172,12 @@ start:
          {
             *slot = i;
             do_init = true;
+            atomic_fetch_add(&config->active_connections, 1);
+            if (best_rule >= 0)
+            {
+               atomic_fetch_add(&config->limits[best_rule].active_connections, 1);
+            }
+            has_lock = true;
          }
       }
    }
@@ -314,12 +323,12 @@ start:
    else
    {
 retry:
-      if (best_rule >= 0)
-      {
-         atomic_fetch_sub(&config->limits[best_rule].active_connections, 1);
-      }
       if (has_lock)
       {
+         if (best_rule >= 0)
+         {
+            atomic_fetch_sub(&config->limits[best_rule].active_connections, 1);
+         }
          atomic_fetch_sub(&config->active_connections, 1);
       }
 retry2:
