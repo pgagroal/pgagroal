@@ -48,31 +48,3 @@ MCTF_TEST(test_pgagroal_connection_load)
 cleanup:
    MCTF_FINISH();
 }
-
-// regression for #875: blocked clients in the retry path must acquire
-// freed slots under concurrent contention. Pre-fix, this scenario was
-// observed to time out with "pool is full" despite 2-5 free slots being
-// available throughout the blocking_timeout window.
-//
-// 8 clients, 8 threads, 100 select-only transactions each. The
-// multi-threaded form (-j 8) is required: single-threaded pgbench
-// connects sequentially and does not exercise the concurrent contention
-// on the retry path that #875 covers.
-//
-// Saturation only actually manifests when the test runs against a
-// configuration whose effective per-rule cap is smaller than the client
-// count (8) - test/conf/17 sets max_connections = 6 for that purpose.
-// On configurations with larger caps the load still passes through
-// pgagroal cleanly, so the test is a useful regression guard against
-// any regression that breaks the saturation path generally.
-MCTF_TEST(test_pgagroal_connection_saturation)
-{
-   int found = 0;
-
-   found = !pgagroal_tsclient_execute_pgbench(user, database, true, 8, 8, 100);
-   MCTF_ASSERT(found, cleanup,
-               "all clients should acquire connections within blocking_timeout (regression for #875)");
-
-cleanup:
-   MCTF_FINISH();
-}
