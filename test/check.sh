@@ -561,14 +561,6 @@ run_multiple_config_tests() {
             
             # Update port to match our PostgreSQL container
             sed -i "s|port = 5432|port = $PORT|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
-
-            # Rocky CI runs inside a container where io_uring may be unavailable
-            # even when the config explicitly requests it. Keep the checked-in
-            # configs as-is and only force epoll for CI runs.
-            if [[ $MODE == "ci" ]] && grep -q "^[[:space:]]*ev_backend[[:space:]]*=[[:space:]]*io_uring[[:space:]]*$" "$CONFIGURATION_DIRECTORY/pgagroal.conf"; then
-               echo "CI mode: overriding ev_backend=io_uring to epoll for configuration $config_name"
-               sed -i "s|^[[:space:]]*ev_backend[[:space:]]*=[[:space:]]*io_uring[[:space:]]*$|ev_backend = epoll|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
-            fi
             
             # Stop any running pgagroal instance before starting new config
             stop_pgagroal
