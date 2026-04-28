@@ -1577,7 +1577,9 @@ connection_details(int slot)
             pgagroal_log_mem(&connection.security_messages[i], connection.security_lengths[i]);
          }
          pgagroal_log_trace("                      Backend PID: %d", connection.backend_pid);
+#ifdef DEBUG
          pgagroal_log_trace("                      Backend Secret: %d", connection.backend_secret);
+#endif
          break;
       case STATE_IN_USE:
          pgagroal_log_debug("pgagroal_pool_status: State: IN_USE");
@@ -1598,7 +1600,9 @@ connection_details(int slot)
             pgagroal_log_mem(&connection.security_messages[i], connection.security_lengths[i]);
          }
          pgagroal_log_trace("                      Backend PID: %d", connection.backend_pid);
+#ifdef DEBUG
          pgagroal_log_trace("                      Backend Secret: %d", connection.backend_secret);
+#endif
          break;
       case STATE_GRACEFULLY:
          pgagroal_log_debug("pgagroal_pool_status: State: GRACEFULLY");
@@ -1619,7 +1623,9 @@ connection_details(int slot)
             pgagroal_log_mem(&connection.security_messages[i], connection.security_lengths[i]);
          }
          pgagroal_log_trace("                      Backend PID: %d", connection.backend_pid);
+#ifdef DEBUG
          pgagroal_log_trace("                      Backend Secret: %d", connection.backend_secret);
+#endif
          break;
       case STATE_FLUSH:
          pgagroal_log_debug("pgagroal_pool_status: State: FLUSH");
@@ -1640,7 +1646,9 @@ connection_details(int slot)
             pgagroal_log_mem(&connection.security_messages[i], connection.security_lengths[i]);
          }
          pgagroal_log_trace("                      Backend PID: %d", connection.backend_pid);
+#ifdef DEBUG
          pgagroal_log_trace("                      Backend Secret: %d", connection.backend_secret);
+#endif
          break;
       case STATE_IDLE_CHECK:
          pgagroal_log_debug("pgagroal_pool_status: State: IDLE CHECK");
@@ -1661,7 +1669,9 @@ connection_details(int slot)
             pgagroal_log_mem(&connection.security_messages[i], connection.security_lengths[i]);
          }
          pgagroal_log_trace("                      Backend PID: %d", connection.backend_pid);
+#ifdef DEBUG
          pgagroal_log_trace("                      Backend Secret: %d", connection.backend_secret);
+#endif
          break;
       case STATE_MAX_CONNECTION_AGE:
          pgagroal_log_debug("pgagroal_pool_status: State: MAX CONNECTION AGE");
@@ -1682,7 +1692,9 @@ connection_details(int slot)
             pgagroal_log_mem(&connection.security_messages[i], connection.security_lengths[i]);
          }
          pgagroal_log_trace("                      Backend PID: %d", connection.backend_pid);
+#ifdef DEBUG
          pgagroal_log_trace("                      Backend Secret: %d", connection.backend_secret);
+#endif
          break;
       case STATE_VALIDATION:
          pgagroal_log_debug("pgagroal_pool_status: State: VALIDATION");
@@ -1703,7 +1715,9 @@ connection_details(int slot)
             pgagroal_log_mem(&connection.security_messages[i], connection.security_lengths[i]);
          }
          pgagroal_log_trace("                      Backend PID: %d", connection.backend_pid);
+#ifdef DEBUG
          pgagroal_log_trace("                      Backend Secret: %d", connection.backend_secret);
+#endif
          break;
       case STATE_REMOVE:
          pgagroal_log_debug("pgagroal_pool_status: State: REMOVE");
@@ -1724,7 +1738,9 @@ connection_details(int slot)
             pgagroal_log_mem(&connection.security_messages[i], connection.security_lengths[i]);
          }
          pgagroal_log_trace("                      Backend PID: %d", connection.backend_pid);
+#ifdef DEBUG
          pgagroal_log_trace("                      Backend Secret: %d", connection.backend_secret);
+#endif
          break;
       default:
          pgagroal_log_debug("pgagroal_pool_status: State %d Slot %d FD %d", state, slot, connection.fd);
