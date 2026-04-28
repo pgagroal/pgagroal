@@ -26,8 +26,6 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <pgagroal.h>
-#include <shmem.h>
 #include <tsclient.h>
 #include <mctf.h>
 
@@ -55,24 +53,22 @@ cleanup:
 // freed slots under concurrent contention. Pre-fix, this scenario was
 // observed to time out with "pool is full" despite 2-5 free slots being
 // available throughout the blocking_timeout window.
+//
+// 8 clients, 8 threads, 100 select-only transactions each. The
+// multi-threaded form (-j 8) is required: single-threaded pgbench
+// connects sequentially and does not exercise the concurrent contention
+// on the retry path that #875 covers.
+//
+// Saturation only actually manifests when the test runs against a
+// configuration whose effective per-rule cap is smaller than the client
+// count (8) - test/conf/17 sets max_connections = 6 for that purpose.
+// On configurations with larger caps the load still passes through
+// pgagroal cleanly, so the test is a useful regression guard against
+// any regression that breaks the saturation path generally.
 MCTF_TEST(test_pgagroal_connection_saturation)
 {
-   struct main_configuration* config;
    int found = 0;
 
-   config = (struct main_configuration*)shmem;
-
-   // Saturation requires more pgbench clients than pool slots. Skip on
-   // configurations where max_connections >= 8 (the client count below).
-   if (config->max_connections >= 8)
-   {
-      MCTF_SKIP("max_connections is large enough that no client enters the retry path");
-   }
-
-   // 8 clients, 8 threads, 100 select-only transactions each. The
-   // multi-threaded form is required: single-threaded pgbench connects
-   // sequentially and does not exercise the concurrent contention on the
-   // retry path that #875 covers.
    found = !pgagroal_tsclient_execute_pgbench(user, database, true, 8, 8, 100);
    MCTF_ASSERT(found, cleanup,
                "all clients should acquire connections within blocking_timeout (regression for #875)");
