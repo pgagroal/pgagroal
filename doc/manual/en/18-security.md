@@ -52,14 +52,14 @@ methods, so `scram-sha-256` based connections are not cached.
 
 ### Management protocol encryption
 
-The management wire protocol has been updated in 2.1.0 to exclusively use authenticated encryption (GCM). Legacy CBC and CTR modes are no longer supported.
+The management wire protocol has been updated in 2.1.x to exclusively use authenticated encryption (GCM). Legacy CBC and CTR modes are no longer supported.
 
 While this does not affect on-disk data, it is a **breaking change for mixed-version deployments**:
-- A 2.0.x `pgagroal-cli` or `pgagroal-vault` cannot communicate with a 2.1.0 server.
-- A 2.1.0 `pgagroal-cli` or `pgagroal-vault` cannot interoperate with a 2.0.x server.
+- A 2.0.x `pgagroal-cli` or `pgagroal-vault` cannot communicate with a 2.1.x server.
+- A 2.1.x `pgagroal-cli` or `pgagroal-vault` cannot interoperate with a 2.0.x server.
 
 **Action required:**
-- Upgrade the `pgagroal` server and all `pgagroal-cli`/`pgagroal-vault` tools to 2.1.0 at the same time.
+- Upgrade the `pgagroal` server and all `pgagroal-cli`/`pgagroal-vault` tools to 2.1.x at the same time.
 - After upgrading, restart the server and any long-running management clients to ensure they are all using the updated authenticated protocol.
 
 ### User Vault
