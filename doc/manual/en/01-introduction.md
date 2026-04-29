@@ -34,7 +34,7 @@ The supported platforms are
 
 ## Migration
 
-### From 2.0.x to 2.1.0
+### From 2.0.x to 2.1.x
 
 #### Vault Encryption
 
@@ -42,7 +42,7 @@ The key derivation for vault file encryption has been upgraded to
 `PKCS5_PBKDF2_HMAC` (SHA-256, random 16-byte salt, 600,000 iterations).
 
 This is a **breaking change**. Existing vault files encrypted with the
-old method cannot be decrypted by version 2.1.0.
+old method cannot be decrypted by version 2.1.x.
 
 **Action required:**
 
