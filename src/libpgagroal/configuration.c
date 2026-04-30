@@ -2909,7 +2909,7 @@ as_logging_level(char* str)
       return PGAGROAL_LOGGING_LEVEL_FATAL;
    }
 
-   // "trace" is a synonim for "debug5"
+   // "trace" is a synonym for "debug5"
    if (!strcasecmp(str, "trace"))
    {
       return PGAGROAL_LOGGING_LEVEL_DEBUG5;
@@ -4438,7 +4438,7 @@ section_line(char* line, char* section)
  * @param str the value to parse as retrieved from the configuration
  * @param age a pointer to the value that is going to store
  *        the resulting number of seconds
- * @param default_age a value to set when the parsing is unsuccesful
+ * @param default_age a value to set when the parsing is unsuccessful
 
  */
 static int
@@ -5126,7 +5126,7 @@ error:
 }
 
 /**
- * Given a specific username, retrieves the informations about the limit
+ * Given a specific username, retrieves the information about the limit
  * configuration. The limit configuration is matched against a specific
  * database.
  *

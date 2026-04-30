@@ -3345,7 +3345,7 @@ is_metrics_cache_configured(void)
 /**
  * Checks if the cache is still valid, and therefore can be
  * used to serve as a response.
- * A cache is considred valid if it has non-empty payload and
+ * A cache is considered valid if it has non-empty payload and
  * a timestamp in the future.
  *
  * @return true if the cache is still valid

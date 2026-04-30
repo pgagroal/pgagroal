@@ -8,7 +8,7 @@ Here you find a concise developer-focused description of how the event loop impl
 
 The event loop sits in a continuous wait cycle, monitoring sources of events (I/O readiness, timer expirations, or delivered signals), dispatching the appropriate handler when an event occurs, and calling an user registered callback.
 
-* Backends abstract the OS-specific wait or I/O mechanis used. The backend can be configured in the configuration file with the variable `ev_backend`.
+* Backends abstract the OS-specific wait or I/O mechanism used. The backend can be configured in the configuration file with the variable `ev_backend`.
 * Watchers encapsulate interest in one type of event (I/O, signal, or periodic) and carry the callback and context required.
 * Lifecycle routines manage setup, execution, interruption, and teardown of the loop.
 * **Each process has its own event loop**: There is a **clear distinction** between **main** (accepting connections) and **worker** (handling established connections) event loops.

@@ -4,7 +4,7 @@
 
 ## Rocky Linux
 
-We can download the [Rocky Linux](https://www.rockylinux.org/) distruction from their web site
+We can download the [Rocky Linux](https://www.rockylinux.org/) distribution from their web site
 
 ```
 https://rockylinux.org/download

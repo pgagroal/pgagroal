@@ -19,7 +19,7 @@ and then `pgagroal_vault_users.conf` that will instrument the vault about the ad
 
 **pgagroal-vault.conf**
 
-It is now time to create the main `/etc/pgagroal/pgagroal_vault.conf` configration file, with your editor of choice or using `cat` from the command line, create the following content:
+It is now time to create the main `/etc/pgagroal/pgagroal_vault.conf` configuration file, with your editor of choice or using `cat` from the command line, create the following content:
 
 ```
 cd /etc/pgagroal
