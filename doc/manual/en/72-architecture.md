@@ -274,7 +274,7 @@ The pipeline is defined in [pipeline_transaction.c](../src/libpgagroal/pipeline_
 
 The main process of [**pgagroal**](https://github.com/pgagroal/pgagroal) supports the following signals `SIGTERM`, `SIGINT` and `SIGALRM`
 as a mechanism for shutting down. The `SIGTRAP` signal will put [**pgagroal**](https://github.com/pgagroal/pgagroal) into graceful shutdown, meaning that
-exisiting connections are allowed to finish their session. The `SIGABRT` is used to request a core dump (`abort()`).
+existing connections are allowed to finish their session. The `SIGABRT` is used to request a core dump (`abort()`).
 The `SIGHUP` signal will trigger a full reload of the configuration. When `SIGHUP` is received, [**pgagroal**](https://github.com/pgagroal/pgagroal) will re-read the configuration from the configuration files on disk and apply any changes that can be handled at runtime. This is the standard way to apply changes made to the configuration files.
 
 In contrast, the `SIGUSR1` signal will trigger a service reload, but **does not** re-read the configuration files. Instead, `SIGUSR1` restarts sockets and listeners using the current in-memory configuration. This is useful for applying certain changes (such as re-opening sockets or refreshing listeners) without modifying or reloading the configuration from disk. Any changes made to the configuration files will **not** be picked up when using `SIGUSR1`; only the configuration already loaded in memory will be used.

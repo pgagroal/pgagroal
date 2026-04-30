@@ -43,7 +43,7 @@ The above will create the `admin` username with the `admin1234` password.
 
 **Restart pgagroal**
 
-In order to make the changes available, and therefore activate the remote management, you have to restart [**pgagroal**][pgagroal], for example by issuing the following commands from the [**pgagroal**][pgagroal] operatng system user:
+In order to make the changes available, and therefore activate the remote management, you have to restart [**pgagroal**][pgagroal], for example by issuing the following commands from the [**pgagroal**][pgagroal] operating system user:
 
 ```
 pgagroal-cli shutdown
