@@ -39,7 +39,7 @@ extern "C" {
  * Create a shared memory segment
  * @param size The size of the segment
  * @param hp Huge page value
- * @parma shmem The shared memory segment
+ * @param shmem The shared memory segment
  * @return 0 upon success, otherwise 1
  */
 int

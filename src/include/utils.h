@@ -376,7 +376,7 @@ pgagroal_set_proc_title(int argc, char** argv, char* s1, char* s2);
  *    user@host:port/database
  *
  * This means that all the policies honored by the latter function and
- * set via the `update_process_title` configuration paramter will be
+ * set via the `update_process_title` configuration parameter will be
  * honored.
  *
  * @param argc the number of arguments
@@ -423,7 +423,7 @@ pgagroal_version_number(void);
 
 /**
  * Checks if the currently running version number is
- * greater or equal than the specied one.
+ * greater or equal than the specified one.
  *
  * @param major the major version number
  * @param minor the minor version number
@@ -600,7 +600,7 @@ pgagroal_cleanse(void* data, size_t size);
  * @param command_table array containing one `struct pgagroal_command` for
  * every possible command.
  * @param command_count number of commands in `command_table`.
- * @return true if the parsing of the command line was succesful, false
+ * @return true if the parsing of the command line was successful, false
  * otherwise
  *
  */
@@ -619,7 +619,7 @@ parse_command(int argc,
  * If the state cannot be determined, the numeric
  * form of the state is returned as a string.
  *
- * @param state the value of the sate for the server
+ * @param state the value of the state for the server
  * @returns the string representing the state
  */
 char*

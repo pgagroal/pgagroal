@@ -32,7 +32,7 @@ Available options are the following ones:
 Options can be specified either in short or long form, in any position of the command line.
 
 By default the command output, if any, is reported as text. It is possible to specify JSON as the output format,
-and this is the suggested format if there is the need to automtically parse the command output, since the text format
+and this is the suggested format if there is the need to automatically parse the command output, since the text format
 could be subject to changes in future releases. For more information about the JSON output format,
 please see the [JSON Output Format](#json-output-format) section.
 
@@ -499,7 +499,7 @@ Please refer to the [CLI Tools documentation](https://github.com/pgagroal/pgagro
 
 ## JSON Output Format
 
-It is possible to obtain the output of a command in a JSON format by specyfing the `-F` (`--format`) option on the command line.
+It is possible to obtain the output of a command in a JSON format by specifying the `-F` (`--format`) option on the command line.
 Supported output formats are:
 - `text` (the default)
 - `json`
@@ -549,8 +549,8 @@ The `command` object represents the launched command and contains also the answe
 The object is made by the following attributes:
 - `name` a string representing the command launched (e.g., `status`);
 - `status` a string that contains either "OK" or an error string if the command failed;
-- `error` an interger value used as a flag to indicate if the command was in error or not, where `0` means success and `1` means error;
-- `exit-status` an integer that contains zero if the command run succesfully, another value depending on the specific command in case of failure;
+- `error` an integer value used as a flag to indicate if the command was in error or not, where `0` means success and `1` means error;
+- `exit-status` an integer that contains zero if the command run successfully, another value depending on the specific command in case of failure;
 - `output` an object that contains the details of the executed command.
 
 The `output` object is *the variable part* in the JSON command output, that means its effective content depends on the launched command.

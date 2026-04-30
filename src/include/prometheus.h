@@ -175,7 +175,7 @@ void
 pgagroal_prometheus_connection_awaiting(int limit_index);
 
 /**
- * An awaiting conection, i.e., one holded by `blocking_timeout`
+ * An awaiting connection, i.e., one holded by `blocking_timeout`
  * that is no more on hold and can restart its workflo.
  *
  *
@@ -344,7 +344,7 @@ pgagroal_prometheus_logging(int logging);
  * The cache structure, as well as its dynamically sized payload,
  * are created as shared memory chunks.
  *
- * Assumes the shared memory for the cofiguration is already set.
+ * Assumes the shared memory for the configuration is already set.
  *
  * The cache will be allocated as soon as this method is invoked,
  * even if the cache has not been configured at all!

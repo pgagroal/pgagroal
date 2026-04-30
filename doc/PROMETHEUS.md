@@ -8,7 +8,7 @@ Once [**pgagroal**][pgagroal] is running you can access the metrics with a brows
 http://localhost:2346/metrics
 ```
 
-It is also possible to get an explaination of what is the meaning of each metric by pointing your web browser at:
+It is also possible to get an explanation of what is the meaning of each metric by pointing your web browser at:
 
 ```
 http://localhost:2346/
@@ -236,7 +236,7 @@ Once [**pgagroal-vault**][pgagroal] is running you can access the metrics with a
 http://localhost:2501/metrics
 ```
 
-It is also possible to get an explaination of what is the meaning of each metric by pointing your web browser at:
+It is also possible to get an explanation of what is the meaning of each metric by pointing your web browser at:
 
 ```
 http://localhost:2501/

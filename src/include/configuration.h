@@ -451,7 +451,7 @@ pgagroal_can_prefill(void);
  * This is used, for example, to get a writable string to send over the
  * management socket.
  *
- * The key can contain words separated by a dot '.' to indicate different search criterias.
+ * The key can contain words separated by a dot '.' to indicate different search criteria.
  * A "dotted" key is made by a 'context', a 'section' and a 'search term', so that
  * it can be written as 'section.context.search'.
  * If both the section and the context are omitted, the 'search' is performed among the

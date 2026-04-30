@@ -988,7 +988,7 @@ calculate_offset(uint64_t addr, uint64_t* offset, char** filepath)
 
    while (fgets(line, sizeof(line), fp) != NULL)
    {
-      // exmaple line:
+      // example line:
       // 7fb60d1ea000-7fb60d20c000 r--p 00000000 103:02 120327460 /usr/lib/libc.so.6
       start = strtok(line, "-");
       end = strtok(NULL, " ");

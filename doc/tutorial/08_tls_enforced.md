@@ -4,7 +4,7 @@ This tutorial will take you through the connection path from client to `pgagroal
 
 ## Setup
 
-To enforce tls along the whole path, we first need to create X509 certicates for client->pgagroal and pgagroal->postgres seperately.
+To enforce tls along the whole path, we first need to create X509 certificates for client->pgagroal and pgagroal->postgres separately.
 
 For the purpose of this tutorial we will create self-signed certificates and assume only server side authentication.
 

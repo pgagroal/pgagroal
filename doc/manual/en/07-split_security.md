@@ -31,7 +31,7 @@ pgagroal -d
 **Connect to PostgreSQL**
 
 You can now use the "application password" to access the PostgreSQL instance. As an example,
-run the following as any operatng system user:
+run the following as any operating system user:
 
 ```
 psql -h localhost -p 2345 -U myuser mydb
