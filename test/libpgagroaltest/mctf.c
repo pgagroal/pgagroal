@@ -27,6 +27,7 @@
  */
 
 #include <mctf.h>
+#include <mctf_logslice.h>
 
 #include <errno.h>
 #include <stdarg.h>
@@ -432,6 +433,15 @@ mctf_run_tests(mctf_filter_type_t filter_type, const char* filter)
       result->skipped = false;
       result->error_code = 0;
       result->error_message = NULL;
+      result->log_offset_start = -1;
+      result->log_offset_end = -1;
+      result->has_error_log = false;
+
+      {
+         off_t log_start = -1;
+         mctf_capture_log_boundary(&log_start);
+         result->log_offset_start = (long)log_start;
+      }
 
       struct timespec start_time, end_time;
       clock_gettime(CLOCK_MONOTONIC, &start_time);
@@ -443,6 +453,12 @@ mctf_run_tests(mctf_filter_type_t filter_type, const char* filter)
          mctf_errmsg = NULL;
       }
       int ret = test->func();
+
+      {
+         off_t log_end = -1;
+         mctf_capture_log_boundary(&log_end);
+         result->log_offset_end = (long)log_end;
+      }
 
       clock_gettime(CLOCK_MONOTONIC, &end_time);
 
@@ -480,10 +496,37 @@ mctf_run_tests(mctf_filter_type_t filter_type, const char* filter)
       }
       else if (ret == 0 && mctf_errno == 0)
       {
-         result->passed = true;
-         g_runner.passed_count++;
-         mctf_logf("%s (%02ld:%02ld:%02ld,%03ld) [PASS]\n",
-                   test->name, hours, minutes, seconds, milliseconds);
+         bool has_log_errors = false;
+         char* log_error_summary = NULL;
+
+         mctf_analyze_and_write_test_log_slice(test->module,
+                                               test->name,
+                                               result->log_offset_start,
+                                               result->log_offset_end,
+                                               &has_log_errors,
+                                               &log_error_summary);
+         result->has_error_log = has_log_errors;
+
+         if (has_log_errors)
+         {
+            result->passed = false;
+            result->error_code = 0;
+            result->error_message = log_error_summary != NULL ? log_error_summary : strdup("Unexpected ERROR lines in pgagroal.log");
+            g_runner.failed_count++;
+            mctf_logf("  %s (%02ld:%02ld:%02ld,%03ld) [FAIL]\n",
+                      test->name, hours, minutes, seconds, milliseconds);
+         }
+         else
+         {
+            if (log_error_summary != NULL)
+            {
+               free(log_error_summary);
+            }
+            result->passed = true;
+            g_runner.passed_count++;
+            mctf_logf("%s (%02ld:%02ld:%02ld,%03ld) [PASS]\n",
+                      test->name, hours, minutes, seconds, milliseconds);
+         }
       }
       else
       {
@@ -586,4 +629,15 @@ mctf_get_results(size_t* count)
       *count = g_runner.result_count;
    }
    return g_runner.results;
+}
+
+bool
+mctf_result_has_error_log(size_t result_index)
+{
+   if (result_index >= g_runner.result_count)
+   {
+      return false;
+   }
+
+   return g_runner.results[result_index].has_error_log;
 }
