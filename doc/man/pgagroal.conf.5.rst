@@ -124,6 +124,13 @@ background_interval
   It supports the following units as suffixes: 'S' for seconds (default), 'M' for minutes, 'H' for hours, 'D' for days,
   and 'W' for weeks. Default is 300
 
+tls_cert_monitor_interval
+  The interval between TLS certificate expiry checks. The monitor checks all configured TLS certificates
+  (the [pgagroal] section, the metrics endpoint, and per-server entries) and logs warnings or errors if they
+  are expiring soon or already expired. Prometheus metrics are also updated to reflect their validity. Set to 0 to disable.
+  If this value is specified without units, it is taken as seconds. It supports the following units as suffixes:
+  'S' for seconds (default), 'M' for minutes, 'H' for hours, 'D' for days, and 'W' for weeks. Default is 3600
+
 max_retries
   The maximum number of iterations to obtain a connection. Default is 5
 

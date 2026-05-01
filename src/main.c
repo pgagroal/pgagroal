@@ -91,6 +91,7 @@ static void sigchld_cb(void);
 static void idle_timeout_cb(void);
 static void max_connection_age_cb(void);
 static void rotate_frontend_password_cb(void);
+static void tls_cert_monitor_cb(void);
 static void validation_cb(void);
 static void disconnect_client_cb(void);
 static void frontend_user_password_startup(struct main_configuration* config);
@@ -136,11 +137,13 @@ static struct periodic_watcher max_connection_age_watcher;
 static struct periodic_watcher validation_watcher;
 static struct periodic_watcher disconnect_client_watcher;
 static struct periodic_watcher rotate_frontend_password_watcher;
+static struct periodic_watcher tls_cert_monitor_watcher;
 static bool idle_timeout_started = false;
 static bool max_connection_age_started = false;
 static bool validation_started = false;
 static bool disconnect_client_started = false;
 static bool rotate_frontend_password_started = false;
+static bool tls_cert_monitor_started = false;
 
 static void
 start_mgt(void)
@@ -2801,6 +2804,34 @@ rotate_frontend_password_cb(void)
    }
 }
 
+static void
+tls_cert_monitor_cb(void)
+{
+   if (!fork())
+   {
+      struct main_configuration* config;
+
+      pgagroal_event_loop_fork();
+      shutdown_ports(false);
+
+      config = (struct main_configuration*)shmem;
+
+      if (pgagroal_monitor_certificate_expiry(config))
+      {
+         pgagroal_log_warn("tls_cert_monitor_cb: certificate monitoring check failed");
+      }
+      else
+      {
+         pgagroal_log_debug("tls_cert_monitor_cb: certificate monitoring check completed");
+      }
+
+      pgagroal_memory_destroy();
+      pgagroal_stop_logging();
+
+      exit(0);
+   }
+}
+
 static bool
 accept_fatal(int error)
 {
@@ -2957,6 +2988,7 @@ refresh_periodic_watchers(void)
    stop_periodic_watcher(&validation_watcher, &validation_started);
    stop_periodic_watcher(&disconnect_client_watcher, &disconnect_client_started);
    stop_periodic_watcher(&rotate_frontend_password_watcher, &rotate_frontend_password_started);
+   stop_periodic_watcher(&tls_cert_monitor_watcher, &tls_cert_monitor_started);
 
    if (pgagroal_time_is_valid(config->idle_timeout))
    {
@@ -2986,6 +3018,12 @@ refresh_periodic_watchers(void)
    {
       start_periodic_watcher(&rotate_frontend_password_watcher, &rotate_frontend_password_started, rotate_frontend_password_cb,
                              1000 * pgagroal_time_convert(config->rotate_frontend_password_timeout, FORMAT_TIME_S));
+   }
+
+   if (pgagroal_time_is_valid(config->tls_cert_monitor_interval))
+   {
+      start_periodic_watcher(&tls_cert_monitor_watcher, &tls_cert_monitor_started, tls_cert_monitor_cb,
+                             1000 * pgagroal_time_convert(config->tls_cert_monitor_interval, FORMAT_TIME_S));
    }
 }
 

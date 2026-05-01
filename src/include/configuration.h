@@ -105,6 +105,7 @@ extern "C" {
 #define CONFIGURATION_ARGUMENT_HEALTH_CHECK_PERIOD              "health_check_period"
 #define CONFIGURATION_ARGUMENT_HEALTH_CHECK_TIMEOUT             "health_check_timeout"
 #define CONFIGURATION_ARGUMENT_HEALTH_CHECK_USER                "health_check_user"
+#define CONFIGURATION_ARGUMENT_TLS_CERT_MONITOR_INTERVAL        "tls_cert_monitor_interval"
 #define CONFIGURATION_ARGUMENT_MAX_RETRIES                      "max_retries"
 #define CONFIGURATION_ARGUMENT_MAX_CONNECTIONS                  "max_connections"
 #define CONFIGURATION_ARGUMENT_ALLOW_UNKNOWN_USERS              "allow_unknown_users"
