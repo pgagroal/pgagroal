@@ -418,6 +418,8 @@ pgagroal_init_prometheus(size_t* p_size, void** p_shmem)
    *p_size = tmp_p_size;
    *p_shmem = tmp_p_shmem;
 
+   atomic_init(&prometheus->cert_metrics.lock, STATE_FREE);
+
    // Parse certificates for monitoring
    if (pgagroal_update_main_certificate_metrics(config))
    {
@@ -3795,6 +3797,7 @@ pgagroal_update_main_certificate_metrics(struct main_configuration* config)
    time_t current_time = time(NULL);
    time_t expiring_threshold = current_time + (CERT_EXPIRING_THRESHOLD_DAYS * 24 * 60 * 60);
    size_t copy_len;
+   signed char lock_is_free;
 
    if (!config || !prometheus_shmem)
    {
@@ -3803,6 +3806,14 @@ pgagroal_update_main_certificate_metrics(struct main_configuration* config)
 
    prometheus = (struct main_prometheus*)prometheus_shmem;
    cert_metrics = &prometheus->cert_metrics;
+
+retry_cert_metrics_locking:
+   lock_is_free = STATE_FREE;
+   if (!atomic_compare_exchange_strong(&cert_metrics->lock, &lock_is_free, STATE_IN_USE))
+   {
+      /* Sleep for 1ms */
+      SLEEP_AND_GOTO(1000000L, retry_cert_metrics_locking);
+   }
 
    // Reset counters
    atomic_store(&cert_metrics->total, 0);
@@ -4042,6 +4053,8 @@ pgagroal_update_main_certificate_metrics(struct main_configuration* config)
 
    atomic_store(&cert_metrics->cert_count, cert_index);
 
+   atomic_store(&cert_metrics->lock, STATE_FREE);
+
    pgagroal_log_debug("Certificate metrics updated: configured=%lu, total=%lu, valid=%lu, expired=%lu, expiring_soon=%lu, inaccessible=%lu, parse_errors=%lu",
                       atomic_load(&cert_metrics->configured),
                       atomic_load(&cert_metrics->total),
@@ -4060,9 +4073,18 @@ certificate_information(prometheus_metrics_container_t* container)
    char* data = NULL;
    struct main_prometheus* prometheus;
    struct certificate_metrics* cert_metrics;
+   signed char lock_is_free;
 
    prometheus = (struct main_prometheus*)prometheus_shmem;
    cert_metrics = &prometheus->cert_metrics;
+
+retry_cert_read_locking:
+   lock_is_free = STATE_FREE;
+   if (!atomic_compare_exchange_strong(&cert_metrics->lock, &lock_is_free, STATE_IN_USE))
+   {
+      /* Sleep for 1ms */
+      SLEEP_AND_GOTO(1000000L, retry_cert_read_locking);
+   }
 
    // Summary metrics - always show these as they represent the total state
    data = pgagroal_append(data, "#HELP pgagroal_certificates_total Total number of TLS certificates configured\n");
@@ -4324,6 +4346,8 @@ certificate_information(prometheus_metrics_container_t* container)
          data = NULL;
       }
    }
+
+   atomic_store(&cert_metrics->lock, STATE_FREE);
 }
 
 static void

@@ -91,6 +91,7 @@ static void sigchld_cb(void);
 static void idle_timeout_cb(void);
 static void max_connection_age_cb(void);
 static void rotate_frontend_password_cb(void);
+static void tls_cert_monitor_cb(void);
 static void validation_cb(void);
 static void disconnect_client_cb(void);
 static void frontend_user_password_startup(struct main_configuration* config);
@@ -392,6 +393,7 @@ main(int argc, char** argv)
    struct periodic_watcher validation;
    struct periodic_watcher disconnect_client;
    struct periodic_watcher rotate_frontend_password;
+   struct periodic_watcher tls_cert_monitor;
    struct rlimit flimit;
    size_t shmem_size;
    size_t pipeline_shmem_size = 0;
@@ -1301,6 +1303,13 @@ read_superuser_path:
       pgagroal_periodic_init(&rotate_frontend_password, rotate_frontend_password_cb,
                              1000 * pgagroal_time_convert(config->rotate_frontend_password_timeout, FORMAT_TIME_S));
       pgagroal_periodic_start(&rotate_frontend_password);
+   }
+
+   if (pgagroal_time_is_valid(config->tls_cert_monitor_interval))
+   {
+      pgagroal_periodic_init(&tls_cert_monitor, tls_cert_monitor_cb,
+                             1000 * pgagroal_time_convert(config->tls_cert_monitor_interval, FORMAT_TIME_S));
+      pgagroal_periodic_start(&tls_cert_monitor);
    }
 
    if (config->common.metrics > 0)
@@ -2824,6 +2833,34 @@ rotate_frontend_password_cb(void)
       memcpy(&config->frontend_users[i].password, pwd, strlen(pwd) + 1);
       pgagroal_log_trace("rotate_frontend_password_cb: current pass for username=%s:%s", config->frontend_users[i].username, config->frontend_users[i].password);
       free(pwd);
+   }
+}
+
+static void
+tls_cert_monitor_cb(void)
+{
+   if (!fork())
+   {
+      struct main_configuration* config;
+
+      pgagroal_event_loop_fork();
+      shutdown_ports(false);
+
+      config = (struct main_configuration*)shmem;
+
+      if (pgagroal_update_main_certificate_metrics(config))
+      {
+         pgagroal_log_warn("tls_cert_monitor_cb: failed to refresh TLS certificate metrics");
+      }
+      else
+      {
+         pgagroal_log_debug("tls_cert_monitor_cb: TLS certificate metrics refreshed");
+      }
+
+      pgagroal_memory_destroy();
+      pgagroal_stop_logging();
+
+      exit(0);
    }
 }
 
