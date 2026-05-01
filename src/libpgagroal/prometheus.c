@@ -3659,7 +3659,7 @@ parse_certificate_file(const char* cert_path, struct certificate_info* cert_info
          serial_hex = BN_bn2hex(serial_bn);
          if (serial_hex)
          {
-            snprintf(cert_info->serial_number, sizeof(cert_info->serial_number), "0x%s", serial_hex);
+            pgagroal_snprintf(cert_info->serial_number, sizeof(cert_info->serial_number), "0x%s", serial_hex);
             OPENSSL_free(serial_hex);
          }
          BN_free(serial_bn);

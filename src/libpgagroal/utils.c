@@ -306,7 +306,7 @@ pgagroal_connection_state_as_string(signed char state)
       default:
          buf = malloc(buf_size);
          memset(buf, 0, buf_size);
-         snprintf(buf, buf_size, "Unknown %02d", state);
+         pgagroal_snprintf(buf, buf_size, "Unknown %02d", state);
          return buf;
    }
 }
@@ -774,10 +774,10 @@ pgagroal_set_proc_title(int argc, char** argv, char* s1, char* s2)
 
    // compose the new title
    memset(&title, 0, sizeof(title));
-   snprintf(title, sizeof(title) - 1, "pgagroal: %s%s%s",
-            s1 != NULL ? s1 : "",
-            s1 != NULL && s2 != NULL ? "/" : "",
-            s2 != NULL ? s2 : "");
+   pgagroal_snprintf(title, sizeof(title) - 1, "pgagroal: %s%s%s",
+                     s1 != NULL ? s1 : "",
+                     s1 != NULL && s2 != NULL ? "/" : "",
+                     s2 != NULL ? s2 : "");
 
    // nuke the command line info
    memset(*argv, 0, max_process_title_size);
@@ -940,7 +940,7 @@ pgagroal_append_int(char* orig, int i)
    char number[12];
 
    memset(&number[0], 0, sizeof(number));
-   snprintf(&number[0], 11, "%d", i);
+   pgagroal_snprintf(&number[0], 11, "%d", i);
    orig = pgagroal_append(orig, number);
 
    return orig;
@@ -952,7 +952,7 @@ pgagroal_append_ulong(char* orig, unsigned long l)
    char number[21];
 
    memset(&number[0], 0, sizeof(number));
-   snprintf(&number[0], 20, "%lu", l);
+   pgagroal_snprintf(&number[0], 20, "%lu", l);
    orig = pgagroal_append(orig, number);
 
    return orig;
@@ -964,7 +964,7 @@ pgagroal_append_ullong(char* orig, unsigned long long l)
    char number[21];
 
    memset(&number[0], 0, sizeof(number));
-   snprintf(&number[0], 20, "%llu", l);
+   pgagroal_snprintf(&number[0], 20, "%llu", l);
    orig = pgagroal_append(orig, number);
 
    return orig;
@@ -1096,7 +1096,7 @@ pgagroal_backtrace(void)
          close(p[1]);
 
          memset(&addr_hex[0], 0, sizeof(addr_hex));
-         snprintf(&addr_hex[0], sizeof(addr_hex), "0x%" PRIx64, offset);
+         pgagroal_snprintf(&addr_hex[0], sizeof(addr_hex), "0x%" PRIx64, offset);
 
          char* args[] = {"addr2line", "-e", filepath, "-fC", &addr_hex[0], NULL};
          execvp("addr2line", args);
@@ -1132,7 +1132,7 @@ pgagroal_backtrace(void)
          {
             found_main = true;
          }
-         snprintf(log_buffer, sizeof(log_buffer), "#%d  0x%" PRIx64 " in ", i - 1, addr);
+         pgagroal_snprintf(log_buffer, sizeof(log_buffer), "#%d  0x%" PRIx64 " in ", i - 1, addr);
          log_str = pgagroal_append(log_str, log_buffer);
          log_str = pgagroal_append(log_str, buffer);
          log_str = pgagroal_append(log_str, "\n");
@@ -1322,7 +1322,7 @@ pgagroal_server_state_as_string(signed char state)
       default:
          buf = malloc(5);
          memset(buf, 0, 5);
-         snprintf(buf, 5, "%d", state);
+         pgagroal_snprintf(buf, 5, "%d", state);
          return buf;
    }
 }
@@ -1333,7 +1333,7 @@ pgagroal_append_char(char* orig, char c)
    char str[2];
 
    memset(&str[0], 0, sizeof(str));
-   snprintf(&str[0], 2, "%c", c);
+   pgagroal_snprintf(&str[0], 2, "%c", c);
    orig = pgagroal_append(orig, str);
 
    return orig;

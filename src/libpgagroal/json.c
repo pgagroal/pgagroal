@@ -870,7 +870,7 @@ pgagroal_json_put_size_value(struct json* res, char* key, unsigned int bytes)
    }
 
    pgagroal_json_put(obj, "value", (uintptr_t)bytes, ValueInt64);
-   snprintf(str_buf, MISC_LENGTH, "%uB", bytes);
+   pgagroal_snprintf(str_buf, MISC_LENGTH, "%uB", bytes);
    pgagroal_json_put(obj, "string_value", (uintptr_t)str_buf, ValueString);
 
    pgagroal_json_put(res, key, (uintptr_t)obj, ValueJSON);

@@ -424,7 +424,7 @@ int8_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char* 
 
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "%" PRId8, (int8_t)data);
+   pgagroal_snprintf(buf, MISC_LENGTH, "%" PRId8, (int8_t)data);
    ret = pgagroal_append(ret, buf);
    return ret;
 }
@@ -436,7 +436,7 @@ uint8_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char*
    char buf[MISC_LENGTH];
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "%" PRIu8, (uint8_t)data);
+   pgagroal_snprintf(buf, MISC_LENGTH, "%" PRIu8, (uint8_t)data);
    ret = pgagroal_append(ret, buf);
    return ret;
 }
@@ -449,7 +449,7 @@ int16_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char*
 
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "%" PRId16, (int16_t)data);
+   pgagroal_snprintf(buf, MISC_LENGTH, "%" PRId16, (int16_t)data);
    ret = pgagroal_append(ret, buf);
    return ret;
 }
@@ -462,7 +462,7 @@ uint16_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char
 
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "%" PRIu16, (uint16_t)data);
+   pgagroal_snprintf(buf, MISC_LENGTH, "%" PRIu16, (uint16_t)data);
    ret = pgagroal_append(ret, buf);
    return ret;
 }
@@ -475,7 +475,7 @@ int32_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char*
 
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "%" PRId32, (int32_t)data);
+   pgagroal_snprintf(buf, MISC_LENGTH, "%" PRId32, (int32_t)data);
    ret = pgagroal_append(ret, buf);
    return ret;
 }
@@ -488,7 +488,7 @@ uint32_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char
 
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "%" PRIu32, (uint32_t)data);
+   pgagroal_snprintf(buf, MISC_LENGTH, "%" PRIu32, (uint32_t)data);
    ret = pgagroal_append(ret, buf);
    return ret;
 }
@@ -501,7 +501,7 @@ int64_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char*
 
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "%" PRId64, (int64_t)data);
+   pgagroal_snprintf(buf, MISC_LENGTH, "%" PRId64, (int64_t)data);
    ret = pgagroal_append(ret, buf);
    return ret;
 }
@@ -514,7 +514,7 @@ uint64_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char
 
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "%" PRIu64, (uint64_t)data);
+   pgagroal_snprintf(buf, MISC_LENGTH, "%" PRIu64, (uint64_t)data);
    ret = pgagroal_append(ret, buf);
    return ret;
 }
@@ -527,7 +527,7 @@ float_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char*
 
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "%f", pgagroal_value_to_float(data));
+   pgagroal_snprintf(buf, MISC_LENGTH, "%f", pgagroal_value_to_float(data));
    ret = pgagroal_append(ret, buf);
    return ret;
 }
@@ -540,7 +540,7 @@ double_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char
 
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "%f", pgagroal_value_to_double(data));
+   pgagroal_snprintf(buf, MISC_LENGTH, "%f", pgagroal_value_to_double(data));
    ret = pgagroal_append(ret, buf);
 
    return ret;
@@ -608,7 +608,7 @@ char_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char* 
 
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "'%c'", (char)data);
+   pgagroal_snprintf(buf, MISC_LENGTH, "'%c'", (char)data);
    ret = pgagroal_append(ret, buf);
 
    return ret;
@@ -640,7 +640,7 @@ mem_to_string_cb(uintptr_t data, int32_t format __attribute__((unused)), char* t
 
    ret = pgagroal_indent(ret, tag, indent);
    memset(buf, 0, MISC_LENGTH);
-   snprintf(buf, MISC_LENGTH, "%p", (void*)data);
+   pgagroal_snprintf(buf, MISC_LENGTH, "%p", (void*)data);
    ret = pgagroal_append(ret, buf);
 
    return ret;
