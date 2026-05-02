@@ -78,7 +78,7 @@ for all databases and all user names.
 
 We are now ready to run [**pgagroal**](https://github.com/pgagroal/pgagroal).
 
-See [Configuration](./CONFIGURATION.md) for all configuration options.
+See the configuration for all options.
 
 ## Running
 
@@ -272,7 +272,7 @@ Next steps in improving pgagroal's configuration could be
 * Enable Transport Layer Security v1.2+ (TLS)
 * Deploy Grafana dashboard
 
-See [Configuration](./CONFIGURATION.md) for more information on these subjects.
+See the configuration for more information on these subjects.
 
 Please, read the manual for a full description of all the features available.
 
@@ -290,7 +290,7 @@ Feel free to
 
 All contributions are most welcome !
 
-Please, consult our [Code of Conduct](../CODE_OF_CONDUCT.md) policies for interacting in our
+Please, consult our Code of Conduct policies for interacting in our
 community.
 
 Consider giving the project a [star](https://github.com/pgagroal/pgagroal/stargazers) on

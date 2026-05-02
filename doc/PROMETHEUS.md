@@ -12,7 +12,7 @@ It is also possible to get an explanation of what is the meaning of each metric 
 
 ```
 http://localhost:2346/
-``**
+```
 
 ### Metrics
 
