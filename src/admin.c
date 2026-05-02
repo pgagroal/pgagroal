@@ -53,9 +53,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static int master_key(char* password, bool generate_pwd, int pwd_length, int32_t output_format);
-static int add_user(char* users_path, char* username, char* password, bool generate_pwd, int pwd_length, int32_t output_format);
-static int update_user(char* users_path, char* username, char* password, bool generate_pwd, int pwd_length, int32_t output_format);
+static int master_key(char* password, char* key_path, bool generate_pwd, int pwd_length, int32_t output_format);
+static int add_user(char* users_path, char* key_path, char* username, char* password, bool generate_pwd, int pwd_length, int32_t output_format);
+static int update_user(char* users_path, char* key_path, char* username, char* password, bool generate_pwd, int pwd_length, int32_t output_format);
 static int remove_user(char* users_path, char* username, int32_t output_format);
 static int list_users(char* users_path, int32_t output_format);
 static int create_response(char* users_path, struct json* json, struct json** response);
@@ -126,6 +126,8 @@ usage(void)
    printf("Options:\n");
    printf("  -f, --file FILE         Set the path to a user file\n");
    printf("                          Defaults to %s\n", PGAGROAL_DEFAULT_USERS_FILE);
+   printf("  -k, --master-key FILE   Set the path to the master key file\n");
+   printf("                          Defaults to ~/.pgagroal/master.key\n");
    printf("  -U, --user USER         Set the user name\n");
    printf("  -P, --password PASSWORD Set the password for the user\n");
    printf("  -g, --generate          Generate a password\n");
@@ -153,6 +155,7 @@ main(int argc, char** argv)
    char* username = NULL;
    char* password = NULL;
    char* file_path = NULL;
+   char* key_path = NULL;
    bool generate_pwd = false;
    int pwd_length = DEFAULT_PASSWORD_LENGTH;
    int option_index = 0;
@@ -168,6 +171,7 @@ main(int argc, char** argv)
          {"user", required_argument, 0, 'U'},
          {"password", required_argument, 0, 'P'},
          {"file", required_argument, 0, 'f'},
+         {"master-key", required_argument, 0, 'k'},
          {"generate", no_argument, 0, 'g'},
          {"length", required_argument, 0, 'l'},
          {"version", no_argument, 0, 'V'},
@@ -176,7 +180,7 @@ main(int argc, char** argv)
       };
       // clang-format on
 
-      c = getopt_long(argc, argv, "gV?f:U:P:l:F:",
+      c = getopt_long(argc, argv, "gV?f:k:U:P:l:F:",
                       long_options, &option_index);
 
       if (c == -1)
@@ -194,6 +198,9 @@ main(int argc, char** argv)
             break;
          case 'f':
             file_path = optarg;
+            break;
+         case 'k':
+            key_path = optarg;
             break;
          case 'g':
             generate_pwd = true;
@@ -264,21 +271,21 @@ main(int argc, char** argv)
 
    if (parsed.cmd->action == MANAGEMENT_MASTER_KEY)
    {
-      if (master_key(password, generate_pwd, pwd_length, output_format))
+      if (master_key(password, key_path, generate_pwd, pwd_length, output_format))
       {
          errx(1, "Cannot generate master key");
       }
    }
    else if (parsed.cmd->action == MANAGEMENT_ADD_USER)
    {
-      if (add_user(file_path, username, password, generate_pwd, pwd_length, output_format))
+      if (add_user(file_path, key_path, username, password, generate_pwd, pwd_length, output_format))
       {
          errx(1, "Error for <user add>");
       }
    }
    else if (parsed.cmd->action == MANAGEMENT_UPDATE_USER)
    {
-      if (update_user(file_path, username, password, generate_pwd, pwd_length, output_format))
+      if (update_user(file_path, key_path, username, password, generate_pwd, pwd_length, output_format))
       {
          errx(1, "Error for <user edit>");
       }
@@ -306,10 +313,11 @@ error:
 }
 
 static int
-master_key(char* password, bool generate_pwd, int pwd_length, int32_t output_format)
+master_key(char* password, char* key_path, bool generate_pwd, int pwd_length, int32_t output_format)
 {
    FILE* file = NULL;
-   char buf[MISC_LENGTH];
+   char buf[MAX_PATH];
+   char dir_buf[MAX_PATH];
    char* encoded = NULL;
    size_t encoded_length;
    char* encoded_salt = NULL;
@@ -337,44 +345,88 @@ master_key(char* password, bool generate_pwd, int pwd_length, int32_t output_for
       do_free = false;
    }
 
-   if (pgagroal_get_home_directory() == NULL)
+   if (key_path != NULL)
    {
-      char* username = pgagroal_get_user_name();
+      /* Custom path: use it directly; derive its parent directory for the permission check. */
+      memset(&buf, 0, sizeof(buf));
+      strncpy(&buf[0], key_path, sizeof(buf) - 1);
 
-      if (username != NULL)
+      memset(&dir_buf, 0, sizeof(dir_buf));
+      strncpy(&dir_buf[0], key_path, sizeof(dir_buf) - 1);
+      char* last_sep = strrchr(&dir_buf[0], '/');
+      if (last_sep != NULL && last_sep != &dir_buf[0])
       {
-         warnx("No home directory for user \'%s\'", username);
+         *last_sep = '\0';
+      }
+      else if (last_sep == &dir_buf[0])
+      {
+         dir_buf[1] = '\0';
       }
       else
       {
-         warnx("No home directory for user running pgagroal");
+         /* No directory component — use current directory */
+         strncpy(&dir_buf[0], ".", sizeof(dir_buf) - 1);
       }
 
-      goto error;
-   }
-
-   memset(&buf, 0, sizeof(buf));
-   pgagroal_snprintf(&buf[0], sizeof(buf), "%s/.pgagroal", pgagroal_get_home_directory());
-
-   if (stat(&buf[0], &st) == -1)
-   {
-      mkdir(&buf[0], S_IRWXU);
-   }
-   else
-   {
-      if (S_ISDIR(st.st_mode) && st.st_mode & S_IRWXU && !(st.st_mode & S_IRWXG) && !(st.st_mode & S_IRWXO))
+      if (stat(&dir_buf[0], &st) == -1)
       {
-         /* Ok */
+         warnx("Directory <%s> does not exist", &dir_buf[0]);
+         goto error;
       }
-      else
+
+      if (!S_ISDIR(st.st_mode))
       {
-         warnx("Wrong permissions for directory <%s> (must be 0700)", &buf[0]);
+         warnx("Path <%s> is not a directory", &dir_buf[0]);
+         goto error;
+      }
+
+      if (access(&dir_buf[0], W_OK | X_OK) != 0)
+      {
+         warnx("Directory <%s> is not writable", &dir_buf[0]);
          goto error;
       }
    }
+   else
+   {
+      if (pgagroal_get_home_directory() == NULL)
+      {
+         char* username = pgagroal_get_user_name();
 
-   memset(&buf, 0, sizeof(buf));
-   pgagroal_snprintf(&buf[0], sizeof(buf), "%s/.pgagroal/master.key", pgagroal_get_home_directory());
+         if (username != NULL)
+         {
+            warnx("No home directory for user \'%s\'", username);
+         }
+         else
+         {
+            warnx("No home directory for user running pgagroal");
+         }
+
+         goto error;
+      }
+
+      memset(&dir_buf, 0, sizeof(dir_buf));
+      pgagroal_snprintf(&dir_buf[0], sizeof(dir_buf), "%s/.pgagroal", pgagroal_get_home_directory());
+
+      if (stat(&dir_buf[0], &st) == -1)
+      {
+         mkdir(&dir_buf[0], S_IRWXU);
+      }
+      else
+      {
+         if (S_ISDIR(st.st_mode) && st.st_mode & S_IRWXU && !(st.st_mode & S_IRWXG) && !(st.st_mode & S_IRWXO))
+         {
+            /* Ok */
+         }
+         else
+         {
+            warnx("Wrong permissions for directory <%s> (must be 0700)", &dir_buf[0]);
+            goto error;
+         }
+      }
+
+      memset(&buf, 0, sizeof(buf));
+      pgagroal_snprintf(&buf[0], sizeof(buf), "%s/.pgagroal/master.key", pgagroal_get_home_directory());
+   }
 
    if (pgagroal_exists(&buf[0]))
    {
@@ -596,7 +648,7 @@ error:
 }
 
 static int
-add_user(char* users_path, char* username, char* password, bool generate_pwd, int pwd_length, int32_t output_format)
+add_user(char* users_path, char* key_path, char* username, char* password, bool generate_pwd, int pwd_length, int32_t output_format)
 {
    FILE* users_file = NULL;
    char line[MISC_LENGTH];
@@ -625,7 +677,7 @@ add_user(char* users_path, char* username, char* password, bool generate_pwd, in
       goto error;
    }
 
-   if (pgagroal_get_master_key(&master_key))
+   if (pgagroal_get_master_key(key_path, &master_key))
    {
       warnx("Invalid master key");
       goto error;
@@ -911,7 +963,7 @@ error:
 }
 
 static int
-update_user(char* users_path, char* username, char* password, bool generate_pwd, int pwd_length, int32_t output_format)
+update_user(char* users_path, char* key_path, char* username, char* password, bool generate_pwd, int pwd_length, int32_t output_format)
 {
    FILE* users_file = NULL;
    FILE* users_file_tmp = NULL;
@@ -945,7 +997,7 @@ update_user(char* users_path, char* username, char* password, bool generate_pwd,
 
    memset(&tmpfilename, 0, sizeof(tmpfilename));
 
-   if (pgagroal_get_master_key(&master_key))
+   if (pgagroal_get_master_key(key_path, &master_key))
    {
       warnx("Invalid master key");
       goto error;
