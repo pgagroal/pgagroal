@@ -1051,6 +1051,11 @@ pgagroal_remote_management_scram_sha256(char* username, char* password, int serv
 
    sasl_continue = pgagroal_copy_message(msg);
 
+   if (sasl_continue->length <= 9)
+   {
+      goto error;
+   }
+
    get_scram_attribute('r', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &combined_nounce);
    get_scram_attribute('s', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &base64_salt);
    get_scram_attribute('i', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &iteration_string);
