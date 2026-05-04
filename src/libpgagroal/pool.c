@@ -63,6 +63,7 @@ static bool is_alias_of_limit(char* database, int limit_index);
 static int get_connection_count_for_limit_rule(int rule_index, char* username);
 static char* resolve_database_name(char* database, int best_rule);
 static void check_graceful_shutdown_trigger(void);
+static bool increase_connections(int best_rule);
 
 int
 pgagroal_get_connection(char* username, char* database, bool reuse, bool transaction_mode, int* slot, SSL** ssl)
@@ -100,15 +101,12 @@ start:
    do_init = false;
    has_lock = false;
 
-   connections = atomic_fetch_add(&config->active_connections, 1);
-
-   if (best_rule >= 0)
-   {
-      // increment the active connections for the current limit rule
-      atomic_fetch_add(&config->limits[best_rule].active_connections, 1);
-   }
-
-   has_lock = true;
+   /* Fast-path bail when the pool is likely saturated. The counter is
+    * read non-mutating; the slot array (below) is the source of truth.
+    * Counter inflation cannot occur because we do not increment until
+    * a slot has actually been acquired.
+    */
+   connections = atomic_load(&config->active_connections);
    if (connections >= config->max_connections)
    {
       goto retry;
@@ -139,7 +137,16 @@ start:
 
             if (can_reuse)
             {
-               *slot = i;
+               if (increase_connections(best_rule))
+               {
+                  *slot = i;
+                  has_lock = true;
+               }
+               else
+               {
+                  atomic_store(&config->states[i], STATE_FREE);
+                  goto retry;
+               }
             }
             else
             {
@@ -167,8 +174,17 @@ start:
 
          if (atomic_compare_exchange_strong(&config->states[i], &not_init, STATE_INIT))
          {
-            *slot = i;
-            do_init = true;
+            if (increase_connections(best_rule))
+            {
+               *slot = i;
+               do_init = true;
+               has_lock = true;
+            }
+            else
+            {
+               atomic_store(&config->states[i], STATE_NOTINIT);
+               goto retry;
+            }
          }
       }
    }
@@ -314,12 +330,12 @@ start:
    else
    {
 retry:
-      if (best_rule >= 0)
-      {
-         atomic_fetch_sub(&config->limits[best_rule].active_connections, 1);
-      }
       if (has_lock)
       {
+         if (best_rule >= 0)
+         {
+            atomic_fetch_sub(&config->limits[best_rule].active_connections, 1);
+         }
          atomic_fetch_sub(&config->active_connections, 1);
       }
 retry2:
@@ -1381,6 +1397,27 @@ is_alias_of_limit(char* database, int limit_index)
    }
 
    return false;
+}
+
+static bool
+increase_connections(int best_rule)
+{
+   struct main_configuration* config = (struct main_configuration*)shmem;
+   int connections;
+
+   connections = atomic_fetch_add(&config->active_connections, 1);
+   if (connections >= config->max_connections)
+   {
+      atomic_fetch_sub(&config->active_connections, 1);
+      return false;
+   }
+
+   if (best_rule >= 0)
+   {
+      atomic_fetch_add(&config->limits[best_rule].active_connections, 1);
+   }
+
+   return true;
 }
 
 static int
