@@ -1408,6 +1408,18 @@ increase_connections(int best_rule)
    connections = atomic_fetch_add(&config->active_connections, 1);
    if (connections >= config->max_connections)
    {
+      /* Cap race: another thread acquired between the atomic_load fast-path
+       * bail in pgagroal_get_connection() and this fetch_add. Roll the
+       * global counter back so it does not drift upward as a metric. The
+       * post-decrement value is not claimed to be below max_connections
+       * (another thread may increment in between); the actual cap is
+       * enforced by the slot array (config->states[] has exactly
+       * max_connections entries), so a missed rollback at worst leaves
+       * the metric off by N rather than producing more backends than the
+       * cap.
+       */
+      pgagroal_log_debug("increase_connections: cap race (active=%d, max=%d); rolling back counter",
+                         connections + 1, config->max_connections);
       atomic_fetch_sub(&config->active_connections, 1);
       return false;
    }
