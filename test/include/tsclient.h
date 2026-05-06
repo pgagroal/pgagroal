@@ -86,6 +86,21 @@ pgagroal_tsclient_execute_pgbench(char* user, char* database, bool select_only, 
 int
 pgagroal_tsclient_init_pgbench(char* user, char* database, int scale);
 
+/**
+ * Run client_count concurrent psql sessions through pgagroal, each holding a
+ * connection by executing 'BEGIN; SELECT pg_sleep(hold_seconds); COMMIT;'.
+ * Used to exercise the retry path of pgagroal_get_connection() under
+ * saturation: when client_count > max_connections, the surplus clients must
+ * acquire freed slots once early holders return their connections (issue #875).
+ * @param user name of the user
+ * @param database name of the database
+ * @param client_count number of concurrent psql sessions to spawn
+ * @param hold_seconds duration of the pg_sleep() hold per session
+ * @return 0 if every client returned success, otherwise 1
+ */
+int
+pgagroal_tsclient_execute_concurrent_holds(char* user, char* database, int client_count, int hold_seconds);
+
 #ifdef __cplusplus
 }
 #endif
