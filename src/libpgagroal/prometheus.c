@@ -1144,7 +1144,7 @@ pgagroal_prometheus_failed_servers(void)
 
    count = 0;
 
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       signed char state = atomic_load(&config->servers[i].state);
       if (state == SERVER_FAILED)
@@ -2332,7 +2332,7 @@ general_information(prometheus_metrics_container_t* container)
 
    data = pgagroal_append(data, "#HELP pgagroal_server_error The number of errors for servers\n");
    data = pgagroal_append(data, "#TYPE pgagroal_server_error counter\n");
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       int state = atomic_load(&config->servers[i].state);
 
@@ -2426,7 +2426,7 @@ general_information(prometheus_metrics_container_t* container)
    pgagroal_log_debug("Prometheus: Appending server health for %d servers", config->number_of_servers);
    data = pgagroal_append(data, "#HELP pgagroal_server_health The health state of the server (0 = DOWN, 1 = UP, 2 = UNKNOWN)\n");
    data = pgagroal_append(data, "#TYPE pgagroal_server_health gauge\n");
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       pgagroal_log_debug("Prometheus: Server %d", i);
       int health_state = atomic_load(&config->servers[i].health_state);
@@ -2472,7 +2472,7 @@ general_information(prometheus_metrics_container_t* container)
 
    data = pgagroal_append(data, "#HELP pgagroal_server_version The PostgreSQL major version for each server\n");
    data = pgagroal_append(data, "#TYPE pgagroal_server_version gauge\n");
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       if (config->servers[i].version <= 0)
       {
@@ -3963,6 +3963,10 @@ pgagroal_update_main_certificate_metrics(struct main_configuration* config)
    // Parse server TLS certificates
    for (int i = 0; i < config->number_of_servers && cert_index < MAX_CERTIFICATES; i++)
    {
+      if (!config->servers[i].valid)
+      {
+         continue;
+      }
       if (strlen(config->servers[i].tls_cert_file) > 0)
       {
          cert_info = &cert_metrics->certs[cert_index];

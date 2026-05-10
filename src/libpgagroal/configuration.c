@@ -36,6 +36,7 @@
 #include <network.h>
 #include <pipeline.h>
 #include <security.h>
+#include <server.h>
 #include <shmem.h>
 #include <utils.h>
 #include <utf8.h>
@@ -303,6 +304,7 @@ pgagroal_read_configuration(void* shm, char* filename, bool emit_warnings)
                atomic_init(&srv.state, SERVER_NOTINIT);
                memcpy(&srv.name, &section, strlen(section));
                srv.lineno = lineno;
+               srv.valid = true;
                idx_server++;
             }
          }
@@ -650,7 +652,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
       return 1;
    }
 
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       if (strlen(config->servers[i].host) == 0)
       {
@@ -672,7 +674,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
    }
 
    // check for duplicated servers
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       for (int j = i + 1; j < config->number_of_servers; j++)
       {
@@ -692,7 +694,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
    // check for multiple primary servers
    {
       int primary_count = 0;
-      for (int i = 0; i < config->number_of_servers; i++)
+      FOREACH_VALID_SERVER
       {
          if (atomic_load(&config->servers[i].state) == SERVER_NOTINIT_PRIMARY)
          {
@@ -755,7 +757,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
          }
       }
 
-      for (int i = 0; i < config->number_of_servers; i++)
+      FOREACH_VALID_SERVER
       {
          if (config->servers[i].tls)
          {
@@ -3850,6 +3852,9 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
    memset(&config->superuser, 0, sizeof(struct user));
    copy_user(&config->superuser, &reload->superuser);
 
+   /* Runtime revalidation: check for duplicate system identifiers after reload */
+   pgagroal_check_server_identifiers(false);
+
    /* prometheus */
    /* connections[] */
 
@@ -4036,6 +4041,9 @@ copy_server(struct server* dst, struct server* src)
    memcpy(&dst->tls_cert_file[0], &src->tls_cert_file[0], MAX_PATH);
    memcpy(&dst->tls_key_file[0], &src->tls_key_file[0], MAX_PATH);
    memcpy(&dst->tls_ca_file[0], &src->tls_ca_file[0], MAX_PATH);
+   memcpy(&dst->system_identifier[0], &src->system_identifier[0], 64);
+   dst->valid = src->valid;
+
    atomic_init(&dst->state, state);
 }
 
@@ -6782,7 +6790,7 @@ add_servers_configuration_response(struct json* res)
       goto error;
    }
 
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       if (pgagroal_json_create(&server_conf))
       {
@@ -7253,7 +7261,7 @@ is_valid_config_key(const char* config_key, struct config_key_info* key_info)
       case 1: // Server section
       {
          bool server_found = false;
-         for (int i = 0; i < config->number_of_servers; i++)
+         FOREACH_VALID_SERVER
          {
             if (!strncmp(config->servers[i].name, key_info->context, MISC_LENGTH))
             {
@@ -7354,7 +7362,7 @@ reset_server_failures(void)
 {
    struct main_configuration* config = (struct main_configuration*)shmem;
 
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       config->servers[i].failures = 0;
    }

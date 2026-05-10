@@ -94,7 +94,7 @@ The available keys and their accepted values are reported in the table below.
 | health_check_period | 30 | Int | No | The interval in seconds between health check scans. |
 | health_check_timeout | 5 | String | No | The amount of time the process will wait for a response during a health check. If this value is specified without units, it is taken as seconds. It supports the following units as suffixes: 'S' for seconds (default), 'M' for minutes, 'H' for hours, 'D' for days, and 'W' for weeks. |
 | health_check_user | | String | Yes (if health_check=on) | The user used for connecting to the health check. This user will also be used as the database name. This credential is also used at startup for the `startup_validation` check. It is best practice to configure `health_check_user` on all servers, even if `health_check` is disabled, so that startup validation can verify server identifiers. |
-| startup_validation | `try` | String | No | Controls startup validation of server system identifiers. `on`: fail startup if identifiers cannot be fetched or if duplicates are detected (requires `health_check_user`). `try`: attempt the check if `health_check_user` is set, otherwise log an INFO message and continue. `off`: skip identifier checks entirely. |
+| startup_validation | `try` | String | No | Controls validation of server system identifiers at startup and during configuration reload. `on`: fail startup if identifiers cannot be fetched or if duplicates are detected (requires `health_check_user`). `try`: attempt the check if `health_check_user` is set, otherwise log an INFO message and continue. `off`: skip identifier checks entirely. Note: during reload, duplicates result in the conflicting server being marked as invalid rather than failing the reload. |
 
 
 __Danger zone__
@@ -123,10 +123,15 @@ Note, that if `host` starts with a `/` it represents a path and [**pgagroal**](h
 
 ### system_identifier duplicate behavior
 
-At startup, pgagroal validates each configured server's PostgreSQL `system_identifier` when `startup_validation` is enabled (subject to the configured `health_check_user` mode).
+At startup and upon configuration reload, pgagroal validates each configured server's PostgreSQL `system_identifier` when `startup_validation` is enabled (subject to the configured `health_check_user` mode). During startup, duplicates result in a fatal error. During a reload, duplicates result in the conflicting server being marked as invalid instead.
 
 - If two non-primary servers (`primary = off`) report the same `system_identifier`, startup validation fails.
 - If a duplicate pair includes a server configured with `primary = on`, startup validation does not fail for that pair.
+
+When a conflicting server needs to be marked as invalid during a configuration reload, pgagroal uses the following tie-breaking rules to determine which server to keep:
+1. A server with active connections is kept over one without.
+2. A primary server is kept over a standby.
+3. If both are equal, the server defined earlier in the configuration is kept.
 
 This behavior is consistent with PostgreSQL replication semantics: a standby created from a primary backup remains part of the same cluster and therefore shares the same `system_identifier` as its primary.
 

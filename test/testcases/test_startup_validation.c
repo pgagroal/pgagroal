@@ -172,7 +172,7 @@ MCTF_TEST(test_server_validation_duplicate_system_identifier_primary_on_off)
    snprintf(config->servers[1].host, MISC_LENGTH, "%s", backup.servers[0].host);
    config->servers[1].port = backup.servers[0].port;
 
-   ret = pgagroal_check_server_identifiers();
+   ret = pgagroal_check_server_identifiers(true);
 
    MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
                       "check_server_identifiers should pass when only one duplicate is primary");
@@ -209,7 +209,7 @@ MCTF_TEST(test_server_validation_duplicate_system_identifier_primary_off_off)
    snprintf(config->servers[1].host, MISC_LENGTH, "%s", backup.servers[0].host);
    config->servers[1].port = backup.servers[0].port;
 
-   ret = pgagroal_check_server_identifiers();
+   ret = pgagroal_check_server_identifiers(true);
 
    MCTF_ASSERT(ret != 0, cleanup,
                "check_server_identifiers should fail when duplicate non-primary servers share identifier");
@@ -240,7 +240,7 @@ MCTF_TEST(test_startup_validation_off)
    ret = pgagroal_read_configuration(config, path, false);
    MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
 
-   ret = pgagroal_check_server_identifiers();
+   ret = pgagroal_check_server_identifiers(true);
 
    MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
                       "check_server_identifiers should return 0 when startup_validation is off");
@@ -271,7 +271,7 @@ MCTF_TEST(test_startup_validation_try_no_user)
    ret = pgagroal_read_configuration(config, path, false);
    MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
 
-   ret = pgagroal_check_server_identifiers();
+   ret = pgagroal_check_server_identifiers(true);
 
    MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
                       "check_server_identifiers should return 0 in try mode without health_check_user");
@@ -302,7 +302,7 @@ MCTF_TEST(test_startup_validation_on_no_user)
    ret = pgagroal_read_configuration(config, path, false);
    MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
 
-   ret = pgagroal_check_server_identifiers();
+   ret = pgagroal_check_server_identifiers(true);
 
    MCTF_ASSERT(ret != 0, cleanup,
                "check_server_identifiers should fail in on mode without health_check_user");
@@ -337,7 +337,7 @@ MCTF_TEST(test_startup_validation_single_server_pg_control_version_and_system_id
    snprintf(config->servers[0].host, MISC_LENGTH, "%s", backup.servers[0].host);
    config->servers[0].port = backup.servers[0].port;
 
-   ret = pgagroal_check_server_identifiers();
+   ret = pgagroal_check_server_identifiers(true);
 
    MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
                       "check_server_identifiers should succeed for a single valid server");
@@ -347,6 +347,118 @@ MCTF_TEST(test_startup_validation_single_server_pg_control_version_and_system_id
 
    MCTF_ASSERT(strlen(config->servers[0].system_identifier) > 0, cleanup,
                "server system_identifier should be populated alongside version after startup validation");
+
+cleanup:
+   /* Restore original config */
+   memcpy(config, &backup, sizeof(struct main_configuration));
+   MCTF_FINISH();
+}
+
+// duplicate system_identifier with primary=on + primary=off (runtime): should pass and both remain valid
+MCTF_TEST(test_runtime_validation_duplicate_system_identifier_primary_on_off)
+{
+   struct main_configuration* config;
+   struct main_configuration backup;
+   char path[MAX_PATH];
+   int ret;
+
+   config = (struct main_configuration*)shmem;
+
+   /* Save original state */
+   memcpy(&backup, config, sizeof(struct main_configuration));
+
+   MCTF_ASSERT(build_test_conf_path("15", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   pgagroal_init_configuration(config);
+   ret = pgagroal_read_configuration(config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
+   config->max_connections = MIN(config->max_connections, MAX_NUMBER_OF_CONNECTIONS);
+
+   /* Point both servers to the same live instance to force equal system_identifier */
+   snprintf(config->servers[0].host, MISC_LENGTH, "%s", backup.servers[0].host);
+   config->servers[0].port = backup.servers[0].port;
+   snprintf(config->servers[1].host, MISC_LENGTH, "%s", backup.servers[0].host);
+   config->servers[1].port = backup.servers[0].port;
+
+   ret = pgagroal_check_server_identifiers(false);
+
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
+                      "check_server_identifiers should pass when only one duplicate is primary during reload");
+   MCTF_ASSERT(config->servers[0].valid, cleanup, "Primary server should remain valid");
+   MCTF_ASSERT(config->servers[1].valid, cleanup, "Standby server should remain valid since its duplicate is a primary");
+
+cleanup:
+   /* Restore original config */
+   memcpy(config, &backup, sizeof(struct main_configuration));
+   MCTF_FINISH();
+}
+
+// duplicate system_identifier with primary=off + primary=off (runtime): should pass but invalidate one
+MCTF_TEST(test_runtime_validation_duplicate_system_identifier_primary_off_off)
+{
+   struct main_configuration* config;
+   struct main_configuration backup;
+   char path[MAX_PATH];
+   int ret;
+
+   config = (struct main_configuration*)shmem;
+
+   /* Save original state */
+   memcpy(&backup, config, sizeof(struct main_configuration));
+
+   MCTF_ASSERT(build_test_conf_path("16", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   pgagroal_init_configuration(config);
+   ret = pgagroal_read_configuration(config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
+   config->max_connections = MIN(config->max_connections, MAX_NUMBER_OF_CONNECTIONS);
+
+   /* Point both servers to the same live instance to force equal system_identifier */
+   snprintf(config->servers[0].host, MISC_LENGTH, "%s", backup.servers[0].host);
+   config->servers[0].port = backup.servers[0].port;
+   snprintf(config->servers[1].host, MISC_LENGTH, "%s", backup.servers[0].host);
+   config->servers[1].port = backup.servers[0].port;
+
+   ret = pgagroal_check_server_identifiers(false);
+
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
+                      "check_server_identifiers should not fail during reload when duplicate non-primary servers share identifier");
+   MCTF_ASSERT(config->servers[0].valid != config->servers[1].valid, cleanup,
+               "One and only one of the duplicate servers should be marked as invalid");
+
+cleanup:
+   /* Restore original config */
+   memcpy(config, &backup, sizeof(struct main_configuration));
+   MCTF_FINISH();
+}
+
+// startup_validation = on with no health_check_user (runtime): should pass with a warning
+MCTF_TEST(test_runtime_validation_on_no_user)
+{
+   struct main_configuration* config;
+   struct main_configuration backup;
+   char path[MAX_PATH];
+   int ret;
+
+   config = (struct main_configuration*)shmem;
+
+   /* Save original state */
+   memcpy(&backup, config, sizeof(struct main_configuration));
+
+   MCTF_ASSERT(build_test_conf_path("13", path, sizeof(path)) == 0,
+               cleanup, "Failed to build config path");
+
+   pgagroal_init_configuration(config);
+   ret = pgagroal_read_configuration(config, path, false);
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup, "pgagroal_read_configuration should succeed");
+   config->max_connections = MIN(config->max_connections, MAX_NUMBER_OF_CONNECTIONS);
+
+   ret = pgagroal_check_server_identifiers(false);
+
+   MCTF_ASSERT_INT_EQ(ret, 0, cleanup,
+                      "check_server_identifiers should not fail during reload in on mode without health_check_user");
 
 cleanup:
    /* Restore original config */

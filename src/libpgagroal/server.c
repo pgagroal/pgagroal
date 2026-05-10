@@ -52,6 +52,97 @@
 static int failover(int old_primary);
 static int process_server_parameters(int server, struct deque* server_parameters);
 static int query_system_identifier(int server_idx, char* identifier, size_t id_size, int* pg_version);
+static bool has_active_connections(int server_idx);
+static int determine_loser(int i, int j);
+
+/**
+ * Check if a server has active connections in the pool.
+ *
+ * @param server_idx The server index
+ * @return true if the server has at least one active connection
+ */
+static bool
+has_active_connections(int server_idx)
+{
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
+
+   for (int k = 0; k < config->max_connections; k++)
+   {
+      signed char state = atomic_load(&config->states[k]);
+      if (state != STATE_NOTINIT && state != STATE_INIT && state != STATE_FREE)
+      {
+         if (config->connections[k].server == server_idx)
+         {
+            return true;
+         }
+      }
+   }
+
+   return false;
+}
+
+/**
+ * Determine which of two duplicate servers to invalidate.
+ *
+ * Tie-breaking rules:
+ * 1. If one server has active connections, keep it
+ * 2. If one server is PRIMARY, keep it
+ * 3. Otherwise keep the lower index (first in config order)
+ *
+ * @param i First server index
+ * @param j Second server index
+ * @return The index of the server to invalidate (the "loser")
+ */
+static int
+determine_loser(int i, int j)
+{
+   bool i_active;
+   bool j_active;
+
+   i_active = has_active_connections(i);
+   j_active = has_active_connections(j);
+
+   /* Rule 1: Keep the server with active connections */
+   if (i_active && !j_active)
+   {
+      return j;
+   }
+   if (j_active && !i_active)
+   {
+      return i;
+   }
+
+   /* Rule 2: Keep the PRIMARY server */
+
+   if (pgagroal_server_is_primary(i) && !pgagroal_server_is_primary(j))
+   {
+      return j;
+   }
+   if (pgagroal_server_is_primary(j) && !pgagroal_server_is_primary(i))
+   {
+      return i;
+   }
+
+   /* Rule 3: Keep the lower index (first in config order) */
+   return i < j ? i : j;
+}
+
+/**
+ * Check if the server is a primary server
+ */
+bool
+pgagroal_server_is_primary(int server)
+{
+   struct main_configuration* config;
+   signed char state;
+
+   config = (struct main_configuration*)shmem;
+   state = atomic_load(&config->servers[server].state);
+
+   return state == SERVER_PRIMARY || state == SERVER_NOTINIT_PRIMARY;
+}
 
 /**
  * Check server system identifiers for duplicates.
@@ -60,17 +151,19 @@ static int query_system_identifier(int server_idx, char* identifier, size_t id_s
  *   off: skip entirely
  *   try: run check if health_check_user is set, otherwise log INFO and continue
  *   on:  require health_check_user and fail on any query error or duplicate
+ *
+ * When strict is true (startup), duplicates cause a fatal error.
+ * When strict is false (reload), duplicates cause the losing server to be
+ * marked as invalid using tie-breaking rules.
  */
 int
-pgagroal_check_server_identifiers(void)
+pgagroal_check_server_identifiers(bool strict)
 {
    struct main_configuration* config;
    char identifiers[NUMBER_OF_SERVERS][64];
    int versions[NUMBER_OF_SERVERS];
-   int num_servers;
 
    config = (struct main_configuration*)shmem;
-   num_servers = config->number_of_servers;
 
    if (config->startup_validation == STARTUP_VALIDATION_OFF)
    {
@@ -82,8 +175,16 @@ pgagroal_check_server_identifiers(void)
    {
       if (config->startup_validation == STARTUP_VALIDATION_ON)
       {
-         pgagroal_log_fatal("startup_validation is set to 'on' but health_check_user is not configured");
-         return 1;
+         if (strict)
+         {
+            pgagroal_log_fatal("startup_validation is set to 'on' but health_check_user is not configured");
+            return 1;
+         }
+         else
+         {
+            pgagroal_log_warn("startup_validation is set to 'on' but health_check_user is not configured");
+            return 0;
+         }
       }
 
       /* try mode: no health_check_user, just inform and continue */
@@ -93,7 +194,7 @@ pgagroal_check_server_identifiers(void)
 
    pgagroal_log_info("Checking server system identifiers");
 
-   for (int i = 0; i < num_servers; i++)
+   FOREACH_VALID_SERVER
    {
       versions[i] = 0;
 
@@ -103,9 +204,17 @@ pgagroal_check_server_identifiers(void)
       {
          if (config->startup_validation == STARTUP_VALIDATION_ON)
          {
-            pgagroal_log_fatal("Could not query system_identifier for server [%s] (%s:%d)",
-                               config->servers[i].name, config->servers[i].host, config->servers[i].port);
-            return 1;
+            if (strict)
+            {
+               pgagroal_log_fatal("Could not query system_identifier for server [%s] (%s:%d)",
+                                  config->servers[i].name, config->servers[i].host, config->servers[i].port);
+               return 1;
+            }
+            else
+            {
+               pgagroal_log_warn("Could not query system_identifier for server [%s] (%s:%d)",
+                                 config->servers[i].name, config->servers[i].host, config->servers[i].port);
+            }
          }
 
          pgagroal_log_warn("Could not query system_identifier for server [%s] (%s:%d)",
@@ -121,34 +230,58 @@ pgagroal_check_server_identifiers(void)
       }
    }
 
-   for (int i = 0; i < num_servers; i++)
+   FOREACH_VALID_SERVER
    {
-      signed char state_i = atomic_load(&config->servers[i].state);
-
-      if (!strlen(identifiers[i]) ||
-          state_i == SERVER_PRIMARY ||
-          state_i == SERVER_NOTINIT_PRIMARY)
+      if (!strlen(identifiers[i]) || pgagroal_server_is_primary(i))
       {
          continue;
       }
-      for (int j = i + 1; j < num_servers; j++)
+      for (int j = i + 1; j < config->number_of_servers; j++)
       {
-         signed char state_j = atomic_load(&config->servers[j].state);
+         if (!config->servers[j].valid)
+         {
+            continue;
+         }
 
-         if (!strlen(identifiers[j]) ||
-             state_j == SERVER_PRIMARY ||
-             state_j == SERVER_NOTINIT_PRIMARY)
+         if (!strlen(identifiers[j]) || pgagroal_server_is_primary(j))
          {
             continue;
          }
          if (!strcmp(identifiers[i], identifiers[j]))
          {
-            pgagroal_log_fatal("Servers [%s] (%s:%d) and [%s] (%s:%d) have the same system_identifier (%s) "
-                               "- they point to the same PostgreSQL cluster",
-                               config->servers[i].name, config->servers[i].host, config->servers[i].port,
-                               config->servers[j].name, config->servers[j].host, config->servers[j].port,
-                               identifiers[i]);
-            return 1;
+            if (strict)
+            {
+               pgagroal_log_fatal("Servers [%s] (%s:%d) and [%s] (%s:%d) have the same system_identifier (%s) "
+                                  "- they point to the same PostgreSQL cluster",
+                                  config->servers[i].name, config->servers[i].host, config->servers[i].port,
+                                  config->servers[j].name, config->servers[j].host, config->servers[j].port,
+                                  identifiers[i]);
+               return 1;
+            }
+            else
+            {
+               int loser = determine_loser(i, j);
+               int winner = (loser == i) ? j : i;
+
+               pgagroal_log_warn("Servers [%s] (%s:%d) and [%s] (%s:%d) have the same system_identifier (%s) "
+                                 "- marking [%s] as invalid",
+                                 config->servers[i].name, config->servers[i].host, config->servers[i].port,
+                                 config->servers[j].name, config->servers[j].host, config->servers[j].port,
+                                 identifiers[i],
+                                 config->servers[loser].name);
+
+               config->servers[loser].valid = false;
+
+               pgagroal_log_info("Keeping server [%s] (%s:%d), invalidated [%s] (%s:%d)",
+                                 config->servers[winner].name, config->servers[winner].host, config->servers[winner].port,
+                                 config->servers[loser].name, config->servers[loser].host, config->servers[loser].port);
+
+               /* If the loser is server i, break inner loop since i is now invalid */
+               if (loser == i)
+               {
+                  break;
+               }
+            }
          }
       }
    }
@@ -156,7 +289,7 @@ pgagroal_check_server_identifiers(void)
    /* Check for version mismatches against the primary server */
    int primary_server = -1;
 
-   for (int i = 0; i < num_servers; i++)
+   FOREACH_VALID_SERVER
    {
       if (versions[i] == 0)
       {
@@ -172,7 +305,7 @@ pgagroal_check_server_identifiers(void)
 
    if (primary_server != -1)
    {
-      for (int i = 0; i < num_servers; i++)
+      FOREACH_VALID_SERVER
       {
          if (i == primary_server || versions[i] == 0)
          {
@@ -618,6 +751,10 @@ pgagroal_get_primary(int* server)
    /* Find PRIMARY */
    for (int i = 0; primary == -1 && i < config->number_of_servers; i++)
    {
+      if (!config->servers[i].valid)
+      {
+         continue;
+      }
       server_state = atomic_load(&config->servers[i].state);
       if (server_state == SERVER_PRIMARY)
       {
@@ -629,6 +766,10 @@ pgagroal_get_primary(int* server)
    /* Find NOTINIT_PRIMARY */
    for (int i = 0; primary == -1 && i < config->number_of_servers; i++)
    {
+      if (!config->servers[i].valid)
+      {
+         continue;
+      }
       server_state = atomic_load(&config->servers[i].state);
       if (server_state == SERVER_NOTINIT_PRIMARY)
       {
@@ -640,6 +781,10 @@ pgagroal_get_primary(int* server)
    /* Find the first valid server */
    for (int i = 0; primary == -1 && i < config->number_of_servers; i++)
    {
+      if (!config->servers[i].valid)
+      {
+         continue;
+      }
       server_state = atomic_load(&config->servers[i].state);
       if (server_state != SERVER_FAILOVER && server_state != SERVER_FAILED)
       {
@@ -851,7 +996,7 @@ pgagroal_server_clear(char* server)
 
    config = (struct main_configuration*)shmem;
 
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       if (!strcmp(config->servers[i].name, server))
       {
@@ -882,7 +1027,7 @@ pgagroal_server_switch(char* server)
    pgagroal_log_debug("pgagroal: Attempting to switch to server '%s'", server);
 
    // Find current primary server
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       state = atomic_load(&config->servers[i].state);
       if (state == SERVER_PRIMARY)
@@ -892,7 +1037,7 @@ pgagroal_server_switch(char* server)
       }
    }
    // Find target server by name
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       if (!strcmp(config->servers[i].name, server))
       {
@@ -990,7 +1135,7 @@ notify_standbys(int old_primary, int new_primary)
       args[idx++] = config->servers[new_primary].host;
       args[idx++] = new_port;
 
-      for (int i = 0; i < config->number_of_servers; i++)
+      FOREACH_VALID_SERVER
       {
          if (i == old_primary || i == new_primary)
             continue;
@@ -1039,6 +1184,10 @@ failover(int old_primary)
 
    for (int i = 0; new_primary == -1 && i < config->number_of_servers; i++)
    {
+      if (!config->servers[i].valid)
+      {
+         continue;
+      }
       state = atomic_load(&config->servers[i].state);
       if (state == SERVER_NOTINIT || state == SERVER_NOTINIT_PRIMARY || state == SERVER_REPLICA)
       {

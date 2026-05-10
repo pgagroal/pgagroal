@@ -194,7 +194,7 @@ status_details(bool details, struct json* response)
 
    pgagroal_json_create(&servers);
 
-   for (int i = 0; i < config->number_of_servers; i++)
+   FOREACH_VALID_SERVER
    {
       struct json* js = NULL;
       const char* health_str = "UNKNOWN";
@@ -233,6 +233,33 @@ status_details(bool details, struct json* response)
    }
 
    pgagroal_json_put(response, MANAGEMENT_ARGUMENT_SERVERS, (uintptr_t)servers, ValueJSON);
+
+   /* Show invalid servers separately */
+   {
+      struct json* invalid_servers = NULL;
+      pgagroal_json_create(&invalid_servers);
+
+      FOREACH_INVALID_SERVER
+      {
+         struct json* js = NULL;
+
+         if (strlen(config->servers[i].name) == 0)
+         {
+            continue;
+         }
+
+         pgagroal_json_create(&js);
+
+         pgagroal_json_put(js, MANAGEMENT_ARGUMENT_SERVER, (uintptr_t)config->servers[i].name, ValueString);
+         pgagroal_json_put(js, MANAGEMENT_ARGUMENT_HOST, (uintptr_t)config->servers[i].host, ValueString);
+         pgagroal_json_put(js, MANAGEMENT_ARGUMENT_PORT, (uintptr_t)config->servers[i].port, ValueInt32);
+         pgagroal_json_put(js, MANAGEMENT_ARGUMENT_STATE, (uintptr_t)"Invalid", ValueString);
+
+         pgagroal_json_put(invalid_servers, config->servers[i].name, (uintptr_t)js, ValueJSON);
+      }
+
+      pgagroal_json_put(response, "invalid_servers", (uintptr_t)invalid_servers, ValueJSON);
+   }
 
    if (details)
    {

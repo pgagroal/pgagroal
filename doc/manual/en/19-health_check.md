@@ -76,14 +76,18 @@ To set up a dedicated health check user:
 
 * **Always configure `health_check_user`**: It is best practice to set `health_check_user` on all configured servers, even when `health_check` is disabled. This allows pgagroal to verify server system identifiers at startup and detect misconfigured duplicate servers before they cause problems.
 
-* **Use `startup_validation`**: The `startup_validation` parameter controls how strictly pgagroal validates server identifiers at startup:
+* **Use `startup_validation`**: The `startup_validation` parameter controls how strictly pgagroal validates server identifiers at startup and configuration reload:
 
   | Value | Behavior |
   |-------|----------|
   | `on`  | Fail startup if `health_check_user` is not configured, if any server identifier cannot be fetched, or if duplicate identifiers are detected. Recommended for production. |
-  | `try` | (Default) Attempt the check if `health_check_user` is set. If not set, log an INFO message and continue. If a query fails, log a warning but continue. Duplicates still cause a fatal error. |
+  | `try` | (Default) Attempt the check if `health_check_user` is set. If not set, log an INFO message and continue. If a query fails, log a warning but continue. Duplicates still cause a fatal error at startup. |
   | `off` | Skip identifier checks entirely. |
 
+  *Note: During configuration reload, duplicates result in the conflicting server being marked as invalid rather than a fatal error. The server to invalidate is chosen based on the following tie-breaking rules:*
+  1. *A server with active connections is kept over one without.*
+  2. *A primary server is kept over a standby.*
+  3. *If both are equal, the server defined earlier in the configuration is kept.*
   Example configuration for strict startup validation:
   ```ini
   [pgagroal]

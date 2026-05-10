@@ -388,6 +388,7 @@ struct server
    int minor_version;            /**< The minor version of the server */
    char system_identifier[64];   /**< The system identifier of the server */
    bool tls;                     /**< Use TLS if possible */
+   bool valid;                   /**< Is the server valid */
    char tls_cert_file[MAX_PATH]; /**< TLS certificate path */
    char tls_key_file[MAX_PATH];  /**< TLS key path */
    char tls_ca_file[MAX_PATH];   /**< TLS CA certificate path */
@@ -397,6 +398,14 @@ struct server
    atomic_schar auth_type;       /**< The authentication type used for health check */
    int lineno;                   /**< The line number within the configuration file */
 } __attribute__((aligned(64)));
+
+#define FOREACH_SERVER for (int i = 0; i < config->number_of_servers; i++)
+#define FOREACH_VALID_SERVER                           \
+   for (int i = 0; i < config->number_of_servers; i++) \
+      if (config->servers[i].valid)
+#define FOREACH_INVALID_SERVER                         \
+   for (int i = 0; i < config->number_of_servers; i++) \
+      if (!config->servers[i].valid)
 
 /** @struct connection
  * Defines a connection
