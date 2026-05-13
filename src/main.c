@@ -1259,7 +1259,7 @@ read_superuser_path:
       pgagroal_health_check(argc, argv);
    }
 
-   if (pgagroal_check_server_identifiers())
+   if (pgagroal_check_server_identifiers(true))
    {
       pgagroal_log_fatal("pgagroal: Duplicate server system identifiers detected");
 #ifdef HAVE_SYSTEMD
@@ -1952,7 +1952,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       pgagroal_management_create_response(payload, -1, &response);
       pgagroal_json_create(&servers);
 
-      for (int i = 0; i < config->number_of_servers; i++)
+      FOREACH_VALID_SERVER
       {
          struct json* sobj = NULL;
          char* srv_status = NULL;
@@ -1980,6 +1980,31 @@ accept_mgt_cb(struct io_watcher* watcher)
       }
 
       pgagroal_json_put(response, MANAGEMENT_ARGUMENT_SERVERS, (uintptr_t)servers, ValueJSON);
+
+      /* Show invalid servers */
+      {
+         struct json* invalid_servers = NULL;
+         pgagroal_json_create(&invalid_servers);
+
+         FOREACH_INVALID_SERVER
+         {
+            struct json* sobj = NULL;
+
+            if (strlen(config->servers[i].name) == 0)
+            {
+               continue;
+            }
+
+            pgagroal_json_create(&sobj);
+            pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_HOST, (uintptr_t)config->servers[i].host, ValueString);
+            pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_PORT, (uintptr_t)config->servers[i].port, ValueInt32);
+            pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t)"Invalid", ValueString);
+
+            pgagroal_json_put(invalid_servers, config->servers[i].name, (uintptr_t)sobj, ValueJSON);
+         }
+
+         pgagroal_json_put(response, "invalid_servers", (uintptr_t)invalid_servers, ValueJSON);
+      }
 
       end_time = time(NULL);
 

@@ -100,7 +100,7 @@ pgagroal_server_switch(char* server);
  * @return 0 upon success, otherwise 1
  */
 int
-pgagroal_check_server_identifiers(void);
+pgagroal_check_server_identifiers(bool strict);
 
 /**
  * Connect to a server, authenticate, and execute a simple query
@@ -126,6 +126,14 @@ pgagroal_server_query_execute(int server_idx, char* user, char* database, char* 
  */
 int
 pgagroal_server_get_connectivity_info(int server, char** status, char** primary, int64_t* behind_bytes);
+
+/**
+ * Check if the server is a primary server
+ * @param server The server index
+ * @return true if primary, false otherwise
+ */
+bool
+pgagroal_server_is_primary(int server);
 
 #ifdef __cplusplus
 }

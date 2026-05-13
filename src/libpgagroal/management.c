@@ -960,7 +960,7 @@ pgagroal_management_response_error(SSL* ssl, int socket, char* server, int32_t e
       }
       else
       {
-         for (int i = 0; i < config->number_of_servers; i++)
+         FOREACH_VALID_SERVER
          {
             if (!strcmp(server, config->servers[i].name))
             {

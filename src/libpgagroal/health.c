@@ -159,7 +159,7 @@ health_check_loop(void)
 
       pgagroal_log_debug("Health check run");
 
-      for (int i = 0; i < config->number_of_servers; i++)
+      FOREACH_VALID_SERVER
       {
          int auth = HEALTH_CHECK_AUTH_UNKNOWN;
          up = false;
