@@ -68,7 +68,7 @@ after having installed all the required dependencies:
 * [rst2man](https://docutils.sourceforge.io/)
 * [libatomic](https://gcc.gnu.org/wiki/Atomic)
 * [Doxygen](https://doxygen.nl/index.html)
-* [pdflatex](https://tug.org/texlive/)
+* [xelatex](https://tug.org/texlive/)
 * [systemd](https://www.freedesktop.org/wiki/Software/systemd/) (on Linux systems)
 * [zlib](https://zlib.net)
 * [zstd](http://www.zstd.net)

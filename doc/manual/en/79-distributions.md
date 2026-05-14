@@ -16,7 +16,7 @@ This chapter provides installation instructions for different operating systems 
 * [rst2man][rst2man]
 * [libatomic](https://gcc.gnu.org/wiki/Atomic)
 * [Doxygen](https://doxygen.nl/index.html)
-* [pdflatex](https://tug.org/texlive/)
+* [xelatex](https://tug.org/texlive/)
 * [zlib](https://zlib.net)
 * [zstd](http://www.zstd.net)
 * [lz4](https://lz4.github.io/lz4/)
