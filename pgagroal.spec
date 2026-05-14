@@ -64,12 +64,21 @@ cmake -DCMAKE_BUILD_TYPE=Release -DDOCS=OFF ..
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/SECURITY.md %{buildroot}%{_docdir}/%{name}/SECURITY.md
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/DISTRIBUTIONS.md %{buildroot}%{_docdir}/%{name}/DISTRIBUTIONS.md
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/SPONSORS.md %{buildroot}%{_docdir}/%{name}/SPONSORS.md
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/HA.md %{buildroot}%{_docdir}/%{name}/HA.md
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/etc/pgagroal.service %{buildroot}%{_docdir}/%{name}/etc/pgagroal.service
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/etc/pgagroal.socket %{buildroot}%{_docdir}/%{name}/etc/pgagroal.socket
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/perf-extended.png %{buildroot}%{_docdir}/%{name}/images/perf-extended.png
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/perf-prepared.png %{buildroot}%{_docdir}/%{name}/images/perf-prepared.png
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/perf-readonly.png %{buildroot}%{_docdir}/%{name}/images/perf-readonly.png
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/perf-simple.png %{buildroot}%{_docdir}/%{name}/images/perf-simple.png
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/ha-linear-backup-pg.png %{buildroot}%{_docdir}/%{name}/images/ha-linear-backup-pg.png
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/ha-linear-backup-haproxy.png %{buildroot}%{_docdir}/%{name}/images/ha-linear-backup-haproxy.png
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/ha-linear-partner-pg.png %{buildroot}%{_docdir}/%{name}/images/ha-linear-partner-pg.png
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/ha-linear-partner-haproxy.png %{buildroot}%{_docdir}/%{name}/images/ha-linear-partner-haproxy.png
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/ha-star-single-pg.png %{buildroot}%{_docdir}/%{name}/images/ha-star-single-pg.png
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/ha-star-single-haproxy.png %{buildroot}%{_docdir}/%{name}/images/ha-star-single-haproxy.png
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/ha-star-two-level-pg.png %{buildroot}%{_docdir}/%{name}/images/ha-star-two-level-pg.png
+%{__install} -m 644 %{_builddir}/%{name}-%{version}/doc/images/ha-star-two-level-haproxy.png %{buildroot}%{_docdir}/%{name}/images/ha-star-two-level-haproxy.png
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/shell_comp/pgagroal_comp.bash %{buildroot}%{_docdir}/%{name}/shell_comp/pgagroal_comp.bash
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/shell_comp/pgagroal_comp.zsh %{buildroot}%{_docdir}/%{name}/shell_comp/pgagroal_comp.zsh
 %{__install} -m 644 %{_builddir}/%{name}-%{version}/contrib/prometheus_scrape/* %{buildroot}%{_docdir}/%{name}/prometheus_scrape/
@@ -121,6 +130,7 @@ cd %{buildroot}%{_libdir}/
 %{_docdir}/%{name}/SECURITY.md
 %{_docdir}/%{name}/DISTRIBUTIONS.md
 %{_docdir}/%{name}/SPONSORS.md
+%{_docdir}/%{name}/HA.md
 %{_docdir}/%{name}/grafana/*.json
 %{_docdir}/%{name}/grafana/README.md
 %{_docdir}/%{name}/grafana/TESTING.md
@@ -135,6 +145,14 @@ cd %{buildroot}%{_libdir}/
 %{_docdir}/%{name}/images/perf-prepared.png
 %{_docdir}/%{name}/images/perf-readonly.png
 %{_docdir}/%{name}/images/perf-simple.png
+%{_docdir}/%{name}/images/ha-linear-backup-pg.png
+%{_docdir}/%{name}/images/ha-linear-backup-haproxy.png
+%{_docdir}/%{name}/images/ha-linear-partner-pg.png
+%{_docdir}/%{name}/images/ha-linear-partner-haproxy.png
+%{_docdir}/%{name}/images/ha-star-single-pg.png
+%{_docdir}/%{name}/images/ha-star-single-haproxy.png
+%{_docdir}/%{name}/images/ha-star-two-level-pg.png
+%{_docdir}/%{name}/images/ha-star-two-level-haproxy.png
 %{_docdir}/%{name}/shell_comp/pgagroal_comp.bash
 %{_docdir}/%{name}/shell_comp/pgagroal_comp.zsh
 %{_docdir}/%{name}/prometheus_scrape/*

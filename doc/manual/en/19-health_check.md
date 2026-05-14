@@ -58,6 +58,7 @@ To set up a dedicated health check user:
    ```
 
 3. **Configure pgagroal.conf**:
+   Ensure health check is turned on and configured properly -- both `health_check` and `health_check_user` must be set, health checks will not run without both:
    ```ini
    [pgagroal]
    health_check = on
