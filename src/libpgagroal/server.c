@@ -391,24 +391,6 @@ pgagroal_server_query_execute(int server_idx, char* user, char* database, char* 
          *auth_type = HEALTH_CHECK_AUTH_TRUST;
       }
    }
-   else if (auth_type_msg == 5) /* MD5 */
-   {
-      if (auth_type != NULL)
-      {
-         *auth_type = HEALTH_CHECK_AUTH_MD5;
-      }
-      password = pgagroal_get_user_password(user);
-      if (password == NULL)
-      {
-         pgagroal_log_debug("server_query: Password for %s not found", user);
-         goto error;
-      }
-      if (pgagroal_md5_client_auth(msg, user, password, fd, NULL, &msg) != 0)
-      {
-         pgagroal_log_debug("server_query: MD5 auth failed for server %d", server_idx);
-         goto error;
-      }
-   }
    else if (auth_type_msg == 10) /* SASL */
    {
       if (auth_type != NULL)

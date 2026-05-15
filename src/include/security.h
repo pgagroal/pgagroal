@@ -104,15 +104,6 @@ char*
 pgagroal_get_user_password(char* username);
 
 /**
- * MD5 a string
- * @param str The string
- * @param md5 The MD5 string
- * @return 0 upon success, otherwise 1
- */
-int
-pgagroal_md5(char* str, int length, char** md5);
-
-/**
  * Is the user known to the system
  * @param user The user name
  * @return True if known, otherwise false
@@ -215,18 +206,6 @@ pgagroal_extract_cert_identity(SSL* ssl);
  */
 bool
 pgagroal_is_cert_authorized(const char* cert_identity, const char* requested_username);
-
-/**
- * Authenticate using MD5
- * @param startup_response_msg The startup response message
- * @param username The user name
- * @param password The password
- * @param socket The descriptor
- * @param server_ssl The SSL context
- * @return 0 upon success, otherwise 1
- */
-int
-pgagroal_md5_client_auth(struct message* startup_response_msg, char* username, char* password, int socket, SSL* server_ssl, struct message** response_msg);
 
 /**
  * Perform SCRAM-SHA-256 client authentication

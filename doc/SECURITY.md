@@ -7,12 +7,8 @@ pgagroal use pass-through security by default.
 This means that pgagroal delegates to PostgreSQL to determine if the credentials used are valid.
 
 Once a connection is obtained pgagroal will replay the previous communication sequence to verify
-the new client. This only works for connections using `trust`, `password` or `md5` authentication
+the new client. This only works for connections using `trust` or `password` authentication
 methods, so `scram-sha-256` based connections are not cached.
-
-Note, that this can lead to replay attacks against the `md5` based connections since the hash
-doesn't change. Make sure that pgagroal is deployed on a private trusted network, but consider
-using either a user vault or authentication query instead.
 
 ## User vault
 
@@ -65,7 +61,7 @@ Make sure that the user is different from the actual application users accessing
 the database. The user accessing the function needs to have its credential present
 in the vault passed to the `-S` or `--superuser` command line parameter.
 
-The user executing the authentication query must use either a MD5 or a SCRAM-SHA-256
+The user executing the authentication query must use a SCRAM-SHA-256
 password protected based account.
 
 Note, that authentication query doesn't support user vaults - user vault (`-u`) and frontend users (`-F`) -

@@ -126,7 +126,6 @@ extern "C" {
 #define SECURITY_REJECT                -1
 #define SECURITY_TRUST                 0
 #define SECURITY_PASSWORD              3
-#define SECURITY_MD5                   5
 #define SECURITY_SCRAM256              10
 #define SECURITY_ALL                   99
 
@@ -148,7 +147,6 @@ extern "C" {
 
 #define HEALTH_CHECK_AUTH_UNKNOWN      0
 #define HEALTH_CHECK_AUTH_TRUST        1
-#define HEALTH_CHECK_AUTH_MD5          2
 #define HEALTH_CHECK_AUTH_SCRAM        3
 #define HEALTH_CHECK_AUTH_ERROR        4
 
