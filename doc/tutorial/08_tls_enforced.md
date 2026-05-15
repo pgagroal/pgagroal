@@ -52,10 +52,10 @@ ssl_key_file = </path/to/postgres.key>
 and make the contents of `pg_hba.conf` -
 
 ```
-hostssl all all all md5
+hostssl all all all scram-sha-256
 ```
 
-here we are choosing md5 for authenticating the requested user and database against postgres catalog
+here we are choosing scram-sha-256 for authenticating the requested user and database against postgres catalog
 
 Make the contents of `pgagroal.conf` to enable tls the whole way -
 

@@ -871,69 +871,6 @@ pgagroal_create_auth_password_response(char* password, struct message** msg)
 }
 
 int
-pgagroal_write_auth_md5(SSL* ssl, int socket, char salt[4])
-{
-   char md5[13];
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&md5, 0, sizeof(md5));
-
-   md5[0] = 'R';
-   pgagroal_write_int32(&(md5[1]), 12);
-   pgagroal_write_int32(&(md5[5]), 5);
-   pgagroal_write_byte(&(md5[9]), salt[0]);
-   pgagroal_write_byte(&(md5[10]), salt[1]);
-   pgagroal_write_byte(&(md5[11]), salt[2]);
-   pgagroal_write_byte(&(md5[12]), salt[3]);
-
-   msg.kind = 'R';
-   msg.length = 13;
-   msg.data = &md5;
-
-   if (ssl == NULL)
-   {
-      return write_message(socket, &msg);
-   }
-
-   return ssl_write_message(ssl, &msg);
-}
-
-int
-pgagroal_create_auth_md5_response(char* md5, struct message** msg)
-{
-   struct message* m = NULL;
-   size_t size;
-
-   size = 1 + 4 + strlen(md5) + 1;
-
-   m = (struct message*)malloc(sizeof(struct message));
-   if (m == NULL)
-   {
-      pgagroal_log_fatal("Couldn't allocate memory while creating auth_md5_response");
-      return MESSAGE_STATUS_ERROR;
-   }
-   m->data = calloc(1, size);
-   if (m->data == NULL)
-   {
-      pgagroal_log_fatal("Couldn't allocate memory while creating auth_md5_response");
-      free(m);
-      return MESSAGE_STATUS_ERROR;
-   }
-
-   m->kind = 'p';
-   m->length = size;
-
-   pgagroal_write_byte(m->data, 'p');
-   pgagroal_write_int32(m->data + 1, size - 1);
-   pgagroal_write_string(m->data + 5, md5);
-
-   *msg = m;
-
-   return MESSAGE_STATUS_OK;
-}
-
-int
 pgagroal_write_auth_scram256(SSL* ssl, int socket)
 {
    char scram[24];

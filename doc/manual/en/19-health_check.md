@@ -103,4 +103,4 @@ The health status of each server is exposed via the Prometheus metrics endpoint 
 * `0`: Server is DOWN
 * `2`: State is UNKNOWN (initial state or pending first check)
 
-The metric includes an `auth` label identifying the authentication method used during the last successful probe (e.g., `trust`, `md5`, `scram-sha-256`).
+The metric includes an `auth` label identifying the authentication method used during the last successful probe (e.g., `trust`, `scram-sha-256`).

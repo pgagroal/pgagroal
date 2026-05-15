@@ -42,11 +42,10 @@ Modern high-performance systems typically see throughput exceed **5GB/s** per co
 This means that [**pgagroal**][pgagroal] delegates to PostgreSQL to determine if the credentials used are valid.
 
 Once a connection is obtained [**pgagroal**][pgagroal] will replay the previous communication sequence to verify
-the new client. This only works for connections using `trust`, `password` or `md5` authentication
+the new client. This only works for connections using `trust` or `password` authentication
 methods, so `scram-sha-256` based connections are not cached.
 
 **Security Considerations:**
-- This can lead to replay attacks against `md5` based connections since the hash doesn't change
 - Make sure that [**pgagroal**][pgagroal] is deployed on a private trusted network
 - Consider using either a user vault or authentication query instead
 

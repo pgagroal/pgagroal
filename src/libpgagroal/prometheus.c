@@ -2446,10 +2446,6 @@ general_information(prometheus_metrics_container_t* container)
       {
          auth_str = "trust";
       }
-      else if (health_auth == HEALTH_CHECK_AUTH_MD5)
-      {
-         auth_str = "md5";
-      }
       else if (health_auth == HEALTH_CHECK_AUTH_SCRAM)
       {
          auth_str = "scram-sha-256";
