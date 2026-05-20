@@ -101,6 +101,7 @@ extern "C" {
 #define CONFIGURATION_ARGUMENT_VALIDATION                       "validation"
 #define CONFIGURATION_ARGUMENT_STARTUP_VALIDATION               "startup_validation"
 #define CONFIGURATION_ARGUMENT_BACKGROUND_INTERVAL              "background_interval"
+#define CONFIGURATION_ARGUMENT_TLS_CERT_MONITOR_INTERVAL        "tls_cert_monitor_interval"
 #define CONFIGURATION_ARGUMENT_MAX_RETRIES                      "max_retries"
 #define CONFIGURATION_ARGUMENT_MAX_CONNECTIONS                  "max_connections"
 #define CONFIGURATION_ARGUMENT_ALLOW_UNKNOWN_USERS              "allow_unknown_users"

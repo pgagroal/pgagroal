@@ -170,6 +170,7 @@ pgagroal_init_configuration(void* shm)
    config->max_connection_age = PGAGROAL_TIME_SEC(DEFAULT_MAX_CONNECTION_AGE);
    config->validation = VALIDATION_OFF;
    config->background_interval = PGAGROAL_TIME_SEC(DEFAULT_BACKGROUND_INTERVAL);
+   config->tls_cert_monitor_interval = PGAGROAL_TIME_SEC(DEFAULT_TLS_CERT_MONITOR_INTERVAL);
    config->max_retries = 5;
    config->health_check = false;
    config->health_check_period = PGAGROAL_TIME_SEC(DEFAULT_HEALTH_CHECK_PERIOD);
@@ -3686,6 +3687,13 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
 
    memcpy(&config->background_interval, &reload->background_interval, sizeof(config->background_interval));
 
+   if (restart_time("tls_cert_monitor_interval", config->tls_cert_monitor_interval, reload->tls_cert_monitor_interval, true))
+   {
+      changed = true;
+   }
+
+   memcpy(&config->tls_cert_monitor_interval, &reload->tls_cert_monitor_interval, sizeof(config->tls_cert_monitor_interval));
+
    config->max_retries = reload->max_retries;
 
    if (restart_time("authentication_timeout", config->common.authentication_timeout, reload->common.authentication_timeout, false))
@@ -4920,6 +4928,10 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       {
          return to_int(buffer, (int)pgagroal_time_convert(config->background_interval, FORMAT_TIME_S));
       }
+      else if (!strncmp(key, "tls_cert_monitor_interval", MISC_LENGTH))
+      {
+         return to_int(buffer, (int)pgagroal_time_convert(config->tls_cert_monitor_interval, FORMAT_TIME_S));
+      }
       else if (!strncmp(key, "max_retries", MISC_LENGTH))
       {
          return to_int(buffer, config->max_retries);
@@ -5953,6 +5965,13 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
          unknown = true;
       }
    }
+   else if (key_in_section("tls_cert_monitor_interval", section, key, true, &unknown))
+   {
+      if (as_seconds(value, &config->tls_cert_monitor_interval, PGAGROAL_TIME_SEC(DEFAULT_TLS_CERT_MONITOR_INTERVAL)))
+      {
+         unknown = true;
+      }
+   }
    else if (key_in_section("max_retries", section, key, true, &unknown))
    {
       if (as_int(value, &config->max_retries))
@@ -6750,6 +6769,7 @@ add_configuration_response(struct json* res)
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_VALIDATION, (uintptr_t)config->validation, ValueInt64);
    pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_STARTUP_VALIDATION, config->startup_validation, to_startup_validation);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_BACKGROUND_INTERVAL, (uintptr_t)pgagroal_time_convert(config->background_interval, FORMAT_TIME_S), ValueInt64);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TLS_CERT_MONITOR_INTERVAL, (uintptr_t)pgagroal_time_convert(config->tls_cert_monitor_interval, FORMAT_TIME_S), ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_RETRIES, (uintptr_t)config->max_retries, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_CONNECTIONS, (uintptr_t)config->max_connections, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ALLOW_UNKNOWN_USERS, (uintptr_t)config->allow_unknown_users, ValueBool);
