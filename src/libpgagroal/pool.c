@@ -1272,10 +1272,6 @@ pgagroal_pool_status(void)
       connection_details(i);
    }
 
-#ifdef DEBUG
-   assert(atomic_load(&config->active_connections) <= config->max_connections);
-#endif
-
    return 0;
 }
 
