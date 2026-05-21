@@ -102,6 +102,30 @@ pgagroal_tsclient_destroy()
 }
 
 int
+pgagroal_tsclient_reset_shmem(void)
+{
+   int ret;
+   char* configuration_path = NULL;
+
+   if (shmem == NULL)
+   {
+      return 1;
+   }
+
+   pgagroal_init_configuration(shmem);
+
+   configuration_path = get_configuration_path();
+   if (configuration_path != NULL)
+   {
+      ret = pgagroal_read_configuration(shmem, configuration_path, false);
+      free(configuration_path);
+      return ret;
+   }
+
+   return 1;
+}
+
+int
 pgagroal_tsclient_execute_pgbench(char* user, char* database, bool select_only, int client_count, int thread_count, int transaction_count)
 {
    char* command = NULL;
