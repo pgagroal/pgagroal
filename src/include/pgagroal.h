@@ -397,6 +397,9 @@ struct server
    unsigned int failures;        /**< The number of failures */
    atomic_schar auth_type;       /**< The authentication type used for health check */
    int lineno;                   /**< The line number within the configuration file */
+   bool paused;                  /**< The server state */
+   time_t last_paused;           /**< The last time the server paused */
+   time_t last_resumed;          /**< The last time the server resumed */
 } __attribute__((aligned(64)));
 
 #define FOREACH_SERVER for (int i = 0; i < config->number_of_servers; i++)
@@ -613,6 +616,8 @@ struct main_prometheus
    atomic_ullong network_received; /**< The bytes received from servers */
 
    atomic_ulong server_error[NUMBER_OF_SERVERS];          /**< The number of errors for a server */
+   atomic_ulong server_pause_total[NUMBER_OF_SERVERS];    /**< Successful pause operations per server */
+   atomic_ulong server_resume_total[NUMBER_OF_SERVERS];   /**< Successful resume operations per server */
    atomic_ulong failed_servers;                           /**< The number of failed servers */
    struct certificate_metrics cert_metrics;               /**< TLS certificate metrics */
    struct prometheus_connection prometheus_connections[]; /**< The number of prometheus connections (FMA) */
@@ -699,6 +704,7 @@ struct main_configuration
    bool all_disabled;                                      /**< Are all databases disabled */
    char disabled[NUMBER_OF_DISABLED][MAX_DATABASE_LENGTH]; /**< Which databases are disabled */
 
+   bool all_paused;                                        /**< Are all server paused */
    int pipeline; /**< The pipeline type */
 
    bool failover;                            /**< Is failover enabled */

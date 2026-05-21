@@ -321,6 +321,74 @@ error:
 }
 
 int
+pgagroal_management_request_pause(SSL* ssl, int socket, char* server, uint8_t compression, uint8_t encryption, int32_t output_format)
+{
+   struct json* j = NULL;
+   struct json* request = NULL;
+
+   if (pgagroal_management_create_header(MANAGEMENT_PAUSE, compression, encryption, output_format, &j))
+   {
+      goto error;
+   }
+
+   if (pgagroal_management_create_request(j, &request))
+   {
+      goto error;
+   }
+
+   pgagroal_json_put(request, MANAGEMENT_ARGUMENT_SERVER, (uintptr_t)server, ValueString);
+
+   if (pgagroal_management_write_json(ssl, socket, compression, encryption, j))
+   {
+      goto error;
+   }
+
+   pgagroal_json_destroy(j);
+
+   return 0;
+
+   error:
+
+      pgagroal_json_destroy(j);
+
+   return 1;
+}
+
+int
+pgagroal_management_request_resume(SSL* ssl, int socket, char* server, uint8_t compression, uint8_t encryption, int32_t output_format)
+{
+   struct json* j = NULL;
+   struct json* request = NULL;
+
+   if (pgagroal_management_create_header(MANAGEMENT_RESUME, compression, encryption, output_format, &j))
+   {
+      goto error;
+   }
+
+   if (pgagroal_management_create_request(j, &request))
+   {
+      goto error;
+   }
+
+   pgagroal_json_put(request, MANAGEMENT_ARGUMENT_SERVER, (uintptr_t)server, ValueString);
+
+   if (pgagroal_management_write_json(ssl, socket, compression, encryption, j))
+   {
+      goto error;
+   }
+
+   pgagroal_json_destroy(j);
+
+   return 0;
+
+   error:
+
+      pgagroal_json_destroy(j);
+
+   return 1;
+}
+
+int
 pgagroal_management_request_gracefully(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format)
 {
    struct json* j = NULL;
