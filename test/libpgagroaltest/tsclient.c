@@ -38,6 +38,7 @@
 /* system */
 #include <err.h>
 #include <getopt.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,8 +49,15 @@
 
 char project_directory[BUFFER_SIZE];
 
+struct hold_thread_args
+{
+   char* command;
+   int   exit_status;
+};
+
 static char* get_configuration_path();
 static char* get_log_file_path();
+static void* hold_thread_main(void* arg);
 
 int
 pgagroal_tsclient_init(char* base_dir)
@@ -293,6 +301,123 @@ pgagroal_tsclient_init_pgbench(char* user, char* database, int scale)
    free(log_file_path);
 
    return ret;
+}
+
+int
+pgagroal_tsclient_execute_concurrent_holds(char* user, char* database, int client_count, int hold_seconds)
+{
+   struct main_configuration* config = NULL;
+   pthread_t* threads = NULL;
+   struct hold_thread_args* args = NULL;
+   char* log_file_path = NULL;
+   const char* password = NULL;
+   int failures = 0;
+   int spawned = 0;
+   int rc;
+
+   if (client_count <= 0 || hold_seconds < 0)
+   {
+      return 1;
+   }
+
+   config = (struct main_configuration*)shmem;
+   log_file_path = get_log_file_path();
+
+   /* Same precedence used by pgagroal_tsclient_execute_pgbench */
+   password = getenv("PGPASSWORD");
+   if (password == NULL)
+   {
+      password = getenv("PG_USER_PASSWORD");
+   }
+   if (password == NULL)
+   {
+      password = getenv("PG_UTF8_USER_PASSWORD");
+   }
+
+   threads = (pthread_t*)calloc(client_count, sizeof(pthread_t));
+   args = (struct hold_thread_args*)calloc(client_count, sizeof(struct hold_thread_args));
+   if (threads == NULL || args == NULL)
+   {
+      failures = client_count;
+      goto cleanup;
+   }
+
+   for (int i = 0; i < client_count; i++)
+   {
+      char* cmd = NULL;
+      char  sql[128];
+
+      snprintf(sql, sizeof(sql), "BEGIN; SELECT pg_sleep(%d); COMMIT;", hold_seconds);
+
+      if (password != NULL && strlen(password) > 0)
+      {
+         cmd = pgagroal_append(cmd, "PGPASSWORD=");
+         cmd = pgagroal_append(cmd, (char*)password);
+         cmd = pgagroal_append_char(cmd, ' ');
+      }
+
+      cmd = pgagroal_append(cmd, "psql -h ");
+      cmd = pgagroal_append(cmd, config->common.host);
+      cmd = pgagroal_append(cmd, " -p ");
+      cmd = pgagroal_append_int(cmd, config->common.port);
+      cmd = pgagroal_append(cmd, " -U ");
+      cmd = pgagroal_append(cmd, user);
+      cmd = pgagroal_append(cmd, " -d ");
+      cmd = pgagroal_append(cmd, database);
+      cmd = pgagroal_append(cmd, " -v ON_ERROR_STOP=1 -X -A -t -c \"");
+      cmd = pgagroal_append(cmd, sql);
+      cmd = pgagroal_append(cmd, "\" >> ");
+      cmd = pgagroal_append(cmd, log_file_path);
+      cmd = pgagroal_append(cmd, " 2>&1 < /dev/null");
+
+      args[i].command = cmd;
+      args[i].exit_status = -1;
+
+      rc = pthread_create(&threads[i], NULL, hold_thread_main, &args[i]);
+      if (rc != 0)
+      {
+         /* Could not spawn this client; count it as a failure and stop spawning */
+         failures++;
+         break;
+      }
+      spawned++;
+   }
+
+   for (int i = 0; i < spawned; i++)
+   {
+      pthread_join(threads[i], NULL);
+      if (args[i].exit_status != 0)
+      {
+         failures++;
+      }
+   }
+
+cleanup:
+   if (args != NULL)
+   {
+      for (int i = 0; i < client_count; i++)
+      {
+         free(args[i].command);
+      }
+      free(args);
+   }
+   free(threads);
+   free(log_file_path);
+
+   return (failures == 0) ? 0 : 1;
+}
+
+static void*
+hold_thread_main(void* arg)
+{
+   struct hold_thread_args* a = (struct hold_thread_args*)arg;
+
+   if (a == NULL || a->command == NULL)
+   {
+      return NULL;
+   }
+   a->exit_status = system(a->command);
+   return NULL;
 }
 
 static char*
