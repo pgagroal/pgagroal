@@ -27,6 +27,7 @@
  */
 
 /* pgagroal */
+#define _NETBSD_SOURCE
 #include <pgagroal.h>
 #include <configuration.h>
 #include <json.h>
