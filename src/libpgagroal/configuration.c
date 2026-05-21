@@ -1358,7 +1358,6 @@ pgagroal_validate_hba_configuration(void* shm)
       if (!strcasecmp("trust", config->hbas[i].method) ||
           !strcasecmp("reject", config->hbas[i].method) ||
           !strcasecmp("password", config->hbas[i].method) ||
-          !strcasecmp("md5", config->hbas[i].method) ||
           !strcasecmp("scram-sha-256", config->hbas[i].method) ||
           !strcasecmp("all", config->hbas[i].method))
       {

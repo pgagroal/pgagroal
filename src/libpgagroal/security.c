@@ -56,7 +56,6 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/hmac.h>
-#include <openssl/md5.h>
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
 #include <openssl/params.h>
@@ -80,7 +79,6 @@ static int use_unpooled_connection(struct message* msg, SSL* c_ssl, int client_f
                                    char* username, int hba_method, SSL** server_ssl);
 static int client_trust(SSL* c_ssl, int client_fd, char* username, char* password, int slot);
 static int client_password(SSL* c_ssl, int client_fd, char* username, char* password, int slot);
-static int client_md5(SSL* c_ssl, int client_fd, char* username, char* password, int slot);
 static int client_scram256(SSL* c_ssl, int client_fd, char* username, char* password, int slot);
 static int client_ok(SSL* c_ssl, int client_fd, int slot);
 static int server_passthrough(struct message* msg, int auth_type, SSL* c_ssl, SSL* s_ssl, int client_fd, int slot);
@@ -88,7 +86,6 @@ static int server_authenticate(struct message* msg, int auth_type, char* usernam
                                int slot, SSL* server_ssl);
 static int server_trust(int slot, SSL* server_ssl);
 static int server_password(char* username, char* password, int slot, SSL* server_ssl);
-static int server_md5(char* username, char* password, int slot, SSL* server_ssl);
 static int server_scram256(char* username, char* password, int slot, SSL* server_ssl);
 
 static bool is_allowed(char* username, char* database, char* address, int* hba_method);
@@ -101,13 +98,10 @@ static int get_hba_method(int index);
 
 static char* get_frontend_password(char* username);
 static char* get_admin_password(char* username);
-static int get_salt(void* data, char** salt);
 
 char* pgagroal_get_user_password(char* username);
 
 static int sasl_prep(char* password, char** password_prep);
-
-int pgagroal_md5_client_auth(struct message* startup_response_msg, char* username, char* password, int socket, SSL* server_ssl, struct message** response_msg);
 
 int pgagroal_scram_client_auth(char* username, char* password, int socket, SSL* server_ssl, struct message** response_msg);
 static int generate_nounce(char** nounce);
@@ -144,7 +138,6 @@ static int auth_query(SSL* c_ssl, int client_fd, int slot, char* username, char*
 static int auth_query_get_connection(char* username, char* password, char* database, int* server_fd, SSL** server_ssl);
 
 static int auth_query_get_password(int socket, SSL* server_ssl, char* username, char* database, char** password);
-static int auth_query_client_md5(SSL* c_ssl, int client_fd, char* username, char* hash, int slot);
 static int auth_query_client_scram256(SSL* c_ssl, int client_fd, char* username, char* shadow, int slot);
 static char* resolve_database_alias(char* username, char* database);
 
@@ -592,13 +585,12 @@ pgagroal_prefill_auth(char* username, char* password, char* database, int* slot,
    /* Supported security models: */
    /*   trust (0) */
    /*   password (3) */
-   /*   md5 (5) */
    /*   scram256 (10) */
    if (auth_type == -1)
    {
       goto error;
    }
-   else if (auth_type != SECURITY_TRUST && auth_type != SECURITY_PASSWORD && auth_type != SECURITY_MD5 && auth_type != SECURITY_SCRAM256)
+   else if (auth_type != SECURITY_TRUST && auth_type != SECURITY_PASSWORD && auth_type != SECURITY_SCRAM256)
    {
       goto error;
    }
@@ -1280,12 +1272,7 @@ get_auth_type(struct message* msg, int* auth_type)
          pgagroal_log_trace("Backend: R - CleartextPassword");
          break;
       case 5:
-         pgagroal_log_trace("Backend: R - MD5Password");
-         pgagroal_log_trace("             Salt %02hhx%02hhx%02hhx%02hhx",
-                            (signed char)(pgagroal_read_byte(msg->data + 9) & 0xFF),
-                            (signed char)(pgagroal_read_byte(msg->data + 10) & 0xFF),
-                            (signed char)(pgagroal_read_byte(msg->data + 11) & 0xFF),
-                            (signed char)(pgagroal_read_byte(msg->data + 12) & 0xFF));
+         pgagroal_log_trace("Backend: R - MD5Password (Unsupported)");
          break;
       case 6:
          pgagroal_log_trace("Backend: R - SCMCredential");
@@ -1395,7 +1382,7 @@ use_pooled_connection(SSL* c_ssl, int client_fd, int slot, char* username, char*
    }
    else if (password == NULL)
    {
-      /* We can only deal with SECURITY_TRUST, SECURITY_PASSWORD and SECURITY_MD5 */
+      /* We can only deal with SECURITY_TRUST and SECURITY_PASSWORD */
       pgagroal_create_message(&config->connections[slot].security_messages[0],
                               config->connections[slot].security_lengths[0],
                               &auth_msg);
@@ -1408,7 +1395,7 @@ use_pooled_connection(SSL* c_ssl, int client_fd, int slot, char* username, char*
       pgagroal_free_message(auth_msg);
       auth_msg = NULL;
 
-      /* Password or MD5 */
+      /* Password */
       if (config->connections[slot].has_security != SECURITY_TRUST)
       {
          status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
@@ -1458,19 +1445,6 @@ use_pooled_connection(SSL* c_ssl, int client_fd, int slot, char* username, char*
       {
          /* R/3 */
          status = client_password(c_ssl, client_fd, username, password, slot);
-         if (status == AUTH_BAD_PASSWORD)
-         {
-            goto bad_password;
-         }
-         else if (status == AUTH_ERROR)
-         {
-            goto error;
-         }
-      }
-      else if (hba_method == SECURITY_MD5)
-      {
-         /* R/5 */
-         status = client_md5(c_ssl, client_fd, username, password, slot);
          if (status == AUTH_BAD_PASSWORD)
          {
             goto bad_password;
@@ -1615,7 +1589,6 @@ use_unpooled_connection(struct message* request_msg, SSL* c_ssl, int client_fd, 
    /* Supported security models: */
    /*   trust (0) */
    /*   password (3) */
-   /*   md5 (5) */
    /*   scram-sha-256 (10) */
    if (auth_type == -1)
    {
@@ -1623,7 +1596,7 @@ use_unpooled_connection(struct message* request_msg, SSL* c_ssl, int client_fd, 
       pgagroal_write_empty(c_ssl, client_fd);
       goto error;
    }
-   else if (auth_type != SECURITY_TRUST && auth_type != SECURITY_PASSWORD && auth_type != SECURITY_MD5 && auth_type != SECURITY_SCRAM256)
+   else if (auth_type != SECURITY_TRUST && auth_type != SECURITY_PASSWORD && auth_type != SECURITY_SCRAM256)
    {
       pgagroal_log_info("Unsupported security model: %d", auth_type);
       pgagroal_write_unsupported_security_model(c_ssl, client_fd, username);
@@ -1666,19 +1639,6 @@ use_unpooled_connection(struct message* request_msg, SSL* c_ssl, int client_fd, 
             goto error;
          }
       }
-      else if (hba_method == SECURITY_MD5)
-      {
-         /* R/5 */
-         status = client_md5(c_ssl, client_fd, username, password, slot);
-         if (status == AUTH_BAD_PASSWORD)
-         {
-            goto bad_password;
-         }
-         else if (status == AUTH_ERROR)
-         {
-            goto error;
-         }
-      }
       else if (hba_method == SECURITY_SCRAM256)
       {
          /* R/10 */
@@ -1710,7 +1670,7 @@ use_unpooled_connection(struct message* request_msg, SSL* c_ssl, int client_fd, 
             {
                sec_idx = 0;
             }
-            else if (auth_type == SECURITY_PASSWORD || auth_type == SECURITY_MD5)
+            else if (auth_type == SECURITY_PASSWORD)
             {
                sec_idx = 2;
             }
@@ -1875,115 +1835,6 @@ bad_password:
 error:
 
    pgagroal_clear_message(msg);
-
-   return AUTH_ERROR;
-}
-
-static int
-client_md5(SSL* c_ssl, int client_fd, char* username, char* password, int slot)
-{
-   int status;
-   char salt[4];
-   time_t start_time;
-   size_t size;
-   char* pwdusr = NULL;
-   char* shadow = NULL;
-   char* md5_req = NULL;
-   char* md5 = NULL;
-   struct main_configuration* config;
-   struct message* msg = NULL;
-
-   pgagroal_log_debug("client_md5 %d %d", client_fd, slot);
-
-   config = (struct main_configuration*)shmem;
-
-   salt[0] = (char)(random() & 0xFF);
-   salt[1] = (char)(random() & 0xFF);
-   salt[2] = (char)(random() & 0xFF);
-   salt[3] = (char)(random() & 0xFF);
-
-   status = pgagroal_write_auth_md5(c_ssl, client_fd, salt);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   start_time = time(NULL);
-
-   /* psql may just close the connection without word, so loop */
-retry:
-   status = pgagroal_read_timeout_message(c_ssl, client_fd, 1, &msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      if (difftime(time(NULL), start_time) < pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S))
-      {
-         if (pgagroal_socket_isvalid(client_fd))
-         /* Sleep for 100ms */
-         {
-            SLEEP_AND_GOTO(100000000L, retry)
-         }
-      }
-   }
-
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   size = strlen(username) + strlen(password) + 1;
-   pwdusr = calloc(1, size);
-
-   pgagroal_snprintf(pwdusr, size, "%s%s", password, username);
-
-   if (pgagroal_md5(pwdusr, strlen(pwdusr), &shadow))
-   {
-      goto error;
-   }
-
-   md5_req = calloc(1, 36);
-   memcpy(md5_req, shadow, 32);
-   memcpy(md5_req + 32, &salt[0], 4);
-
-   if (pgagroal_md5(md5_req, 36, &md5))
-   {
-      goto error;
-   }
-
-   if (strcmp(pgagroal_read_string(msg->data + 8), md5))
-   {
-      pgagroal_write_bad_password(c_ssl, client_fd, username);
-
-      goto bad_password;
-   }
-
-   pgagroal_clear_message(msg);
-
-   free(pwdusr);
-   free(shadow);
-   free(md5_req);
-   free(md5);
-
-   return AUTH_SUCCESS;
-
-bad_password:
-
-   pgagroal_clear_message(msg);
-
-   free(pwdusr);
-   free(shadow);
-   free(md5_req);
-   free(md5);
-
-   return AUTH_BAD_PASSWORD;
-
-error:
-
-   pgagroal_clear_message(msg);
-
-   free(pwdusr);
-   free(shadow);
-   free(md5_req);
-   free(md5);
 
    return AUTH_ERROR;
 }
@@ -2224,7 +2075,7 @@ client_ok(SSL* c_ssl, int client_fd, int slot)
       }
       memcpy(data, config->connections[slot].security_messages[0], size);
    }
-   else if (config->connections[slot].has_security == SECURITY_PASSWORD || config->connections[slot].has_security == SECURITY_MD5)
+   else if (config->connections[slot].has_security == SECURITY_PASSWORD)
    {
       size = config->connections[slot].security_lengths[2];
       data = malloc(size);
@@ -2437,7 +2288,7 @@ server_passthrough(struct message* msg, int auth_type, SSL* c_ssl, SSL* s_ssl, i
                               config->connections[slot].security_lengths[0],
                               &smsg);
    }
-   else if (config->connections[slot].has_security == SECURITY_PASSWORD || config->connections[slot].has_security == SECURITY_MD5)
+   else if (config->connections[slot].has_security == SECURITY_PASSWORD)
    {
       pgagroal_create_message(&config->connections[slot].security_messages[2],
                               config->connections[slot].security_lengths[2],
@@ -2518,10 +2369,6 @@ server_authenticate(struct message* msg, int auth_type, char* username, char* pa
    {
       ret = server_password(username, password, slot, server_ssl);
    }
-   else if (auth_type == SECURITY_MD5)
-   {
-      ret = server_md5(username, password, slot, server_ssl);
-   }
    else if (auth_type == SECURITY_SCRAM256)
    {
       ret = server_scram256(username, password, slot, server_ssl);
@@ -2533,7 +2380,7 @@ server_authenticate(struct message* msg, int auth_type, char* username, char* pa
                               config->connections[slot].security_lengths[0],
                               &smsg);
    }
-   else if (config->connections[slot].has_security == SECURITY_PASSWORD || config->connections[slot].has_security == SECURITY_MD5)
+   else if (config->connections[slot].has_security == SECURITY_PASSWORD)
    {
       pgagroal_create_message(&config->connections[slot].security_messages[2],
                               config->connections[slot].security_lengths[2],
@@ -2676,143 +2523,6 @@ bad_password:
 error:
 
    pgagroal_free_message(password_msg);
-   pgagroal_clear_message(auth_msg);
-
-   return AUTH_ERROR;
-}
-
-static int
-server_md5(char* username, char* password, int slot, SSL* server_ssl)
-{
-   int status = MESSAGE_STATUS_ERROR;
-   int auth_index = 1;
-   int auth_response = -1;
-   int server_fd;
-   size_t size;
-   char* pwdusr = NULL;
-   char* shadow = NULL;
-   char* md5_req = NULL;
-   char* md5 = NULL;
-   char md5str[36];
-   char* salt = NULL;
-   struct message* auth_msg = NULL;
-   struct message* md5_msg = NULL;
-   struct main_configuration* config = NULL;
-
-   config = (struct main_configuration*)shmem;
-   server_fd = config->connections[slot].fd;
-
-   pgagroal_log_trace("server_md5");
-
-   if (get_salt(config->connections[slot].security_messages[0], &salt))
-   {
-      goto error;
-   }
-
-   size = strlen(username) + strlen(password) + 1;
-   pwdusr = calloc(1, size);
-
-   pgagroal_snprintf(pwdusr, size, "%s%s", password, username);
-
-   if (pgagroal_md5(pwdusr, strlen(pwdusr), &shadow))
-   {
-      goto error;
-   }
-
-   md5_req = calloc(1, 36);
-
-   memcpy(md5_req, shadow, 32);
-   memcpy(md5_req + 32, salt, 4);
-
-   if (pgagroal_md5(md5_req, 36, &md5))
-   {
-      goto error;
-   }
-
-   memset(&md5str, 0, sizeof(md5str));
-   pgagroal_snprintf(&md5str[0], 36, "md5%s", md5);
-
-   status = pgagroal_create_auth_md5_response(md5str, &md5_msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   status = pgagroal_write_message(server_ssl, server_fd, md5_msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   config->connections[slot].security_lengths[auth_index] = md5_msg->length;
-   memcpy(&config->connections[slot].security_messages[auth_index], md5_msg->data, md5_msg->length);
-   auth_index++;
-
-   status = pgagroal_read_block_message(server_ssl, server_fd, &auth_msg);
-   if (auth_msg->length > SECURITY_BUFFER_SIZE)
-   {
-      pgagroal_log_message(auth_msg);
-      pgagroal_log_error("Security message too large: %ld", auth_msg->length);
-      goto error;
-   }
-
-   get_auth_type(auth_msg, &auth_response);
-   pgagroal_log_trace("authenticate: auth response %d", auth_response);
-
-   if (auth_response == 0)
-   {
-      if (auth_msg->length > SECURITY_BUFFER_SIZE)
-      {
-         pgagroal_log_message(auth_msg);
-         pgagroal_log_error("Security message too large: %ld", auth_msg->length);
-         goto error;
-      }
-
-      config->connections[slot].security_lengths[auth_index] = auth_msg->length;
-      memcpy(&config->connections[slot].security_messages[auth_index], auth_msg->data, auth_msg->length);
-
-      config->connections[slot].has_security = SECURITY_MD5;
-   }
-   else
-   {
-      goto bad_password;
-   }
-
-   free(pwdusr);
-   free(shadow);
-   free(md5_req);
-   free(md5);
-   free(salt);
-
-   pgagroal_free_message(md5_msg);
-   pgagroal_clear_message(auth_msg);
-
-   return AUTH_SUCCESS;
-
-bad_password:
-
-   pgagroal_log_warn("Wrong password for user: %s", username);
-
-   free(pwdusr);
-   free(shadow);
-   free(md5_req);
-   free(md5);
-   free(salt);
-
-   pgagroal_free_message(md5_msg);
-   pgagroal_clear_message(auth_msg);
-
-   return AUTH_BAD_PASSWORD;
-
-error:
-
-   free(pwdusr);
-   free(shadow);
-   free(md5_req);
-   free(md5);
-   free(salt);
-
-   pgagroal_free_message(md5_msg);
    pgagroal_clear_message(auth_msg);
 
    return AUTH_ERROR;
@@ -3298,11 +3008,6 @@ get_hba_method(int index)
       return SECURITY_PASSWORD;
    }
 
-   if (!strcasecmp(config->hbas[index].method, "md5"))
-   {
-      return SECURITY_MD5;
-   }
-
    if (!strcasecmp(config->hbas[index].method, "scram-sha-256"))
    {
       return SECURITY_SCRAM256;
@@ -3373,20 +3078,6 @@ get_admin_password(char* username)
    }
 
    return NULL;
-}
-
-static int
-get_salt(void* data, char** salt)
-{
-   char* result;
-
-   result = calloc(1, 4);
-
-   memcpy(result, data + 9, 4);
-
-   *salt = result;
-
-   return 0;
 }
 
 int
@@ -3516,29 +3207,6 @@ error:
    }
 
    return 1;
-}
-
-int
-pgagroal_md5(char* str, int length, char** md5)
-{
-   int n;
-   MD5_CTX c;
-   unsigned char digest[16];
-   char* out;
-
-   out = calloc(1, 33);
-   MD5_Init(&c);
-   MD5_Update(&c, str, length);
-   MD5_Final(digest, &c);
-
-   for (n = 0; n < 16; ++n)
-   {
-      pgagroal_snprintf(&(out[n * 2]), 33 - (n * 2), "%02x", (unsigned int)digest[n]);
-   }
-
-   *md5 = out;
-
-   return 0;
 }
 
 bool
@@ -4806,21 +4474,7 @@ auth_query(SSL* c_ssl, int client_fd, int slot, char* username, char* database, 
    atomic_store(&config->su_connection, STATE_FREE);
 
    /* Client security */
-   if (config->connections[slot].has_security == SECURITY_MD5)
-   {
-      ret = auth_query_client_md5(c_ssl, client_fd, username, shadow, slot);
-      if (ret == AUTH_BAD_PASSWORD)
-      {
-         pgagroal_write_bad_password(c_ssl, client_fd, username);
-         pgagroal_write_empty(c_ssl, client_fd);
-         goto bad_password;
-      }
-      else if (ret == AUTH_ERROR)
-      {
-         goto error;
-      }
-   }
-   else if (config->connections[slot].has_security == SECURITY_SCRAM256)
+   if (config->connections[slot].has_security == SECURITY_SCRAM256)
    {
       ret = auth_query_client_scram256(c_ssl, client_fd, username, shadow, slot);
       if (ret == AUTH_BAD_PASSWORD)
@@ -4975,21 +4629,8 @@ retry:
    pgagroal_log_trace("auth_query_get_connection: auth type %d", auth_type);
 
    /* Supported security models: */
-   /*   md5 (5) */
    /*   scram256 (10) */
-   if (auth_type == SECURITY_MD5)
-   {
-      ret = pgagroal_md5_client_auth(startup_response_msg, username, password, *server_fd, *server_ssl, NULL);
-      if (ret == AUTH_BAD_PASSWORD)
-      {
-         goto bad_password;
-      }
-      else if (ret == AUTH_ERROR)
-      {
-         goto error;
-      }
-   }
-   else if (auth_type == SECURITY_SCRAM256)
+   if (auth_type == SECURITY_SCRAM256)
    {
       ret = pgagroal_scram_client_auth(username, password, *server_fd, *server_ssl, NULL);
       if (ret == AUTH_BAD_PASSWORD)
@@ -5077,131 +4718,6 @@ timeout:
    pgagroal_clear_message(msg);
 
    return AUTH_TIMEOUT;
-}
-
-int
-pgagroal_md5_client_auth(struct message* startup_response_msg, char* username, char* password, int socket, SSL* server_ssl, struct message** response_msg)
-{
-   int status = MESSAGE_STATUS_ERROR;
-   int auth_response = -1;
-   size_t size;
-   char* pwdusr = NULL;
-   char* shadow = NULL;
-   char* md5_req = NULL;
-   char* md5 = NULL;
-   char md5str[36];
-   char* salt = NULL;
-   struct message* auth_msg = NULL;
-   struct message* md5_msg = NULL;
-
-   pgagroal_log_trace("pgagroal_md5_client_auth");
-
-   if (get_salt(startup_response_msg->data, &salt))
-   {
-      goto error;
-   }
-
-   size = strlen(username) + strlen(password) + 1;
-   pwdusr = calloc(1, size);
-
-   pgagroal_snprintf(pwdusr, size, "%s%s", password, username);
-
-   if (pgagroal_md5(pwdusr, strlen(pwdusr), &shadow))
-   {
-      goto error;
-   }
-
-   md5_req = calloc(1, 36);
-   memcpy(md5_req, shadow, 32);
-   memcpy(md5_req + 32, salt, 4);
-
-   if (pgagroal_md5(md5_req, 36, &md5))
-   {
-      goto error;
-   }
-
-   memset(&md5str, 0, sizeof(md5str));
-   pgagroal_snprintf(&md5str[0], 36, "md5%s", md5);
-
-   status = pgagroal_create_auth_md5_response(md5str, &md5_msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   status = pgagroal_write_message(server_ssl, socket, md5_msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   status = pgagroal_read_block_message(server_ssl, socket, &auth_msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   if (auth_msg->length > SECURITY_BUFFER_SIZE)
-   {
-      pgagroal_log_message(auth_msg);
-      pgagroal_log_error("Security message too large: %ld", auth_msg->length);
-      goto error;
-   }
-
-   get_auth_type(auth_msg, &auth_response);
-   pgagroal_log_trace("authenticate: auth response %d", auth_response);
-
-   if (auth_response != 0)
-   {
-      goto bad_password;
-   }
-
-   if (response_msg != NULL)
-   {
-      *response_msg = auth_msg;
-   }
-   else
-   {
-      pgagroal_clear_message(auth_msg);
-   }
-
-   free(pwdusr);
-   free(shadow);
-   free(md5_req);
-   free(md5);
-   free(salt);
-
-   pgagroal_free_message(md5_msg);
-
-   return AUTH_SUCCESS;
-
-bad_password:
-
-   pgagroal_log_warn("Wrong password for user: %s", username);
-
-   free(pwdusr);
-   free(shadow);
-   free(md5_req);
-   free(md5);
-   free(salt);
-
-   pgagroal_free_message(md5_msg);
-   pgagroal_clear_message(auth_msg);
-
-   return AUTH_BAD_PASSWORD;
-
-error:
-
-   free(pwdusr);
-   free(shadow);
-   free(md5_req);
-   free(md5);
-   free(salt);
-
-   pgagroal_free_message(md5_msg);
-   pgagroal_clear_message(auth_msg);
-
-   return AUTH_ERROR;
 }
 
 int
@@ -5527,94 +5043,6 @@ error:
    pgagroal_free_message(dmsg);
 
    return 1;
-}
-
-static int
-auth_query_client_md5(SSL* c_ssl, int client_fd, char* username, char* hash, int slot __attribute__((unused)))
-{
-   int status;
-   char salt[4];
-   time_t start_time;
-   char* md5_req = NULL;
-   char* md5 = NULL;
-   struct main_configuration* config;
-   struct message* msg = NULL;
-
-   config = (struct main_configuration*)shmem;
-
-   salt[0] = (char)(random() & 0xFF);
-   salt[1] = (char)(random() & 0xFF);
-   salt[2] = (char)(random() & 0xFF);
-   salt[3] = (char)(random() & 0xFF);
-
-   status = pgagroal_write_auth_md5(c_ssl, client_fd, salt);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   start_time = time(NULL);
-
-   /* psql may just close the connection without word, so loop */
-retry:
-   status = pgagroal_read_timeout_message(c_ssl, client_fd, 1, &msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      if (difftime(time(NULL), start_time) < pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S))
-      {
-         if (pgagroal_socket_isvalid(client_fd))
-         /* Sleep for 100ms */
-         {
-            SLEEP_AND_GOTO(100000000L, retry)
-         }
-      }
-   }
-
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   md5_req = calloc(1, 36);
-   memcpy(md5_req, hash + 3, 32);
-   memcpy(md5_req + 32, &salt[0], 4);
-
-   if (pgagroal_md5(md5_req, 36, &md5))
-   {
-      goto error;
-   }
-
-   if (strcmp(pgagroal_read_string(msg->data + 8), md5))
-   {
-      pgagroal_write_bad_password(c_ssl, client_fd, username);
-
-      goto bad_password;
-   }
-
-   pgagroal_clear_message(msg);
-
-   free(md5_req);
-   free(md5);
-
-   return AUTH_SUCCESS;
-
-bad_password:
-
-   pgagroal_clear_message(msg);
-
-   free(md5_req);
-   free(md5);
-
-   return AUTH_BAD_PASSWORD;
-
-error:
-
-   pgagroal_clear_message(msg);
-
-   free(md5_req);
-   free(md5);
-
-   return AUTH_ERROR;
 }
 
 static int
@@ -6389,100 +5817,6 @@ bad_password:
 
 error:
    pgagroal_free_message(password_msg);
-   pgagroal_free_message(auth_msg);
-   return AUTH_ERROR;
-}
-
-int
-pgagroal_md5_client_authenticate(char* username, char* password, char* salt, int server_fd)
-{
-   int status = MESSAGE_STATUS_ERROR;
-   int auth_response = -1;
-   size_t size;
-   char* pwdusr = NULL;
-   char* shadow = NULL;
-   char* md5_req = NULL;
-   char* md5 = NULL;
-   char md5str[36];
-   struct message* md5_msg = NULL;
-   struct message* auth_msg = NULL;
-
-   pgagroal_log_trace("pgagroal_md5_client_authenticate");
-
-   /* Calculate MD5(password + username) */
-   size = strlen(username) + strlen(password) + 1;
-   pwdusr = calloc(1, size);
-   pgagroal_snprintf(pwdusr, size, "%s%s", password, username);
-
-   if (pgagroal_md5(pwdusr, strlen(pwdusr), &shadow))
-   {
-      goto error;
-   }
-
-   /* Calculate MD5(shadow + salt) */
-   md5_req = calloc(1, 36);
-   memcpy(md5_req, shadow, 32);
-   memcpy(md5_req + 32, salt, 4);
-
-   if (pgagroal_md5(md5_req, 36, &md5))
-   {
-      goto error;
-   }
-
-   memset(&md5str, 0, sizeof(md5str));
-   pgagroal_snprintf(&md5str[0], 36, "md5%s", md5);
-
-   status = pgagroal_create_auth_md5_response(md5str, &md5_msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   status = pgagroal_write_socket_message(server_fd, md5_msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   status = pgagroal_read_socket_message(server_fd, &auth_msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   get_auth_type(auth_msg, &auth_response);
-
-   if (auth_response == 0)
-   {
-      free(pwdusr);
-      free(shadow);
-      free(md5_req);
-      free(md5);
-      pgagroal_free_message(md5_msg);
-      pgagroal_free_message(auth_msg);
-      return AUTH_SUCCESS;
-   }
-   else
-   {
-      goto bad_password;
-   }
-
-bad_password:
-   pgagroal_log_warn("Wrong password for user: %s", username);
-   free(pwdusr);
-   free(shadow);
-   free(md5_req);
-   free(md5);
-   pgagroal_free_message(md5_msg);
-   pgagroal_free_message(auth_msg);
-   return AUTH_BAD_PASSWORD;
-
-error:
-   free(pwdusr);
-   free(shadow);
-   free(md5_req);
-   free(md5);
-   pgagroal_free_message(md5_msg);
    pgagroal_free_message(auth_msg);
    return AUTH_ERROR;
 }

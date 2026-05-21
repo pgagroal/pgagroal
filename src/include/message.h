@@ -268,25 +268,6 @@ int
 pgagroal_create_auth_password_response(char* password, struct message** msg);
 
 /**
- * Write an auth md5 message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @param salt The salt
- * @return 0 upon success, otherwise 1
- */
-int
-pgagroal_write_auth_md5(SSL* ssl, int socket, char salt[4]);
-
-/**
- * Create an auth MD5 response message
- * @param md5 The md5
- * @param msg The resulting message
- * @return 0 upon success, otherwise 1
- */
-int
-pgagroal_create_auth_md5_response(char* md5, struct message** msg);
-
-/**
  * Write an auth SCRAM-SHA-256 message
  * @param ssl The SSL struct
  * @param socket The socket descriptor

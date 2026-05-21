@@ -1,5 +1,23 @@
 # Migration
 
+## From 2.1.x to 2.2.x
+
+### MD5 Authentication Removal
+
+Legacy MD5 authentication has been completely removed from pgagroal for improved security. This is a **breaking change** for any deployment still relying on MD5.
+
+**Action required:**
+
+1. **PostgreSQL Server**: 
+   - Ensure `password_encryption = scram-sha-256` is set in `postgresql.conf`.
+   - Update `pg_hba.conf` to use `scram-sha-256` instead of `md5`.
+   - For existing users with MD5 passwords, you **must** reset their passwords while SCRAM encryption is active so that PostgreSQL generates SCRAM-compatible verifiers.
+2. **pgagroal**:
+   - Update `pgagroal_hba.conf` to use `scram-sha-256`, `password`, or `trust` for all rules. MD5 is no longer a valid method.
+3. **Clients**:
+   - Ensure clients are compatible with `scram-sha-256` (standard for modern PostgreSQL drivers).
+
+
 ## From 2.0.x to 2.1.x
 
 ### Vault Encryption

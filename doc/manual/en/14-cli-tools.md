@@ -81,7 +81,7 @@ pgagroal-cli ping            # $? = 0
 
 With **JSON** output (`-F json` / `--format json`), the response includes a **`Servers`** object: one entry per configured backend. For each server you get **`Host`**, **`Port`**, **`Status`** (`Running` if PostgreSQL accepted the connectivity check, else `Down`), and **`Primary`** (`Yes`, `No`, or `Unknown`).
 
-**`Behind`**: only on **standby** (replica) backends—replication lag in **bytes** (WAL received but not yet replayed there). **`0`** means caught up. **Omitted** for primaries, when the server is down, or when lag cannot be read (for example, authentication failure). For password methods (SCRAM, MD5), configure **`health_check_user`** and the matching entry in **`pgagroal_users.conf`** so the check can log in.
+**`Behind`**: only on **standby** (replica) backends—replication lag in **bytes** (WAL received but not yet replayed there). **`0`** means caught up. **Omitted** for primaries, when the server is down, or when lag cannot be read (for example, authentication failure). For password methods (SCRAM), configure **`health_check_user`** and the matching entry in **`pgagroal_users.conf`** so the check can log in.
 
 #### enable
 Enables a database (or all databases).
