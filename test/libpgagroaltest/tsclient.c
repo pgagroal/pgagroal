@@ -49,6 +49,7 @@
 char project_directory[BUFFER_SIZE];
 
 static char* get_configuration_path();
+static char* get_databases_path();
 static char* get_log_file_path();
 
 int
@@ -57,6 +58,7 @@ pgagroal_tsclient_init(char* base_dir)
    int ret;
    size_t size;
    char* configuration_path = NULL;
+   char* limit_path = NULL;
 
    memset(project_directory, 0, sizeof(project_directory));
    memcpy(project_directory, base_dir, strlen(base_dir));
@@ -82,6 +84,18 @@ pgagroal_tsclient_init(char* base_dir)
    {
       goto error;
    }
+
+   /* Also load the LIMIT configuration so limit-aware tests can see the rules
+    * in shmem (pgagroal_read_configuration only reads pgagroal.conf). Best
+    * effort: a configuration directory without a databases file just leaves
+    * number_of_limits at 0, exactly as before. */
+   limit_path = get_databases_path();
+   if (limit_path != NULL)
+   {
+      pgagroal_read_limit_configuration(shmem, limit_path);
+      free(limit_path);
+   }
+
    pgagroal_start_logging();
 
    free(configuration_path);
@@ -181,7 +195,7 @@ pgagroal_tsclient_execute_pgbench(char* user, char* database, bool select_only, 
       size_t pwd_len = strlen(password);
       /* Format: "PGPASSWORD=%s %s\0" = 11 + pwd_len + 1 + cmd_len + 1 */
       size_t total_len = 11 + pwd_len + 1 + cmd_len + 1;
-      
+
       command_with_password = (char*)calloc(total_len, sizeof(char));
       if (command_with_password != NULL)
       {
@@ -308,6 +322,21 @@ get_configuration_path()
    memcpy(configuration_path + project_directory_length, PGAGROAL_CONFIGURATION_TRAIL, configuration_trail_length);
 
    return configuration_path;
+}
+
+static char*
+get_databases_path()
+{
+   char* databases_path = NULL;
+   int project_directory_length = strlen(project_directory);
+   int databases_trail_length = strlen(PGAGROAL_DATABASES_TRAIL);
+
+   databases_path = (char*)calloc(project_directory_length + databases_trail_length + 1, sizeof(char));
+
+   memcpy(databases_path, project_directory, project_directory_length);
+   memcpy(databases_path + project_directory_length, PGAGROAL_DATABASES_TRAIL, databases_trail_length);
+
+   return databases_path;
 }
 
 static char*

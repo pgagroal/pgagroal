@@ -43,6 +43,7 @@ extern "C" {
 
 #define PGBENCH_LOG_FILE_TRAIL       "/log/pgbench.log"
 #define PGAGROAL_CONFIGURATION_TRAIL "/pgagroal-testsuite/conf/pgagroal.conf"
+#define PGAGROAL_DATABASES_TRAIL     "/pgagroal-testsuite/conf/pgagroal_databases.conf"
 
 extern char project_directory[BUFFER_SIZE];
 extern char* user;

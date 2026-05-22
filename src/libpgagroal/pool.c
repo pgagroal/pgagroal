@@ -153,9 +153,18 @@ start:
    {
       if (best_rule >= 0)
       {
-         int rule_count = get_connection_count_for_limit_rule(best_rule, username);
-         if (rule_count >= config->limits[best_rule].max_size)
+         /* Atomically reserve a backend against the per-rule max_size cap
+          * before creating one. This mirrors the global max_connections gate
+          * above (fetch-add, then test the prior value, rolling back on
+          * overshoot) and replaces the previous count-then-create check, which
+          * was a TOCTOU: concurrent acquirers each read a stale sub-cap count
+          * and then each created a backend, driving the rule past max_size
+          * (issue #848). The reservation is the serialization point, so live
+          * backends for the rule never exceed max_size. */
+         unsigned short reserved = atomic_fetch_add(&config->limits[best_rule].backend_connections, 1);
+         if (reserved >= config->limits[best_rule].max_size)
          {
+            atomic_fetch_sub(&config->limits[best_rule].backend_connections, 1);
             goto retry;
          }
       }
@@ -171,6 +180,14 @@ start:
             do_init = true;
          }
       }
+
+      if (*slot == -1 && best_rule >= 0)
+      {
+         /* Held a rule reservation but no NOTINIT slot remained (lost the race
+          * for the last global slot); release it so the reservation is not
+          * leaked, then fall through to the blocking-timeout retry path. */
+         atomic_fetch_sub(&config->limits[best_rule].backend_connections, 1);
+      }
    }
 
    if (*slot != -1)
@@ -183,6 +200,11 @@ start:
          /* We need to find the server for the connection */
          if (pgagroal_get_primary(&server))
          {
+            if (best_rule >= 0)
+            {
+               /* The backend was reserved but never established; release it. */
+               atomic_fetch_sub(&config->limits[best_rule].backend_connections, 1);
+            }
             config->connections[*slot].limit_rule = -1;
             config->connections[*slot].pid = -1;
             atomic_store(&config->states[*slot], STATE_NOTINIT);
@@ -214,6 +236,11 @@ start:
          if (ret)
          {
             pgagroal_log_error("pgagroal: No connection to %s:%d", config->servers[server].host, config->servers[server].port);
+            if (best_rule >= 0)
+            {
+               /* The backend was reserved but never established; release it. */
+               atomic_fetch_sub(&config->limits[best_rule].backend_connections, 1);
+            }
             config->connections[*slot].limit_rule = -1;
             config->connections[*slot].pid = -1;
             atomic_store(&config->states[*slot], STATE_NOTINIT);
@@ -610,6 +637,17 @@ pgagroal_kill_connection(int slot, SSL* ssl)
    else
    {
       result = 1;
+   }
+
+   if (config->connections[slot].limit_rule >= 0)
+   {
+      /* Release the rule's hard-cap reservation (issue #848). Unlike the
+       * per-rule active_connections below, backend_connections tracks live
+       * backends rather than checkouts, so it must be released on every kill
+       * of a rule-bound backend -- including idle/flush kills of pooled
+       * connections, where pid == -1 and the checkout counter was already
+       * decremented on return. */
+      atomic_fetch_sub(&config->limits[config->connections[slot].limit_rule].backend_connections, 1);
    }
 
    if (config->connections[slot].pid != -1)

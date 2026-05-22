@@ -1458,6 +1458,7 @@ pgagroal_read_limit_configuration(void* shm, char* filename)
                }
 
                atomic_init(&config->limits[index].active_connections, 0);
+               atomic_init(&config->limits[index].backend_connections, 0);
 
                index++;
 

@@ -457,6 +457,7 @@ struct limit
    char aliases[MAX_ALIASES][MAX_DATABASE_LENGTH]; /**< The aliases for the database */
    int aliases_count;                              /**< The number of aliases */
    atomic_ushort active_connections;               /**< The active number of connections */
+   atomic_ushort backend_connections;              /**< Live backend connections for the rule (hard-capped at max_size) */
    int max_size;                                   /**< The maximum pool size */
    int initial_size;                               /**< The initial pool size */
    int min_size;                                   /**< The minimum pool size */
