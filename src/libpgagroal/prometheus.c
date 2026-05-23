@@ -1600,6 +1600,7 @@ home_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "            <li>initial</li>\n");
    data = pgagroal_append(data, "            <li>max</li>\n");
    data = pgagroal_append(data, "            <li>active</li>\n");
+   data = pgagroal_append(data, "            <li>backend</li>\n");
    data = pgagroal_append(data, "          </ul>\n");
    data = pgagroal_append(data, "        </td>\n");
    data = pgagroal_append(data, "      </tr>\n");
@@ -2818,6 +2819,20 @@ limit_information(prometheus_metrics_container_t* container)
 
          data = pgagroal_append(data, "type=\"active\"} ");
          data = pgagroal_append_int(data, config->limits[i].active_connections);
+         data = pgagroal_append(data, "\n");
+
+         data = pgagroal_append(data, "pgagroal_limit{");
+
+         data = pgagroal_append(data, "user=\"");
+         data = pgagroal_append(data, config->limits[i].username);
+         data = pgagroal_append(data, "\",");
+
+         data = pgagroal_append(data, "database=\"");
+         data = pgagroal_append(data, config->limits[i].database);
+         data = pgagroal_append(data, "\",");
+
+         data = pgagroal_append(data, "type=\"backend\"} ");
+         data = pgagroal_append_int(data, config->limits[i].backend_connections);
          data = pgagroal_append(data, "\n");
       }
 
