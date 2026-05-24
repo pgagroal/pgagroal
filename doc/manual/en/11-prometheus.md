@@ -78,6 +78,14 @@ The total number of connections
 
 The maximum number of connections
 
+**pgagroal_limit**
+
+Per-rule limit information, labeled by `user`, `database` and `type`. The `type` label selects the reported value: `min`, `initial` and `max` are the rule's configured sizes, `active` is the current number of checkouts, and `backend` is the current number of live backends for the rule.
+
+**pgagroal_limit_awaiting**
+
+The number of connections awaiting (on hold) per limit rule, labeled by `user` and `database`.
+
 **pgagroal_connection**
 
 The connection information
