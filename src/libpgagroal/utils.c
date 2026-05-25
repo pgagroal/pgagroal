@@ -148,7 +148,7 @@ pgagroal_extract_username_database(struct message* msg, char** username, char** 
 
    if (*database == NULL)
    {
-      *database = *username;
+      *database = strdup(*username);
    }
 
    pgagroal_log_trace("Username: %s", *username);
