@@ -528,72 +528,114 @@ execute_testcases() {
    set -e
 }
 
+# Determine the build type of the compiled binary. The per-rule cap config in
+# test/conf/release-only needs more than the Debug connection ceiling
+# (MAX_NUMBER_OF_CONNECTIONS = 8 under -DDEBUG), so it only runs against a
+# non-Debug build. CMAKE_BUILD_TYPE=Debug maps to -DDEBUG in src/CMakeLists.txt,
+# so the build cache is the authoritative signal.
+detect_build_type() {
+   local cache="$PROJECT_DIRECTORY/build/CMakeCache.txt"
+   if [ -f "$cache" ]; then
+      grep -E '^CMAKE_BUILD_TYPE:' "$cache" | head -n1 | cut -d= -f2
+   fi
+}
+
+# Run the full testsuite against a single configuration directory.
+run_single_config_dir() {
+   local entry config_name
+   entry=$(realpath "$1")
+   config_name=$(basename "$entry")
+
+   if [[ ! -d "$entry" || ! -f "$entry/pgagroal.conf" || ! -f "$entry/pgagroal_hba.conf" ]]; then
+      echo "Warning: Configuration directory '$entry' is missing required files"
+      echo "  Required: pgagroal.conf and pgagroal_hba.conf"
+      return
+   fi
+
+   echo ""
+   echo "=========================================="
+   echo "Testing configuration: $config_name"
+   echo "=========================================="
+
+   # Backup current configuration
+   cp "$CONFIGURATION_DIRECTORY/pgagroal.conf" "$CONFIGURATION_DIRECTORY/pgagroal.conf.backup"
+   cp "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf" "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf.backup"
+   cp "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf" "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf.backup"
+
+   # Copy test configuration
+   cp "$entry/pgagroal.conf" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
+   cp "$entry/pgagroal_hba.conf" "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf"
+   if [ -f "$entry/pgagroal_databases.conf" ]; then
+      cp "$entry/pgagroal_databases.conf" "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf"
+   fi
+
+   # Update log path in the configuration to use our log directory
+   sed -i "s|log_path = test.log|log_path = $LOG_DIR/pgagroal-$config_name.log|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
+
+   # Update port to match our PostgreSQL container
+   sed -i "s|port = 5432|port = $PORT|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
+
+   # Stop any running pgagroal instance before starting new config
+   stop_pgagroal
+   # Run tests for this configuration
+   execute_testcases "$config_name"
+   # Stop after test in case test leaves it running
+   stop_pgagroal
+
+   # Restore original configuration
+   cp "$CONFIGURATION_DIRECTORY/pgagroal.conf.backup" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
+   cp "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf.backup" "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf"
+   cp "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf.backup" "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf"
+
+   echo "Configuration $config_name: PASSED"
+}
+
 run_multiple_config_tests() {
    echo "Running tests on multiple pgagroal configurations"
-   
-   TEST_CONFIG_DIRECTORY="$PROJECT_DIRECTORY/test/conf"
-   
-   if [ -d "$TEST_CONFIG_DIRECTORY" ]; then
-      for entry in "$TEST_CONFIG_DIRECTORY"/*; do
-         entry=$(realpath "$entry")
-         config_name=$(basename "$entry")
-         
-         if [[ -d "$entry" && -f "$entry/pgagroal.conf" && -f "$entry/pgagroal_hba.conf" ]]; then
-            echo ""
-            echo "=========================================="
-            echo "Testing configuration: $config_name"
-            echo "=========================================="
-            
-            # Backup current configuration
-            cp "$CONFIGURATION_DIRECTORY/pgagroal.conf" "$CONFIGURATION_DIRECTORY/pgagroal.conf.backup"
-            cp "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf" "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf.backup"
-            cp "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf" "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf.backup"
 
-            # Copy test configuration
-            cp "$entry/pgagroal.conf" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
-            cp "$entry/pgagroal_hba.conf" "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf"
-            if [ -f "$entry/pgagroal_databases.conf" ]; then
-               cp "$entry/pgagroal_databases.conf" "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf"
-            fi
-            
-            # Update log path in the configuration to use our log directory
-            sed -i "s|log_path = test.log|log_path = $LOG_DIR/pgagroal-$config_name.log|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
-            
-            # Update port to match our PostgreSQL container
-            sed -i "s|port = 5432|port = $PORT|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
-            
-            # Stop any running pgagroal instance before starting new config
-            stop_pgagroal
-            # Run tests for this configuration
-            execute_testcases "$config_name"
-            # Stop after test in case test leaves it running
-            stop_pgagroal
-            
-            # Restore original configuration
-            cp "$CONFIGURATION_DIRECTORY/pgagroal.conf.backup" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
-            cp "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf.backup" "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf"
-            cp "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf.backup" "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf"
-            
-            echo "Configuration $config_name: PASSED"
-         else
-            echo "Warning: Configuration directory '$entry' is missing required files"
-            echo "  Required: pgagroal.conf and pgagroal_hba.conf"
-         fi
-      done
-      
-      # Clean up backup files
-      rm -f "$CONFIGURATION_DIRECTORY/pgagroal.conf.backup"
-      rm -f "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf.backup"
-      rm -f "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf.backup"
-      
-      echo ""
-      echo "=========================================="
-      echo "All configuration tests completed!"
-      echo "=========================================="
-   else
+   TEST_CONFIG_DIRECTORY="$PROJECT_DIRECTORY/test/conf"
+
+   if [ ! -d "$TEST_CONFIG_DIRECTORY" ]; then
       echo "Configuration directory $TEST_CONFIG_DIRECTORY not present"
       exit 1
    fi
+
+   # Shared configurations: run against every build type. The release-only
+   # directory is a build-type room handled separately below, not a config.
+   for entry in "$TEST_CONFIG_DIRECTORY"/*; do
+      [ "$(basename "$entry")" = "release-only" ] && continue
+      run_single_config_dir "$entry"
+   done
+
+   # Build-type configuration room (#908): configurations that need more than
+   # the Debug connection ceiling (MAX_NUMBER_OF_CONNECTIONS = 8) live under
+   # test/conf/release-only and only run against a non-Debug build. An
+   # undetectable build type is treated as Debug to avoid a startup FATAL
+   # (LIMIT: Too many connections defined).
+   if [ -d "$TEST_CONFIG_DIRECTORY/release-only" ]; then
+      local build_type
+      build_type=$(detect_build_type)
+      if [ -n "$build_type" ] && [ "$build_type" != "Debug" ]; then
+         echo ""
+         echo "Build type '$build_type': including release-only configurations"
+         for entry in "$TEST_CONFIG_DIRECTORY/release-only"/*; do
+            run_single_config_dir "$entry"
+         done
+      else
+         echo ""
+         echo "Build type '${build_type:-unknown}': skipping release-only configurations (need non-Debug connection ceiling)"
+      fi
+   fi
+
+   # Clean up backup files
+   rm -f "$CONFIGURATION_DIRECTORY/pgagroal.conf.backup"
+   rm -f "$CONFIGURATION_DIRECTORY/pgagroal_hba.conf.backup"
+   rm -f "$CONFIGURATION_DIRECTORY/pgagroal_databases.conf.backup"
+
+   echo ""
+   echo "=========================================="
+   echo "All configuration tests completed!"
+   echo "=========================================="
 }
 
 usage() {
