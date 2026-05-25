@@ -1055,10 +1055,10 @@ do_setup() {
    else
      export CC=$(which gcc)
      echo "Using GCC compiler without coverage: $CC"
+   fi
    cmake -DCMAKE_C_COMPILER=$CC \
         -DCMAKE_BUILD_TYPE=Debug \
         ..
-   fi
    make -j$(nproc)
    cd ..
   fi
