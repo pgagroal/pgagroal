@@ -69,7 +69,7 @@ static int write_socket(int socket, void* buf, size_t size);
 static int write_ssl(SSL* ssl, void* buf, size_t size);
 
 int
-pgagroal_management_request_flush(SSL* ssl, int socket, int32_t mode, char* database, uint8_t compression, uint8_t encryption, int32_t output_format)
+pgagroal_management_request_flush(SSL* ssl, int socket, int32_t mode, char* database, int32_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format)
 {
    struct json* j = NULL;
    struct json* request = NULL;
@@ -86,6 +86,7 @@ pgagroal_management_request_flush(SSL* ssl, int socket, int32_t mode, char* data
 
    pgagroal_json_put(request, MANAGEMENT_ARGUMENT_MODE, (uintptr_t)mode, ValueInt32);
    pgagroal_json_put(request, MANAGEMENT_ARGUMENT_DATABASE, (uintptr_t)database, ValueString);
+   pgagroal_json_put(request, MANAGEMENT_ARGUMENT_TIMEOUT, (uintptr_t)timeout, ValueInt32);
 
    if (pgagroal_management_write_json(ssl, socket, compression, encryption, j))
    {
@@ -335,6 +336,40 @@ pgagroal_management_request_gracefully(SSL* ssl, int socket, uint8_t compression
    {
       goto error;
    }
+
+   if (pgagroal_management_write_json(ssl, socket, compression, encryption, j))
+   {
+      goto error;
+   }
+
+   pgagroal_json_destroy(j);
+
+   return 0;
+
+error:
+
+   pgagroal_json_destroy(j);
+
+   return 1;
+}
+
+int
+pgagroal_management_request_shutdown_timeout(SSL* ssl, int socket, int32_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format)
+{
+   struct json* j = NULL;
+   struct json* request = NULL;
+
+   if (pgagroal_management_create_header(MANAGEMENT_SHUTDOWN_TIMEOUT, compression, encryption, output_format, &j))
+   {
+      goto error;
+   }
+
+   if (pgagroal_management_create_request(j, &request))
+   {
+      goto error;
+   }
+
+   pgagroal_json_put(request, MANAGEMENT_ARGUMENT_TIMEOUT, (uintptr_t)timeout, ValueInt32);
 
    if (pgagroal_management_write_json(ssl, socket, compression, encryption, j))
    {
@@ -832,7 +867,7 @@ pgagroal_management_create_outcome_success(struct json* json, time_t start_time,
 
    elapsed = pgagroal_get_timestamp_string(start_time, end_time, &total_seconds);
 
-   pgagroal_json_put(r, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t)true, ValueBool);
+   pgagroal_json_put(r, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t) true, ValueBool);
    pgagroal_json_put(r, MANAGEMENT_ARGUMENT_TIME, (uintptr_t)elapsed, ValueString);
 
    pgagroal_json_put(json, MANAGEMENT_CATEGORY_OUTCOME, (uintptr_t)r, ValueJSON);
@@ -864,7 +899,7 @@ pgagroal_management_create_outcome_failure(struct json* json, int32_t error, str
       goto error;
    }
 
-   pgagroal_json_put(r, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t)false, ValueBool);
+   pgagroal_json_put(r, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t) false, ValueBool);
    pgagroal_json_put(r, MANAGEMENT_ARGUMENT_ERROR, (uintptr_t)error, ValueInt32);
 
    pgagroal_json_put(json, MANAGEMENT_CATEGORY_OUTCOME, (uintptr_t)r, ValueJSON);

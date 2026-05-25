@@ -70,15 +70,23 @@
 #define COMMAND_STATUS         "status"
 #define COMMAND_STATUS_DETAILS "status-details"
 #define COMMAND_SWITCH_TO      "switch-to"
-#define COMMAND_CONFIG_LS      "conf-ls"
-#define COMMAND_CONFIG_GET     "conf-get"
-#define COMMAND_CONFIG_SET     "conf-set"
-#define COMMAND_CONFIG_ALIAS   "conf-alias"
 
-#define OUTPUT_FORMAT_JSON     "json"
-#define OUTPUT_FORMAT_TEXT     "text"
+/* Wire-protocol value for the Timeout field on MANAGEMENT_SHUTDOWN_TIMEOUT and
+ * MANAGEMENT_FLUSH requests with mode=FLUSH_TIMEOUT. The action/mode itself
+ * signals "bound this with a timeout"; this value just carries how long.
+ *   0   -> no explicit seconds: daemon falls back to 'flush_timeout' from pgagroal.conf
+ *   > 0 -> explicit seconds from the CLI
+ */
+#define TIMEOUT_FROM_CONFIG  0
+#define COMMAND_CONFIG_LS    "conf-ls"
+#define COMMAND_CONFIG_GET   "conf-get"
+#define COMMAND_CONFIG_SET   "conf-set"
+#define COMMAND_CONFIG_ALIAS "conf-alias"
 
-#define UNSPECIFIED            "Unspecified"
+#define OUTPUT_FORMAT_JSON   "json"
+#define OUTPUT_FORMAT_TEXT   "text"
+
+#define UNSPECIFIED          "Unspecified"
 
 static void display_helper(char* command);
 static void help_cancel_shutdown(void);
@@ -100,8 +108,9 @@ static int conf_set(SSL* ssl, int socket, char* config_key, char* config_value, 
 static int details(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int disabledb(SSL* ssl, int socket, char* database, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int enabledb(SSL* ssl, int socket, char* database, uint8_t compression, uint8_t encryption, int32_t output_format);
-static int flush(SSL* ssl, int socket, int32_t mode, char* database, uint8_t compression, uint8_t encryption, int32_t output_format);
+static int flush(SSL* ssl, int socket, int32_t mode, char* database, int32_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int gracefully(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
+static int shutdown_timeout(SSL* ssl, int socket, int32_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int pgagroal_shutdown(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int ping(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int reload(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
@@ -219,6 +228,14 @@ const struct pgagroal_command command_table[] = {
       .log_message = "<shutdown cancel>"
    },
    {
+      .command = "shutdown",
+      .subcommand = "timeout",
+      .accepted_argument_count = {0, 1},
+      .action = MANAGEMENT_SHUTDOWN_TIMEOUT,
+      .deprecated = false,
+      .log_message = "<shutdown timeout>"
+   },
+   {
       .command = "conf",
       .subcommand = "reload",
       .accepted_argument_count = {0},
@@ -298,6 +315,16 @@ const struct pgagroal_command command_table[] = {
       .log_message = "<flush all> [%s]",
    },
    {
+      .command = "flush",
+      .subcommand = "timeout",
+      .accepted_argument_count = {0, 1, 2},
+      .action = MANAGEMENT_FLUSH,
+      .mode = FLUSH_TIMEOUT,
+      .default_argument = "*",
+      .deprecated = false,
+      .log_message = "<flush timeout> [%s]",
+   },
+   {
       .command = "clear",
       .subcommand = "prometheus",
       .accepted_argument_count = {0},
@@ -353,6 +380,9 @@ usage(void)
    printf("  flush [mode] [database]  Flush connections according to [mode].\n");
    printf("                           Allowed modes are:\n");
    printf("                           - 'gracefully' (default) to flush all connections gracefully\n");
+   printf("                           - 'timeout [SECONDS] [database]' graceful flush bounded by SECONDS\n");
+   printf("                             (or 'flush_timeout' from pgagroal.conf if SECONDS is omitted);\n");
+   printf("                             on expiry remaining connections are terminated (flush all)\n");
    printf("                           - 'idle' to flush only idle connections\n");
    printf("                           - 'all' to flush all connections. USE WITH CAUTION!\n");
    printf("                           If no [database] name is specified, applies to all databases.\n");
@@ -361,6 +391,9 @@ usage(void)
    printf("  disable  [database]      Disables the specified databases (or all databases)\n");
    printf("  shutdown [mode]          Stops pgagroal pooler. The [mode] can be:\n");
    printf("                           - 'gracefully' (default) waits for active connections to quit\n");
+   printf("                           - 'timeout [SECONDS]' graceful wait bounded by SECONDS (or\n");
+   printf("                             'flush_timeout' from pgagroal.conf if SECONDS is omitted);\n");
+   printf("                             on expiry forces an immediate shutdown\n");
    printf("                           - 'immediate' forces connections to close and terminate\n");
    printf("                           - 'cancel' avoid a previously issued 'shutdown gracefully'\n");
    printf("  status [details]         Status of pgagroal, with optional details\n");
@@ -761,7 +794,52 @@ username:
 
    if (parsed.cmd->action == MANAGEMENT_FLUSH)
    {
-      exit_code = flush(s_ssl, socket, parsed.cmd->mode, parsed.args[0], compression, encryption, output_format);
+      int32_t timeout = TIMEOUT_FROM_CONFIG;
+      char* database = parsed.args[0];
+
+      if (parsed.cmd->mode == FLUSH_TIMEOUT)
+      {
+         /* Layout:
+          *   flush timeout                       -> use config, db="*"
+          *   flush timeout <SECONDS>             -> explicit seconds, db="*"
+          *   flush timeout <SECONDS> <database>  -> explicit seconds, specific db
+          *
+          * parse_command fills args[0] with default_argument ("*") when no arg was
+          * passed, so we cannot rely on args[0] alone to detect "no args".
+          * When args[1] is set we treat args[0] as SECONDS and args[1] as the
+          * database; otherwise if args[0] is not the default ("*") it's SECONDS.
+          */
+         char* secs_str = NULL;
+         if (parsed.args[1] != NULL)
+         {
+            secs_str = parsed.args[0];
+            database = parsed.args[1];
+         }
+         else if (parsed.args[0] != NULL && strcmp(parsed.args[0], "*") != 0)
+         {
+            secs_str = parsed.args[0];
+            database = (char*)"*";
+         }
+         else
+         {
+            database = (char*)"*";
+         }
+
+         if (secs_str != NULL)
+         {
+            char* end = NULL;
+            long v = strtol(secs_str, &end, 10);
+            if (end == secs_str || *end != '\0' || v <= 0 || v > INT32_MAX)
+            {
+               warnx("pgagroal-cli: 'flush timeout' requires a positive integer number of seconds (got '%s')", secs_str);
+               exit_code = 1;
+               goto done;
+            }
+            timeout = (int32_t)v;
+         }
+      }
+
+      exit_code = flush(s_ssl, socket, parsed.cmd->mode, database, timeout, compression, encryption, output_format);
    }
    else if (parsed.cmd->action == MANAGEMENT_ENABLEDB)
    {
@@ -774,6 +852,25 @@ username:
    else if (parsed.cmd->action == MANAGEMENT_GRACEFULLY)
    {
       exit_code = gracefully(s_ssl, socket, compression, encryption, output_format);
+   }
+   else if (parsed.cmd->action == MANAGEMENT_SHUTDOWN_TIMEOUT)
+   {
+      int32_t timeout = TIMEOUT_FROM_CONFIG;
+
+      if (parsed.args[0] != NULL)
+      {
+         char* end = NULL;
+         long v = strtol(parsed.args[0], &end, 10);
+         if (end == parsed.args[0] || *end != '\0' || v <= 0 || v > INT32_MAX)
+         {
+            warnx("pgagroal-cli: 'shutdown timeout' requires a positive integer number of seconds (got '%s')", parsed.args[0]);
+            exit_code = 1;
+            goto done;
+         }
+         timeout = (int32_t)v;
+      }
+
+      exit_code = shutdown_timeout(s_ssl, socket, timeout, compression, encryption, output_format);
    }
    else if (parsed.cmd->action == MANAGEMENT_SHUTDOWN)
    {
@@ -873,7 +970,10 @@ static void
 help_shutdown(void)
 {
    printf("Shutdown pgagroal\n");
-   printf("  pgagroal-cli shutdown\n");
+   printf("  pgagroal-cli shutdown [gracefully|immediate|cancel]\n");
+   printf("  pgagroal-cli shutdown timeout [<SECONDS>]\n");
+   printf("    'timeout' bounds a graceful shutdown; SECONDS overrides 'flush_timeout' from pgagroal.conf.\n");
+   printf("    On expiry pgagroal forces an immediate shutdown.\n");
 }
 
 static void
@@ -927,6 +1027,9 @@ help_flush(void)
 {
    printf("Flush connections\n");
    printf("  pgagroal-cli flush [gracefully|idle|all] [*|<database>]\n");
+   printf("  pgagroal-cli flush timeout [<SECONDS>] [<database>]\n");
+   printf("    'timeout' bounds a graceful flush; SECONDS overrides 'flush_timeout' from pgagroal.conf.\n");
+   printf("    On expiry remaining marked connections are terminated.\n");
 }
 
 static void
@@ -991,9 +1094,9 @@ display_helper(char* command)
 }
 
 static int
-flush(SSL* ssl, int socket, int32_t mode, char* database, uint8_t compression, uint8_t encryption, int32_t output_format)
+flush(SSL* ssl, int socket, int32_t mode, char* database, int32_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format)
 {
-   if (pgagroal_management_request_flush(ssl, socket, mode, database, compression, encryption, output_format))
+   if (pgagroal_management_request_flush(ssl, socket, mode, database, timeout, compression, encryption, output_format))
    {
       goto error;
    }
@@ -1054,6 +1157,26 @@ static int
 gracefully(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format)
 {
    if (pgagroal_management_request_gracefully(ssl, socket, compression, encryption, output_format))
+   {
+      goto error;
+   }
+
+   if (process_result(ssl, socket, output_format))
+   {
+      goto error;
+   }
+
+   return 0;
+
+error:
+
+   return 1;
+}
+
+static int
+shutdown_timeout(SSL* ssl, int socket, int32_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format)
+{
+   if (pgagroal_management_request_shutdown_timeout(ssl, socket, timeout, compression, encryption, output_format))
    {
       goto error;
    }
@@ -2041,6 +2164,9 @@ translate_command(int32_t cmd_code)
          command_output = pgagroal_append(command_output, COMMAND_CLEAR_SERVER);
          break;
       case MANAGEMENT_SHUTDOWN:
+         command_output = pgagroal_append(command_output, COMMAND_SHUTDOWN);
+         break;
+      case MANAGEMENT_SHUTDOWN_TIMEOUT:
          command_output = pgagroal_append(command_output, COMMAND_SHUTDOWN);
          break;
       case MANAGEMENT_STATUS:

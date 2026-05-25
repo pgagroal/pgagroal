@@ -78,6 +78,7 @@ extern "C" {
 #define DEFAULT_IDLE_TIMEOUT                     0
 #define DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT 0
 #define DEFAULT_MAX_CONNECTION_AGE               0
+#define DEFAULT_FLUSH_TIMEOUT                    0
 #define DEFAULT_BACKGROUND_INTERVAL              300
 #define DEFAULT_HEALTH_CHECK_PERIOD              30
 #define DEFAULT_HEALTH_CHECK_TIMEOUT             5
@@ -158,6 +159,11 @@ extern "C" {
 #define FLUSH_IDLE                     0
 #define FLUSH_GRACEFULLY               1
 #define FLUSH_ALL                      2
+#define FLUSH_TIMEOUT                  3
+
+#define FLUSH_TIMEOUT_REASON_NONE      0
+#define FLUSH_TIMEOUT_REASON_SHUTDOWN  1
+#define FLUSH_TIMEOUT_REASON_FLUSH     2
 
 #define VALIDATION_OFF                 0
 #define VALIDATION_FOREGROUND          1
@@ -719,6 +725,7 @@ struct main_configuration
    pgagroal_time_t rotate_frontend_password_timeout; /**< The duration of rotate frontend password timeout (Default seconds) */
    int rotate_frontend_password_length;              /**< Length of randomised passwords */
    pgagroal_time_t max_connection_age;               /**< The duration of max connection age (Default seconds) */
+   pgagroal_time_t flush_timeout;                    /**< Default timeout (seconds) for 'flush timeout' / 'shutdown timeout' when no value is passed on the CLI (0 = no default) */
    int validation;                                   /**< Validation mode */
    pgagroal_time_t background_interval;              /**< The duration of background validation interval (Default seconds) */
    int max_retries;                                  /**< The maximum number of retries */

@@ -984,7 +984,7 @@ pgagroal_flush(int mode, char* database)
                pgagroal_kill_connection(i, NULL);
                prefill = true;
             }
-            else if (mode == FLUSH_ALL || mode == FLUSH_GRACEFULLY)
+            else if (mode == FLUSH_ALL || mode == FLUSH_GRACEFULLY || mode == FLUSH_TIMEOUT)
             {
                if (atomic_compare_exchange_strong(&config->states[i], &in_use, STATE_FLUSH))
                {
@@ -996,9 +996,21 @@ pgagroal_flush(int mode, char* database)
                      pgagroal_kill_connection(i, NULL);
                      prefill = true;
                   }
-                  else if (mode == FLUSH_GRACEFULLY)
+                  else if (mode == FLUSH_GRACEFULLY || mode == FLUSH_TIMEOUT)
                   {
                      atomic_store(&config->states[i], STATE_GRACEFULLY);
+                  }
+               }
+               else if (mode == FLUSH_ALL)
+               {
+                  signed char graceful = STATE_GRACEFULLY;
+                  if (atomic_compare_exchange_strong(&config->states[i], &graceful, STATE_FLUSH))
+                  {
+                     kill(config->connections[i].pid, SIGQUIT);
+                     pgagroal_prometheus_connection_flush();
+                     pgagroal_tracking_event_slot(TRACKER_FLUSH, i);
+                     pgagroal_kill_connection(i, NULL);
+                     prefill = true;
                   }
                }
             }

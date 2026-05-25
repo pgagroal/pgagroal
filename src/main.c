@@ -93,6 +93,9 @@ static void max_connection_age_cb(void);
 static void rotate_frontend_password_cb(void);
 static void validation_cb(void);
 static void disconnect_client_cb(void);
+static void flush_timeout_cb(void);
+static void start_flush_timeout_timer(int reason, int32_t seconds, const char* database);
+static void stop_flush_timeout_timer(void);
 static void frontend_user_password_startup(struct main_configuration* config);
 static bool accept_fatal(int error);
 static void add_client(pid_t pid);
@@ -136,11 +139,15 @@ static struct periodic_watcher max_connection_age_watcher;
 static struct periodic_watcher validation_watcher;
 static struct periodic_watcher disconnect_client_watcher;
 static struct periodic_watcher rotate_frontend_password_watcher;
+static struct periodic_watcher flush_timeout_watcher;
 static bool idle_timeout_started = false;
 static bool max_connection_age_started = false;
 static bool validation_started = false;
 static bool disconnect_client_started = false;
 static bool rotate_frontend_password_started = false;
+static bool flush_timeout_started = false;
+static int flush_timeout_reason = FLUSH_TIMEOUT_REASON_NONE;
+static char flush_timeout_database[MAX_DATABASE_LENGTH];
 
 static void
 start_mgt(void)
@@ -1680,7 +1687,20 @@ accept_mgt_cb(struct io_watcher* watcher)
 
    if (id == MANAGEMENT_FLUSH)
    {
+      struct json* req = NULL;
+      int flush_mode = -1;
+      int32_t req_timeout = 0;
+      char* req_database = NULL;
+
       pgagroal_log_debug("pgagroal: Management flush");
+
+      req = (struct json*)pgagroal_json_get(payload, MANAGEMENT_CATEGORY_REQUEST);
+      if (req != NULL)
+      {
+         flush_mode = (int)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_MODE);
+         req_timeout = (int32_t)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_TIMEOUT);
+         req_database = (char*)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_DATABASE);
+      }
 
       pid = fork();
       if (pid == -1)
@@ -1699,6 +1719,25 @@ accept_mgt_cb(struct io_watcher* watcher)
 
          pgagroal_set_proc_title(1, ai->argv, "flush", NULL);
          pgagroal_request_flush(NULL, client_fd, compression, encryption, pyl);
+      }
+      else
+      {
+         if (flush_mode == FLUSH_TIMEOUT)
+         {
+            int32_t secs = req_timeout;
+            if (secs <= 0)
+            {
+               secs = (int32_t)pgagroal_time_convert(config->flush_timeout, FORMAT_TIME_S);
+               if (secs <= 0)
+               {
+                  pgagroal_log_warn("pgagroal: 'flush timeout' requested with no SECONDS and 'flush_timeout' is not configured - proceeding unbounded");
+               }
+            }
+            if (secs > 0)
+            {
+               start_flush_timeout_timer(FLUSH_TIMEOUT_REASON_FLUSH, secs, req_database);
+            }
+         }
       }
    }
    else if (id == MANAGEMENT_ENABLEDB)
@@ -1729,7 +1768,7 @@ accept_mgt_cb(struct io_watcher* watcher)
          pgagroal_json_create(&js);
 
          pgagroal_json_put(js, MANAGEMENT_ARGUMENT_DATABASE, (uintptr_t)database, ValueString);
-         pgagroal_json_put(js, MANAGEMENT_ARGUMENT_ENABLED, (uintptr_t)true, ValueBool);
+         pgagroal_json_put(js, MANAGEMENT_ARGUMENT_ENABLED, (uintptr_t) true, ValueBool);
 
          pgagroal_json_append(databases, (uintptr_t)js, ValueJSON);
       }
@@ -1747,7 +1786,7 @@ accept_mgt_cb(struct io_watcher* watcher)
                pgagroal_json_create(&js);
 
                pgagroal_json_put(js, MANAGEMENT_ARGUMENT_DATABASE, (uintptr_t)database, ValueString);
-               pgagroal_json_put(js, MANAGEMENT_ARGUMENT_ENABLED, (uintptr_t)true, ValueBool);
+               pgagroal_json_put(js, MANAGEMENT_ARGUMENT_ENABLED, (uintptr_t) true, ValueBool);
 
                pgagroal_json_append(databases, (uintptr_t)js, ValueJSON);
 
@@ -1838,6 +1877,42 @@ accept_mgt_cb(struct io_watcher* watcher)
 
       pgagroal_management_response_ok(NULL, client_fd, start_time, end_time, compression, encryption, payload);
    }
+   else if (id == MANAGEMENT_SHUTDOWN_TIMEOUT)
+   {
+      struct json* req = NULL;
+      int32_t req_timeout = 0;
+      int32_t secs = 0;
+
+      pgagroal_log_debug("pgagroal: Management shutdown timeout");
+      pgagroal_pool_status();
+
+      start_time = time(NULL);
+
+      config->gracefully = true;
+
+      req = (struct json*)pgagroal_json_get(payload, MANAGEMENT_CATEGORY_REQUEST);
+      if (req != NULL)
+      {
+         req_timeout = (int32_t)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_TIMEOUT);
+      }
+      secs = req_timeout;
+      if (secs <= 0)
+      {
+         secs = (int32_t)pgagroal_time_convert(config->flush_timeout, FORMAT_TIME_S);
+         if (secs <= 0)
+         {
+            pgagroal_log_warn("pgagroal: 'shutdown timeout' requested with no SECONDS and 'flush_timeout' is not configured - proceeding unbounded");
+         }
+      }
+      if (secs > 0)
+      {
+         start_flush_timeout_timer(FLUSH_TIMEOUT_REASON_SHUTDOWN, secs, NULL);
+      }
+
+      end_time = time(NULL);
+
+      pgagroal_management_response_ok(NULL, client_fd, start_time, end_time, compression, encryption, payload);
+   }
    else if (id == MANAGEMENT_SHUTDOWN)
    {
       pgagroal_log_debug("pgagroal: Management shutdown");
@@ -1849,6 +1924,7 @@ accept_mgt_cb(struct io_watcher* watcher)
 
       pgagroal_management_response_ok(NULL, client_fd, start_time, end_time, compression, encryption, payload);
 
+      stop_flush_timeout_timer();
       config->keep_running = false;
 
       pgagroal_event_loop_break();
@@ -1861,6 +1937,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       start_time = time(NULL);
 
       config->gracefully = false;
+      stop_flush_timeout_timer();
 
       end_time = time(NULL);
 
@@ -1972,7 +2049,7 @@ accept_mgt_cb(struct io_watcher* watcher)
             pgagroal_json_create(&sobj);
             pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_HOST, (uintptr_t)config->servers[i].host, ValueString);
             pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_PORT, (uintptr_t)config->servers[i].port, ValueInt32);
-            pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t)"Invalid", ValueString);
+            pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t) "Invalid", ValueString);
 
             pgagroal_json_put(invalid_servers, config->servers[i].name, (uintptr_t)sobj, ValueJSON);
          }
@@ -2224,6 +2301,7 @@ accept_mgt_cb(struct io_watcher* watcher)
          if (atomic_load(&config->active_connections) == 0)
          {
             pgagroal_log_debug("pgagroal: graceful shutdown triggered  - connections=0, gracefully=true, keep_running=true");
+            stop_flush_timeout_timer();
             pgagroal_pool_status();
             pgagroal_event_loop_break();
          }
@@ -2680,6 +2758,7 @@ shutdown_cb(void)
    struct main_configuration* config = (struct main_configuration*)shmem;
 
    pgagroal_log_debug("pgagroal: shutdown requested");
+   stop_flush_timeout_timer();
    config->keep_running = false;
    pgagroal_pool_status();
    pgagroal_health_check_stop();
@@ -2708,6 +2787,7 @@ graceful_cb(void)
 
    if (atomic_load(&config->active_connections) == 0)
    {
+      stop_flush_timeout_timer();
       pgagroal_pool_status();
 
       pgagroal_event_loop_break();
@@ -2778,6 +2858,46 @@ disconnect_client_cb(void)
       shutdown_ports(false);
       main_pipeline.periodic();
    }
+}
+
+static void
+flush_timeout_cb(void)
+{
+   struct main_configuration* config = (struct main_configuration*)shmem;
+   int reason = flush_timeout_reason;
+   char db[MAX_DATABASE_LENGTH];
+   if (reason == FLUSH_TIMEOUT_REASON_NONE)
+   {
+      return;
+   }
+
+   memcpy(db, flush_timeout_database, sizeof(db));
+
+   stop_flush_timeout_timer();
+
+   if (reason == FLUSH_TIMEOUT_REASON_SHUTDOWN)
+   {
+      pgagroal_log_warn("pgagroal: flush timeout expired - forcing immediate shutdown");
+      config->gracefully = false;
+      config->keep_running = false;
+      pgagroal_event_loop_break();
+   }
+   else if (reason == FLUSH_TIMEOUT_REASON_FLUSH)
+   {
+      pgagroal_log_warn("pgagroal: flush timeout expired - forcing FLUSH_ALL on database '%s'",
+                        db[0] ? db : "*");
+      if (!fork())
+      {
+         pgagroal_flush(FLUSH_ALL, db[0] ? db : "*");
+         exit(0);
+      }
+   }
+   else
+   {
+      pgagroal_log_debug("pgagroal: flush_timeout fired with no reason set - ignoring");
+   }
+
+   pgagroal_pool_status();
 }
 
 static void
@@ -2940,9 +3060,74 @@ stop_periodic_watcher(struct periodic_watcher* watcher, bool* started)
          pgagroal_log_warn("Unable to stop periodic watcher");
       }
 
-      memset(watcher, 0, sizeof(struct periodic_watcher));
+      /* Intentionally NOT memsetting the watcher here. The io_uring backend
+       * arms periodic watchers with IORING_TIMEOUT_MULTISHOT and stops them
+       * by submitting a cancel SQE. The kernel responds with a final
+       * -ECANCELED CQE that still carries the original user_data pointer
+       * (this watcher). The event dispatcher then reads watcher->type to
+       * route the CQE; if we zeroed type here it would trip the "Unknown
+       * event type: 0" FATAL in ev.c. Leaving type and cb intact lets the
+       * stale CQE dispatch into the original cb, which is expected to be
+       * idempotent (re-armed elsewhere via pgagroal_periodic_init).
+       */
       *started = false;
    }
+}
+
+static void
+start_flush_timeout_timer(int reason, int32_t seconds, const char* database)
+{
+   if (seconds <= 0)
+   {
+      return;
+   }
+
+   if (flush_timeout_started)
+   {
+      pgagroal_log_debug("pgagroal: flush timeout re-armed (was reason=%d, now reason=%d)",
+                         flush_timeout_reason, reason);
+      stop_flush_timeout_timer();
+   }
+
+   memset(flush_timeout_database, 0, sizeof(flush_timeout_database));
+   if (database != NULL)
+   {
+      strncpy(flush_timeout_database, database, sizeof(flush_timeout_database) - 1);
+   }
+   else
+   {
+      strncpy(flush_timeout_database, "*", sizeof(flush_timeout_database) - 1);
+   }
+
+   flush_timeout_reason = reason;
+   start_periodic_watcher(&flush_timeout_watcher, &flush_timeout_started, flush_timeout_cb,
+                          (int)(1000 * (int64_t)seconds));
+
+   if (flush_timeout_started)
+   {
+      pgagroal_log_info("pgagroal: flush timeout armed (%ds, reason=%s, db=%s)",
+                        seconds,
+                        reason == FLUSH_TIMEOUT_REASON_SHUTDOWN ? "shutdown" : "flush",
+                        flush_timeout_database);
+   }
+   else
+   {
+      pgagroal_log_warn("pgagroal: failed to arm flush_timeout watcher");
+      flush_timeout_reason = FLUSH_TIMEOUT_REASON_NONE;
+   }
+}
+
+static void
+stop_flush_timeout_timer(void)
+{
+   if (!flush_timeout_started)
+   {
+      return;
+   }
+
+   stop_periodic_watcher(&flush_timeout_watcher, &flush_timeout_started);
+   flush_timeout_reason = FLUSH_TIMEOUT_REASON_NONE;
+   memset(flush_timeout_database, 0, sizeof(flush_timeout_database));
 }
 
 static void

@@ -67,31 +67,32 @@ extern "C" {
 /**
  * Management commands
  */
-#define MANAGEMENT_UNKNOWN         0
-#define MANAGEMENT_CANCEL_SHUTDOWN 1
-#define MANAGEMENT_CONFIG_LS       2
-#define MANAGEMENT_CONFIG_GET      3
-#define MANAGEMENT_CONFIG_SET      4
-#define MANAGEMENT_DETAILS         5
-#define MANAGEMENT_DISABLEDB       6
-#define MANAGEMENT_ENABLEDB        7
-#define MANAGEMENT_FLUSH           8
-#define MANAGEMENT_GET_PASSWORD    9
-#define MANAGEMENT_GRACEFULLY      10
-#define MANAGEMENT_PING            11
-#define MANAGEMENT_RELOAD          12
-#define MANAGEMENT_CLEAR           13
-#define MANAGEMENT_CLEAR_SERVER    14
-#define MANAGEMENT_SHUTDOWN        15
-#define MANAGEMENT_STATUS          16
-#define MANAGEMENT_SWITCH_TO       17
-#define MANAGEMENT_CONFIG_ALIAS    18
+#define MANAGEMENT_UNKNOWN          0
+#define MANAGEMENT_CANCEL_SHUTDOWN  1
+#define MANAGEMENT_CONFIG_LS        2
+#define MANAGEMENT_CONFIG_GET       3
+#define MANAGEMENT_CONFIG_SET       4
+#define MANAGEMENT_DETAILS          5
+#define MANAGEMENT_DISABLEDB        6
+#define MANAGEMENT_ENABLEDB         7
+#define MANAGEMENT_FLUSH            8
+#define MANAGEMENT_GET_PASSWORD     9
+#define MANAGEMENT_GRACEFULLY       10
+#define MANAGEMENT_PING             11
+#define MANAGEMENT_RELOAD           12
+#define MANAGEMENT_CLEAR            13
+#define MANAGEMENT_CLEAR_SERVER     14
+#define MANAGEMENT_SHUTDOWN         15
+#define MANAGEMENT_STATUS           16
+#define MANAGEMENT_SWITCH_TO        17
+#define MANAGEMENT_CONFIG_ALIAS     18
 
-#define MANAGEMENT_MASTER_KEY      19
-#define MANAGEMENT_ADD_USER        20
-#define MANAGEMENT_UPDATE_USER     21
-#define MANAGEMENT_REMOVE_USER     22
-#define MANAGEMENT_LIST_USERS      23
+#define MANAGEMENT_MASTER_KEY       19
+#define MANAGEMENT_ADD_USER         20
+#define MANAGEMENT_UPDATE_USER      21
+#define MANAGEMENT_REMOVE_USER      22
+#define MANAGEMENT_LIST_USERS       23
+#define MANAGEMENT_SHUTDOWN_TIMEOUT 24
 /**
  * Management arguments
  */
@@ -117,6 +118,7 @@ extern "C" {
 #define MANAGEMENT_ARGUMENT_MAX_CONNECTIONS     "MaxConnections"
 #define MANAGEMENT_ARGUMENT_MIN_CONNECTIONS     "MinConnections"
 #define MANAGEMENT_ARGUMENT_MODE                "Mode"
+#define MANAGEMENT_ARGUMENT_TIMEOUT             "Timeout"
 #define MANAGEMENT_ARGUMENT_NUMBER_OF_SERVERS   "NumberOfServers"
 #define MANAGEMENT_ARGUMENT_OUTPUT              "Output"
 #define MANAGEMENT_ARGUMENT_PASSWORD            "Password"
@@ -235,7 +237,7 @@ pgagroal_management_create_outcome_failure(struct json* json, int32_t error, str
  * @return 0 upon success, otherwise 1
  */
 int
-pgagroal_management_request_flush(SSL* ssl, int socket, int32_t mode, char* database, uint8_t compression, uint8_t encryption, int32_t output_format);
+pgagroal_management_request_flush(SSL* ssl, int socket, int32_t mode, char* database, int32_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format);
 
 /**
  * Management operation: Enable database
@@ -274,6 +276,20 @@ pgagroal_management_request_disabledb(SSL* ssl, int socket, char* database, uint
  */
 int
 pgagroal_management_request_gracefully(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
+
+/**
+ * Management operation: shutdown gracefully with a bounded wait
+ * @param ssl The SSL connection
+ * @param socket The socket
+ * @param timeout Seconds to wait before forcing an immediate shutdown.
+ *                0 means "use 'flush_timeout' from pgagroal.conf"; >0 means explicit seconds.
+ * @param compression The compression method
+ * @param encryption The encryption method
+ * @param output_format The output format
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_management_request_shutdown_timeout(SSL* ssl, int socket, int32_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format);
 
 /**
  * Management operation: Stop
