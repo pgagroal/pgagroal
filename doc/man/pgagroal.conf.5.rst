@@ -96,6 +96,11 @@ blocking_timeout
   'H' for hours, 'D' for days, and 'W' for weeks.
   (disable = 0) Default is 30
 
+connection_retry_delay
+  When ``blocking_timeout`` is set, the cap (in milliseconds) for the exponential back-off between
+  connection-acquisition retries. The delay starts at 1ms and doubles each retry up to this cap, always
+  bounded by ``blocking_timeout``. Valid range is 1-999ms; out-of-range values are clamped. Default is 250
+
 idle_timeout
   The amount of time a connection is kept alive. If this value is specified without units, it is taken as seconds.
   It supports the following units as suffixes: 'S' for seconds (default), 'M' for minutes, 'H' for hours, 'D' for days,

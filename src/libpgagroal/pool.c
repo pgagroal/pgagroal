@@ -78,6 +78,7 @@ pgagroal_get_connection(char* username, char* database, bool reuse, bool transac
    time_t start_time;
    int best_rule;
    int retries;
+   long retry_delay;
    int ret;
    char* real_database;
 
@@ -91,6 +92,7 @@ pgagroal_get_connection(char* username, char* database, bool reuse, bool transac
 
    best_rule = find_best_rule(username, database);
    retries = 0;
+   retry_delay = 0; /* seeds the back-off at 1ms on the first blocking retry; persists across goto start */
    start_time = time(NULL);
    pgagroal_prometheus_connection_awaiting(best_rule);
 
@@ -377,8 +379,11 @@ retry:
 retry2:
       if (pgagroal_time_is_valid(config->blocking_timeout))
       {
-         /* Sleep for 500ms */
-         SLEEP(500000000L)
+         /* Bounded exponential back-off (1ms -> doubling -> connection_retry_delay
+          * cap), in place of the former fixed 500ms poll. The total wait is still
+          * bounded by blocking_timeout, which is re-checked below each retry (#813). */
+         retry_delay = pgagroal_pool_next_retry_delay(retry_delay, config->connection_retry_delay);
+         SLEEP(retry_delay)
 
          double diff = difftime(time(NULL), start_time);
          if (diff >= (double)pgagroal_time_convert(config->blocking_timeout, FORMAT_TIME_S))
@@ -450,6 +455,42 @@ error:
    pgagroal_tracking_event_basic(TRACKER_GET_CONNECTION_ERROR, username, database);
 
    return 2;
+}
+
+long
+pgagroal_pool_next_retry_delay(long current_ns, int cap_ms)
+{
+   long cap_ns;
+   long next;
+
+   /* Keep the helper total even if handed an out-of-range cap; configuration
+    * validation is the primary guard, this is defence in depth. */
+   if (cap_ms < MIN_CONNECTION_RETRY_DELAY)
+   {
+      cap_ms = MIN_CONNECTION_RETRY_DELAY;
+   }
+   else if (cap_ms > MAX_CONNECTION_RETRY_DELAY)
+   {
+      cap_ms = MAX_CONNECTION_RETRY_DELAY;
+   }
+
+   cap_ns = (long)cap_ms * 1000000L;
+
+   if (current_ns <= 0)
+   {
+      next = 1000000L; /* 1ms seed */
+   }
+   else
+   {
+      next = current_ns * 2;
+   }
+
+   if (next > cap_ns)
+   {
+      next = cap_ns;
+   }
+
+   return next;
 }
 
 int

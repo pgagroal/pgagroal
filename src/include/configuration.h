@@ -94,6 +94,7 @@ extern "C" {
 #define CONFIGURATION_ARGUMENT_LOG_CONNECTIONS                  "log_connections"
 #define CONFIGURATION_ARGUMENT_LOG_DISCONNECTIONS               "log_disconnections"
 #define CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT                 "blocking_timeout"
+#define CONFIGURATION_ARGUMENT_CONNECTION_RETRY_DELAY           "connection_retry_delay"
 #define CONFIGURATION_ARGUMENT_IDLE_TIMEOUT                     "idle_timeout"
 #define CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_TIMEOUT "rotate_frontend_password_timeout"
 #define CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_LENGTH  "rotate_frontend_password_length"

@@ -164,6 +164,7 @@ pgagroal_init_configuration(void* shm)
    config->pipeline = PIPELINE_AUTO;
    config->authquery = false;
    config->blocking_timeout = PGAGROAL_TIME_SEC(DEFAULT_BLOCKING_TIMEOUT);
+   config->connection_retry_delay = DEFAULT_CONNECTION_RETRY_DELAY;
    config->idle_timeout = PGAGROAL_TIME_SEC(DEFAULT_IDLE_TIMEOUT);
    config->rotate_frontend_password_timeout = PGAGROAL_TIME_SEC(DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT);
    config->rotate_frontend_password_length = MIN_PASSWORD_LENGTH;
@@ -3741,6 +3742,7 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
    config->max_connections = reload->max_connections;
    config->allow_unknown_users = reload->allow_unknown_users;
    memcpy(&config->blocking_timeout, &reload->blocking_timeout, sizeof(config->blocking_timeout));
+   config->connection_retry_delay = reload->connection_retry_delay;
    memcpy(&config->idle_timeout, &reload->idle_timeout, sizeof(config->idle_timeout));
    memcpy(&config->rotate_frontend_password_timeout, &reload->rotate_frontend_password_timeout, sizeof(config->rotate_frontend_password_timeout));
    config->rotate_frontend_password_length = reload->rotate_frontend_password_length;
@@ -4914,6 +4916,10 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       {
          return to_int(buffer, (int)pgagroal_time_convert(config->blocking_timeout, FORMAT_TIME_S));
       }
+      else if (!strncmp(key, "connection_retry_delay", MISC_LENGTH))
+      {
+         return to_int(buffer, config->connection_retry_delay);
+      }
       else if (!strncmp(key, "idle_timeout", MISC_LENGTH))
       {
          return to_int(buffer, (int)pgagroal_time_convert(config->idle_timeout, FORMAT_TIME_S));
@@ -5953,6 +5959,29 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
          unknown = true;
       }
    }
+   else if (key_in_section("connection_retry_delay", section, key, true, &unknown))
+   {
+      int crd = DEFAULT_CONNECTION_RETRY_DELAY;
+
+      if (as_int(value, &crd))
+      {
+         unknown = true;
+      }
+      else
+      {
+         if (crd < MIN_CONNECTION_RETRY_DELAY)
+         {
+            pgagroal_log_warn("pgagroal: connection_retry_delay %d ms below minimum %d ms; clamping", crd, MIN_CONNECTION_RETRY_DELAY);
+            crd = MIN_CONNECTION_RETRY_DELAY;
+         }
+         else if (crd > MAX_CONNECTION_RETRY_DELAY)
+         {
+            pgagroal_log_warn("pgagroal: connection_retry_delay %d ms above maximum %d ms; clamping", crd, MAX_CONNECTION_RETRY_DELAY);
+            crd = MAX_CONNECTION_RETRY_DELAY;
+         }
+         config->connection_retry_delay = crd;
+      }
+   }
    else if (key_in_section("idle_timeout", section, key, true, &unknown))
    {
       if (as_seconds(value, &config->idle_timeout, PGAGROAL_TIME_SEC(DEFAULT_IDLE_TIMEOUT)))
@@ -6802,6 +6831,7 @@ add_configuration_response(struct json* res)
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_CONNECTIONS, (uintptr_t)config->common.log_connections, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_LOG_DISCONNECTIONS, (uintptr_t)config->common.log_disconnections, ValueBool);
    pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_BLOCKING_TIMEOUT, config->blocking_timeout, FORMAT_TIME_S);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_CONNECTION_RETRY_DELAY, (uintptr_t)config->connection_retry_delay, ValueInt64);
    pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, config->idle_timeout, FORMAT_TIME_S);
    pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_TIMEOUT, config->rotate_frontend_password_timeout, FORMAT_TIME_S);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_LENGTH, (uintptr_t)config->rotate_frontend_password_length, ValueInt64);

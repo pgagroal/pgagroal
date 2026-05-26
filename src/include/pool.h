@@ -54,6 +54,20 @@ int
 pgagroal_get_connection(char* username, char* database, bool reuse, bool transaction_mode, int* slot, SSL** ssl);
 
 /**
+ * Compute the next back-off delay for the blocking acquisition retry path.
+ *
+ * Exponential back-off: the delay doubles each retry, clamped to the cap. The
+ * cap is `connection_retry_delay` (milliseconds). Pure function (no shared
+ * state) so the sequence can be unit-tested in isolation.
+ *
+ * @param current_ns The current delay in nanoseconds (>= 0). 0 yields the 1ms seed.
+ * @param cap_ms The back-off cap in milliseconds (the configured connection_retry_delay)
+ * @return The next delay in nanoseconds, never exceeding cap_ms converted to nanoseconds
+ */
+long
+pgagroal_pool_next_retry_delay(long current_ns, int cap_ms);
+
+/**
  * Return a connection
  * @param slot The slot
  * @param ssl The SSL connection (can be NULL)

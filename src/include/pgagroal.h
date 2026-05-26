@@ -75,6 +75,9 @@ extern "C" {
 #define HTTP_BUFFER_SIZE                         1024
 
 #define DEFAULT_BLOCKING_TIMEOUT                 30
+#define DEFAULT_CONNECTION_RETRY_DELAY           250 /* milliseconds: back-off cap on the blocking acquisition path */
+#define MIN_CONNECTION_RETRY_DELAY               1   /* milliseconds */
+#define MAX_CONNECTION_RETRY_DELAY               999 /* milliseconds: SLEEP() is sub-second only (nanosleep tv_nsec < 1e9) */
 #define DEFAULT_IDLE_TIMEOUT                     0
 #define DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT 0
 #define DEFAULT_MAX_CONNECTION_AGE               0
@@ -715,6 +718,7 @@ struct main_configuration
    bool allow_unknown_users;         /**< Allow unknown users */
 
    pgagroal_time_t blocking_timeout;                 /**< The duration of blocking timeout (Default seconds) */
+   int connection_retry_delay;                       /**< Back-off cap (milliseconds) on the blocking acquisition retry path */
    pgagroal_time_t idle_timeout;                     /**< The duration of idle timeout (Default seconds) */
    pgagroal_time_t rotate_frontend_password_timeout; /**< The duration of rotate frontend password timeout (Default seconds) */
    int rotate_frontend_password_length;              /**< Length of randomised passwords */
