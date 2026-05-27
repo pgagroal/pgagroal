@@ -379,9 +379,10 @@ retry:
 retry2:
       if (pgagroal_time_is_valid(config->blocking_timeout))
       {
-         /* Bounded exponential back-off (1ms -> doubling -> connection_retry_delay
-          * cap), in place of the former fixed 500ms poll. The total wait is still
-          * bounded by blocking_timeout, which is re-checked below each retry (#813). */
+         /* Back-off that doubles each retry (1ms, 2ms, 4ms, ... up to the
+          * connection_retry_delay cap), in place of the former fixed 500ms poll.
+          * The total wait is still bounded by blocking_timeout, which is
+          * re-checked below each retry (#813). */
          retry_delay = pgagroal_pool_next_retry_delay(retry_delay, config->connection_retry_delay);
          SLEEP(retry_delay)
 

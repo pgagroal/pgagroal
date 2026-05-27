@@ -97,9 +97,12 @@ blocking_timeout
   (disable = 0) Default is 30
 
 connection_retry_delay
-  When ``blocking_timeout`` is set, the cap (in milliseconds) for the exponential back-off between
-  connection-acquisition retries. The delay starts at 1ms and doubles each retry up to this cap, always
-  bounded by ``blocking_timeout``. Valid range is 1-999ms; out-of-range values are clamped. Default is 250
+  When ``blocking_timeout`` is set, the cap (in milliseconds) on the back-off between
+  connection-acquisition retries. The delay starts at 1ms and doubles on each retry
+  (1, 2, 4, 8, ... ms) until it reaches this cap, after which it stays at the cap; the
+  total wait is always bounded by ``blocking_timeout``. For example, with the default of
+  250 the delays are 1, 2, 4, 8, 16, 32, 64, 128, 250, 250, ... ms. Valid range is
+  1-999ms; out-of-range values are clamped. Default is 250
 
 idle_timeout
   The amount of time a connection is kept alive. If this value is specified without units, it is taken as seconds.
