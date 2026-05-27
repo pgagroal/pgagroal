@@ -718,7 +718,7 @@ struct main_configuration
    bool allow_unknown_users;         /**< Allow unknown users */
 
    pgagroal_time_t blocking_timeout;                 /**< The duration of blocking timeout (Default seconds) */
-   int connection_retry_delay;                       /**< Back-off cap (milliseconds) on the blocking acquisition retry path */
+   unsigned int connection_retry_delay;              /**< Back-off cap (milliseconds) on the blocking acquisition retry path */
    pgagroal_time_t idle_timeout;                     /**< The duration of idle timeout (Default seconds) */
    pgagroal_time_t rotate_frontend_password_timeout; /**< The duration of rotate frontend password timeout (Default seconds) */
    int rotate_frontend_password_length;              /**< Length of randomised passwords */
