@@ -406,6 +406,15 @@ MCTF_TEST(test_configuration_accept_time_params)
    pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, "5m");
    pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, "1w");
 
+   // flush_timeout
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT, "0");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT, "30s");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT, "5m");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT, "1h");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT, "1d");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT, "1w");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT, "60");
+
    // authentication_timeout
    pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_AUTHENTICATION_TIMEOUT, "5s");
    pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_AUTHENTICATION_TIMEOUT, "10");
@@ -423,6 +432,10 @@ MCTF_TEST(test_configuration_reject_invalid_time_params)
 
    // Negative value
    pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, "-5s");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT, "-10s");
+
+   // Invalid suffix on flush_timeout
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT, "10x");
 
    // Mixed units
    pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_AUTHENTICATION_TIMEOUT, "1h5s");

@@ -23,6 +23,14 @@ Available options are the following ones:
 -P, --password PASSWORD  Set the password
 -L, --logfile FILE       Set the log file
 -F, --format  text|json  Set the output format
+-T, --timeout DURATION   Deadline for 'shutdown [gracefully]' / 'flush [gracefully]'.
+                         DURATION is a non-negative number with an optional unit suffix:
+                         's' (seconds, default), 'm' (minutes), 'h' (hours),
+                         'd' (days), 'w' (weeks). E.g. '30', '30s', '5m', '1h', '2d', '1w'.
+                         When omitted, falls back to 'flush_timeout' from pgagroal.conf
+                         (built-in default of 60s applies when 'flush_timeout' is not set).
+                         '--timeout 0' explicitly disables the timer (operation runs unbounded),
+                         same meaning as 'flush_timeout = 0' in pgagroal.conf.
 -v, --verbose            Output text string of result
 -V, --version            Display version information
 -?, --help               Display help
@@ -49,20 +57,37 @@ The command accepts a database name, that if provided, restricts the scope of
 `flush` only to connections related to such database.
 If no database is provided, the `flush` command is operated against all databases.
 
+A deadline may be bound to a graceful flush via the global `-T, --timeout DURATION`
+option. `DURATION` is a non-negative number optionally followed by a unit suffix
+(`s` for seconds — the default, `m` for minutes, `h` for hours, `d` for days,
+`w` for weeks). When the deadline expires, any connections still marked for
+flush are forcibly terminated (equivalent to `flush all` for the targeted
+database). When `--timeout` is omitted, pgagroal falls back to the
+`flush_timeout` value from `pgagroal.conf` (a built-in default of `60s` is used
+when `flush_timeout` is not set). Passing `--timeout 0` explicitly disables the
+timer (the flush runs unbounded), the same meaning as `flush_timeout = 0` in
+`pgagroal.conf`. If no client currently holds a connection at the time of the
+request, the flush completes immediately and no timer is armed. `--timeout` is
+silently ignored for the `idle` and `all` modes.
+
 
 Command
 
 ```
 pgagroal-cli flush [gracefully|idle|all] [*|<database>]
+pgagroal-cli flush [gracefully] [*|<database>] --timeout <DURATION>
 ```
 
 Examples
 
 ```
-pgagroal-cli flush           # pgagroal-cli flush gracefully '*'
-pgagroal-cli flush idle      # pgagroal-cli flush idle '*'
-pgagroal-cli flush all       # pgagroal-cli flush all '*'
-pgagroal-cli flush pgbench   # pgagroal-cli flush gracefully pgbench
+pgagroal-cli flush                                  # pgagroal-cli flush gracefully '*'
+pgagroal-cli flush idle                             # pgagroal-cli flush idle '*'
+pgagroal-cli flush all                              # pgagroal-cli flush all '*'
+pgagroal-cli flush pgbench                          # pgagroal-cli flush gracefully pgbench
+pgagroal-cli flush --timeout 30                     # graceful, escalate to 'flush all *' after 30s
+pgagroal-cli flush --timeout 5m                     # graceful, escalate to 'flush all *' after 5 minutes
+pgagroal-cli flush gracefully pgbench --timeout 1h  # graceful, escalate to 'flush all pgbench' after 1 hour
 ```
 
 ### ping
@@ -132,19 +157,36 @@ If the `gracefully` mode is requested, chances are the system will take some tim
 perform the effective shutdown, and therefore it is possible to abort the request
 issuing another `shutdown` command with the mode `cancel`.
 
+A deadline may be bound to a graceful shutdown via the global `-T, --timeout DURATION`
+option. `DURATION` is a non-negative number optionally followed by a unit suffix
+(`s` for seconds — the default, `m` for minutes, `h` for hours, `d` for days,
+`w` for weeks). When the deadline expires, pgagroal escalates to an immediate
+shutdown. When `--timeout` is omitted, pgagroal falls back to the `flush_timeout`
+value from `pgagroal.conf` (a built-in default of `60s` is used when
+`flush_timeout` is not set). Passing `--timeout 0` explicitly disables the timer
+(the shutdown runs unbounded), the same meaning as `flush_timeout = 0` in
+`pgagroal.conf`. If no client currently holds a connection at the time of the
+request, pgagroal shuts down immediately and no timer is armed. A pending
+graceful shutdown with deadline can be aborted with `shutdown cancel`, just like
+a plain `shutdown gracefully`. `--timeout` is silently ignored for `immediate`
+and `cancel`.
+
 
 Command
 
 ```
 pgagroal-cli shutdown [gracefully|immediate|cancel]
+pgagroal-cli shutdown [gracefully] --timeout <DURATION>
 ```
 
 Examples
 
 ```
-pgagroal-cli shutdown   # pgagroal-cli shutdown gracefully
-...
-pgagroal-cli shutdown cancel  # stops the above command
+pgagroal-cli shutdown                           # pgagroal-cli shutdown gracefully
+pgagroal-cli shutdown --timeout 30              # graceful, force immediate shutdown after 30s
+pgagroal-cli shutdown --timeout 5m              # graceful, force immediate shutdown after 5 minutes
+pgagroal-cli shutdown gracefully --timeout 1h   # graceful, force immediate shutdown after 1 hour
+pgagroal-cli shutdown cancel                    # stops a pending graceful shutdown
 ```
 
 

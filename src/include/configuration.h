@@ -98,6 +98,7 @@ extern "C" {
 #define CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_TIMEOUT "rotate_frontend_password_timeout"
 #define CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_LENGTH  "rotate_frontend_password_length"
 #define CONFIGURATION_ARGUMENT_MAX_CONNECTION_AGE               "max_connection_age"
+#define CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT                    "flush_timeout"
 #define CONFIGURATION_ARGUMENT_VALIDATION                       "validation"
 #define CONFIGURATION_ARGUMENT_STARTUP_VALIDATION               "startup_validation"
 #define CONFIGURATION_ARGUMENT_BACKGROUND_INTERVAL              "background_interval"
@@ -143,6 +144,7 @@ extern "C" {
 #define CONFIGURATION_DEFAULT_LOG_PATH        "/tmp/pgagroal.log"
 #define CONFIGURATION_DEFAULT_MAX_CONNECTIONS "100"
 #define CONFIGURATION_DEFAULT_IDLE_TIMEOUT    "600"
+#define CONFIGURATION_DEFAULT_FLUSH_TIMEOUT   "60"
 #define CONFIGURATION_DEFAULT_VALIDATION      "off"
 #define CONFIGURATION_DEFAULT_EV_BACKEND      "auto"
 

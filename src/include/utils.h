@@ -706,6 +706,15 @@ pgagroal_time_is_valid(pgagroal_time_t t);
 int
 pgagroal_time_format(pgagroal_time_t t, enum pgagroal_time_format_t fmt, char** output);
 
+/**
+ * Parse a duration string into a non-negative number of seconds.
+ * @param str the duration string
+ * @param out_seconds receives the parsed duration in seconds on success
+ * @return 0 on success, non-zero if the input is malformed or out of range
+ */
+int
+pgagroal_parse_seconds(const char* str, int64_t* out_seconds);
+
 #ifdef __cplusplus
 }
 #endif

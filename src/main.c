@@ -93,12 +93,16 @@ static void max_connection_age_cb(void);
 static void rotate_frontend_password_cb(void);
 static void validation_cb(void);
 static void disconnect_client_cb(void);
+static void shutdown_timeout_cb(void);
+static void flush_alarm_cb(void);
+static void arm_flush_timeout(int64_t seconds, const char* database);
+static void rearm_flush_alarm(void);
 static void frontend_user_password_startup(struct main_configuration* config);
 static bool accept_fatal(int error);
 static void add_client(pid_t pid);
 static void remove_client(pid_t pid);
 static void refresh_periodic_watchers(void);
-static void start_periodic_watcher(struct periodic_watcher* watcher, bool* started, periodic_cb cb, int interval);
+static void start_periodic_watcher(struct periodic_watcher* watcher, bool* started, periodic_cb cb, int64_t timeout_ms, int64_t repeat_ms);
 static void stop_periodic_watcher(struct periodic_watcher* watcher, bool* started);
 static bool reload_configuration(bool* restart);
 static void reload_set_configuration(SSL* ssl, int client_fd, uint8_t compression, uint8_t encryption, struct json* payload);
@@ -136,11 +140,16 @@ static struct periodic_watcher max_connection_age_watcher;
 static struct periodic_watcher validation_watcher;
 static struct periodic_watcher disconnect_client_watcher;
 static struct periodic_watcher rotate_frontend_password_watcher;
+static struct periodic_watcher shutdown_timeout_watcher;
+static struct periodic_watcher flush_alarm;
+static struct flush_timeout_slot flush_timeouts[NUMBER_OF_LIMITS];
 static bool idle_timeout_started = false;
 static bool max_connection_age_started = false;
 static bool validation_started = false;
 static bool disconnect_client_started = false;
 static bool rotate_frontend_password_started = false;
+static bool shutdown_timeout_started = false;
+static bool flush_alarm_started = false;
 
 static void
 start_mgt(void)
@@ -1680,7 +1689,20 @@ accept_mgt_cb(struct io_watcher* watcher)
 
    if (id == MANAGEMENT_FLUSH)
    {
+      struct json* req = NULL;
+      int flush_mode = -1;
+      int64_t req_timeout = -1;
+      char* req_database = NULL;
+
       pgagroal_log_debug("pgagroal: Management flush");
+
+      req = (struct json*)pgagroal_json_get(payload, MANAGEMENT_CATEGORY_REQUEST);
+      if (req != NULL)
+      {
+         flush_mode = (int)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_MODE);
+         req_timeout = (int64_t)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_TIMEOUT);
+         req_database = (char*)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_DATABASE);
+      }
 
       pid = fork();
       if (pid == -1)
@@ -1699,6 +1721,20 @@ accept_mgt_cb(struct io_watcher* watcher)
 
          pgagroal_set_proc_title(1, ai->argv, "flush", NULL);
          pgagroal_request_flush(NULL, client_fd, compression, encryption, pyl);
+      }
+      else
+      {
+         if (flush_mode == FLUSH_GRACEFULLY)
+         {
+            int64_t conf_secs = pgagroal_time_is_valid(config->flush_timeout)
+                                   ? pgagroal_time_convert(config->flush_timeout, FORMAT_TIME_S)
+                                   : 0;
+            int64_t secs = (req_timeout >= 0) ? req_timeout : conf_secs;
+            if (secs > 0 && atomic_load(&config->active_connections) > 0)
+            {
+               arm_flush_timeout(secs, req_database);
+            }
+         }
       }
    }
    else if (id == MANAGEMENT_ENABLEDB)
@@ -1827,12 +1863,33 @@ accept_mgt_cb(struct io_watcher* watcher)
    }
    else if (id == MANAGEMENT_GRACEFULLY)
    {
+      struct json* req = NULL;
+      int64_t req_timeout = -1;
+      int64_t secs = 0;
+
       pgagroal_log_debug("pgagroal: Management gracefully");
       pgagroal_pool_status();
 
       start_time = time(NULL);
 
       config->gracefully = true;
+
+      req = (struct json*)pgagroal_json_get(payload, MANAGEMENT_CATEGORY_REQUEST);
+      if (req != NULL)
+      {
+         req_timeout = (int64_t)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_TIMEOUT);
+      }
+      {
+         int64_t conf_secs = pgagroal_time_is_valid(config->flush_timeout)
+                                ? pgagroal_time_convert(config->flush_timeout, FORMAT_TIME_S)
+                                : 0;
+         secs = (req_timeout >= 0) ? req_timeout : conf_secs;
+      }
+      if (secs > 0 && atomic_load(&config->active_connections) > 0)
+      {
+         start_periodic_watcher(&shutdown_timeout_watcher, &shutdown_timeout_started,
+                                shutdown_timeout_cb, secs * 1000, 0);
+      }
 
       end_time = time(NULL);
 
@@ -1859,7 +1916,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       pgagroal_pool_status();
 
       start_time = time(NULL);
-
+      stop_periodic_watcher(&shutdown_timeout_watcher, &shutdown_timeout_started);
       config->gracefully = false;
 
       end_time = time(NULL);
@@ -2781,6 +2838,75 @@ disconnect_client_cb(void)
 }
 
 static void
+shutdown_timeout_cb(void)
+{
+   struct main_configuration* config = (struct main_configuration*)shmem;
+
+   pgagroal_log_warn("pgagroal: shutdown timeout expired - forcing immediate shutdown");
+   config->gracefully = false;
+   config->keep_running = false;
+   pgagroal_event_loop_break();
+}
+
+static void
+flush_alarm_cb(void)
+{
+   struct timespec now;
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
+   bool fired = false;
+
+   stop_periodic_watcher(&flush_alarm, &flush_alarm_started);
+
+   clock_gettime(CLOCK_MONOTONIC, &now);
+
+   for (int i = 0; i < NUMBER_OF_LIMITS; i++)
+   {
+      char db[MAX_DATABASE_LENGTH];
+
+      if (!flush_timeouts[i].in_use)
+      {
+         continue;
+      }
+
+      if (flush_timeouts[i].expires_at.tv_sec > now.tv_sec ||
+          (flush_timeouts[i].expires_at.tv_sec == now.tv_sec &&
+           flush_timeouts[i].expires_at.tv_nsec > now.tv_nsec))
+      {
+         continue;
+      }
+
+      memcpy(db, flush_timeouts[i].database, sizeof(db));
+      flush_timeouts[i].in_use = false;
+      memset(flush_timeouts[i].database, 0, sizeof(flush_timeouts[i].database));
+      fired = true;
+
+      if (atomic_load(&config->active_connections) > 0)
+      {
+         pgagroal_log_warn("pgagroal: flush timeout expired - forcing FLUSH_ALL on database '%s'",
+                           db[0] ? db : "*");
+         if (!fork())
+         {
+            pgagroal_flush(FLUSH_ALL, db[0] ? db : "*");
+            exit(0);
+         }
+      }
+      else
+      {
+         pgagroal_log_info("pgagroal: flush timeout fired but no active connections remain, skipping");
+      }
+   }
+
+   if (fired)
+   {
+      pgagroal_pool_status();
+   }
+
+   rearm_flush_alarm();
+}
+
+static void
 rotate_frontend_password_cb(void)
 {
    char* pwd;
@@ -2911,9 +3037,15 @@ remove_client(pid_t pid)
 }
 
 static void
-start_periodic_watcher(struct periodic_watcher* watcher, bool* started, periodic_cb cb, int interval)
+start_periodic_watcher(struct periodic_watcher* watcher, bool* started,
+                       periodic_cb cb, int64_t timeout_ms, int64_t repeat_ms)
 {
-   if (pgagroal_periodic_init(watcher, cb, interval) != PGAGROAL_EVENT_RC_OK)
+   if (started != NULL && *started)
+   {
+      stop_periodic_watcher(watcher, started);
+   }
+
+   if (pgagroal_periodic_init(watcher, cb, timeout_ms, repeat_ms) != PGAGROAL_EVENT_RC_OK)
    {
       memset(watcher, 0, sizeof(struct periodic_watcher));
       *started = false;
@@ -2946,6 +3078,105 @@ stop_periodic_watcher(struct periodic_watcher* watcher, bool* started)
 }
 
 static void
+arm_flush_timeout(int64_t seconds, const char* database)
+{
+   const char* db = (database != NULL && database[0] != '\0') ? database : "*";
+   int slot = -1;
+
+   if (seconds <= 0)
+   {
+      return;
+   }
+   for (int i = 0; i < NUMBER_OF_LIMITS; i++)
+   {
+      if (flush_timeouts[i].in_use && !strcmp(flush_timeouts[i].database, db))
+      {
+         slot = i;
+         break;
+      }
+   }
+   if (slot < 0)
+   {
+      for (int i = 0; i < NUMBER_OF_LIMITS; i++)
+      {
+         if (!flush_timeouts[i].in_use)
+         {
+            slot = i;
+            break;
+         }
+      }
+   }
+   if (slot < 0)
+   {
+      pgagroal_log_warn("pgagroal: flush timeout table full - proceeding unbounded for '%s'", db);
+      return;
+   }
+
+   flush_timeouts[slot].in_use = true;
+   memset(flush_timeouts[slot].database, 0, sizeof(flush_timeouts[slot].database));
+   strncpy(flush_timeouts[slot].database, db, sizeof(flush_timeouts[slot].database) - 1);
+   clock_gettime(CLOCK_MONOTONIC, &flush_timeouts[slot].expires_at);
+   flush_timeouts[slot].expires_at.tv_sec += seconds;
+
+   rearm_flush_alarm();
+
+   if (!flush_alarm_started)
+   {
+      pgagroal_log_warn("pgagroal: failed to arm flush alarm watcher");
+      flush_timeouts[slot].in_use = false;
+      memset(flush_timeouts[slot].database, 0, sizeof(flush_timeouts[slot].database));
+      return;
+   }
+
+   pgagroal_log_info("pgagroal: flush timeout armed (%llds, db=%s)",
+                     (long long)seconds, db);
+}
+
+static void
+rearm_flush_alarm(void)
+{
+   struct timespec now;
+   struct timespec earliest = {0};
+   bool have_earliest = false;
+   int64_t delta_ms;
+
+   for (int i = 0; i < NUMBER_OF_LIMITS; i++)
+   {
+      if (!flush_timeouts[i].in_use)
+      {
+         continue;
+      }
+      if (!have_earliest ||
+          flush_timeouts[i].expires_at.tv_sec < earliest.tv_sec ||
+          (flush_timeouts[i].expires_at.tv_sec == earliest.tv_sec &&
+           flush_timeouts[i].expires_at.tv_nsec < earliest.tv_nsec))
+      {
+         earliest = flush_timeouts[i].expires_at;
+         have_earliest = true;
+      }
+   }
+
+   if (!have_earliest)
+   {
+      stop_periodic_watcher(&flush_alarm, &flush_alarm_started);
+      return;
+   }
+
+   clock_gettime(CLOCK_MONOTONIC, &now);
+   delta_ms = ((int64_t)(earliest.tv_sec - now.tv_sec)) * 1000 + ((int64_t)(earliest.tv_nsec - now.tv_nsec)) / 1000000;
+
+   if (delta_ms <= 0)
+   {
+      delta_ms = 1;
+   }
+
+   start_periodic_watcher(&flush_alarm, &flush_alarm_started,
+                          flush_alarm_cb,
+                          delta_ms,
+                          0);
+}
+
+static void
 refresh_periodic_watchers(void)
 {
    struct main_configuration* config;
@@ -2960,32 +3191,32 @@ refresh_periodic_watchers(void)
 
    if (pgagroal_time_is_valid(config->idle_timeout))
    {
-      start_periodic_watcher(&idle_timeout_watcher, &idle_timeout_started, idle_timeout_cb,
-                             1000 * MAX(1. * pgagroal_time_convert(config->idle_timeout, FORMAT_TIME_S) / 2., 5.));
+      int64_t t = 1000 * (int64_t)MAX(1. * pgagroal_time_convert(config->idle_timeout, FORMAT_TIME_S) / 2., 5.);
+      start_periodic_watcher(&idle_timeout_watcher, &idle_timeout_started, idle_timeout_cb, t, t);
    }
 
    if (pgagroal_time_is_valid(config->max_connection_age))
    {
-      start_periodic_watcher(&max_connection_age_watcher, &max_connection_age_started, max_connection_age_cb,
-                             1000 * MAX(1. * pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S) / 2., 5.));
+      int64_t t = 1000 * (int64_t)MAX(1. * pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S) / 2., 5.);
+      start_periodic_watcher(&max_connection_age_watcher, &max_connection_age_started, max_connection_age_cb, t, t);
    }
 
    if (config->validation == VALIDATION_BACKGROUND)
    {
-      start_periodic_watcher(&validation_watcher, &validation_started, validation_cb,
-                             1000 * MAX(1. * pgagroal_time_convert(config->background_interval, FORMAT_TIME_S), 5.));
+      int64_t t = 1000 * (int64_t)MAX(1. * pgagroal_time_convert(config->background_interval, FORMAT_TIME_S), 5.);
+      start_periodic_watcher(&validation_watcher, &validation_started, validation_cb, t, t);
    }
 
    if (config->disconnect_client > 0)
    {
-      start_periodic_watcher(&disconnect_client_watcher, &disconnect_client_started, disconnect_client_cb,
-                             1000 * MIN(300., MAX(1. * config->disconnect_client / 2., 1.)));
+      int64_t t = 1000 * (int64_t)MIN(300., MAX(1. * config->disconnect_client / 2., 1.));
+      start_periodic_watcher(&disconnect_client_watcher, &disconnect_client_started, disconnect_client_cb, t, t);
    }
 
    if (pgagroal_time_is_valid(config->rotate_frontend_password_timeout))
    {
-      start_periodic_watcher(&rotate_frontend_password_watcher, &rotate_frontend_password_started, rotate_frontend_password_cb,
-                             1000 * pgagroal_time_convert(config->rotate_frontend_password_timeout, FORMAT_TIME_S));
+      int64_t t = 1000 * pgagroal_time_convert(config->rotate_frontend_password_timeout, FORMAT_TIME_S);
+      start_periodic_watcher(&rotate_frontend_password_watcher, &rotate_frontend_password_started, rotate_frontend_password_cb, t, t);
    }
 }
 

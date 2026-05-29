@@ -74,7 +74,7 @@ static int (*io_stop)(struct io_watcher*);
 
 static void signal_handler(int signum, siginfo_t* info, void* p);
 
-static int (*periodic_init)(struct periodic_watcher*, int);
+static int (*periodic_init)(struct periodic_watcher*, int64_t, int64_t);
 static int (*periodic_start)(struct periodic_watcher*);
 static int (*periodic_stop)(struct periodic_watcher*);
 
@@ -93,7 +93,7 @@ static int ev_io_uring_setup_buffers(void);
 static int ev_io_uring_io_start(struct io_watcher*);
 static int ev_io_uring_io_stop(struct io_watcher*);
 
-static int ev_io_uring_periodic_init(struct periodic_watcher*, int);
+static int ev_io_uring_periodic_init(struct periodic_watcher*, int64_t, int64_t);
 static int ev_io_uring_periodic_start(struct periodic_watcher*);
 static int ev_io_uring_periodic_stop(struct periodic_watcher*);
 #endif /* HAVE_IO_URING */
@@ -108,7 +108,7 @@ static int ev_epoll_io_start(struct io_watcher*);
 static int ev_epoll_io_stop(struct io_watcher*);
 static int ev_epoll_io_handler(struct io_watcher*);
 
-static int ev_epoll_periodic_init(struct periodic_watcher*, int);
+static int ev_epoll_periodic_init(struct periodic_watcher*, int64_t, int64_t);
 static int ev_epoll_periodic_start(struct periodic_watcher*);
 static int ev_epoll_periodic_stop(struct periodic_watcher*);
 static int ev_epoll_periodic_handler(struct periodic_watcher*);
@@ -125,7 +125,7 @@ static int ev_kqueue_io_start(struct io_watcher*);
 static int ev_kqueue_io_stop(struct io_watcher*);
 static int ev_kqueue_io_handler(struct kevent*);
 
-static int ev_kqueue_periodic_init(struct periodic_watcher*, int);
+static int ev_kqueue_periodic_init(struct periodic_watcher*, int64_t, int64_t);
 static int ev_kqueue_periodic_start(struct periodic_watcher*);
 static int ev_kqueue_periodic_stop(struct periodic_watcher*);
 static int ev_kqueue_periodic_handler(struct kevent*);
@@ -540,11 +540,12 @@ pgagroal_io_stop(struct io_watcher* watcher)
 }
 
 int
-pgagroal_periodic_init(struct periodic_watcher* watcher, periodic_cb cb, int msec)
+pgagroal_periodic_init(struct periodic_watcher* watcher, periodic_cb cb,
+                       int64_t msec, int64_t repeat_ms)
 {
    watcher->event_watcher.type = PGAGROAL_EVENT_TYPE_PERIODIC;
    watcher->cb = cb;
-   if (periodic_init(watcher, msec))
+   if (periodic_init(watcher, msec, repeat_ms))
    {
       pgagroal_log_fatal("Failed to initiate timer event");
       return PGAGROAL_EVENT_RC_FATAL;
@@ -932,8 +933,9 @@ ev_io_uring_io_stop(struct io_watcher* target)
 }
 
 static int
-ev_io_uring_periodic_init(struct periodic_watcher* watcher, int msec)
+ev_io_uring_periodic_init(struct periodic_watcher* watcher, int64_t msec, int64_t repeat_ms)
 {
+   watcher->repeat_ms = repeat_ms;
    watcher->ts = (struct __kernel_timespec){
       .tv_sec = msec / 1000,
       .tv_nsec = (msec % 1000) * 1000000};
@@ -950,7 +952,15 @@ ev_io_uring_periodic_start(struct periodic_watcher* watcher)
       return PGAGROAL_EVENT_RC_ERROR;
    }
    io_uring_sqe_set_data(sqe, watcher);
-   io_uring_prep_timeout(sqe, &watcher->ts, 0, IORING_TIMEOUT_MULTISHOT);
+   if (watcher->repeat_ms > 0)
+   {
+      io_uring_prep_timeout(sqe, &watcher->ts, 0, IORING_TIMEOUT_MULTISHOT);
+   }
+   else
+   {
+      io_uring_prep_timeout(sqe, &watcher->ts, 0, 0);
+   }
+   io_uring_submit(&loop->ring_rcv);
    return PGAGROAL_EVENT_RC_OK;
 }
 
@@ -964,7 +974,9 @@ ev_io_uring_periodic_stop(struct periodic_watcher* watcher)
       pgagroal_log_error("io_uring: no SQE available for periodic stop");
       return PGAGROAL_EVENT_RC_ERROR;
    }
-   io_uring_prep_cancel64(sqe, (uint64_t)watcher, 0);
+   io_uring_prep_timeout_remove(sqe, (uint64_t)(uintptr_t)watcher, 0);
+   io_uring_sqe_set_data(sqe, NULL);
+   io_uring_submit(&loop->ring_rcv);
    return PGAGROAL_EVENT_RC_OK;
 }
 
@@ -1119,14 +1131,28 @@ ev_io_uring_handler(struct io_uring_cqe* cqe)
       }
       return PGAGROAL_EVENT_RC_OK;
    }
+   if (cqe->res == -ECANCELED)
+   {
+      pgagroal_log_trace("io_uring: terminal cancellation completion (watcher=%p)",
+                         (void*)watcher);
+      return PGAGROAL_EVENT_RC_OK;
+   }
 
    /* This type of thing is not ideal, ideally I should have
     * only event_watcher_t pointers returning in cqe->user_data */
    switch (watcher->type)
    {
+      case PGAGROAL_EVENT_TYPE_INVALID:
+         pgagroal_log_debug("io_uring: dropping stale completion for stopped watcher (res=%d)",
+                            cqe->res);
+         return PGAGROAL_EVENT_RC_OK;
       case PGAGROAL_EVENT_TYPE_PERIODIC:
          per = (struct periodic_watcher*)watcher;
          per->cb();
+         if (per->repeat_ms > 0 && !(cqe->flags & IORING_CQE_F_MORE))
+         {
+            ev_io_uring_periodic_start(per);
+         }
          break;
       case PGAGROAL_EVENT_TYPE_MAIN:
          io = (struct io_watcher*)watcher;
@@ -1363,7 +1389,7 @@ ev_epoll_handler(void* watcher)
 }
 
 static int
-ev_epoll_periodic_init(struct periodic_watcher* watcher, int msec)
+ev_epoll_periodic_init(struct periodic_watcher* watcher, int64_t msec, int64_t repeat_ms)
 {
    struct timespec now;
    struct itimerspec new_value;
@@ -1374,11 +1400,13 @@ ev_epoll_periodic_init(struct periodic_watcher* watcher, int msec)
       return PGAGROAL_EVENT_RC_ERROR;
    }
 
+   watcher->repeat_ms = repeat_ms;
+
    new_value.it_value.tv_sec = msec / 1000;
    new_value.it_value.tv_nsec = (msec % 1000) * 1000000;
 
-   new_value.it_interval.tv_sec = msec / 1000;
-   new_value.it_interval.tv_nsec = (msec % 1000) * 1000000;
+   new_value.it_interval.tv_sec = repeat_ms / 1000;
+   new_value.it_interval.tv_nsec = (repeat_ms % 1000) * 1000000;
 
    /* no need to set it to non-blocking due to TFD_NONBLOCK */
    watcher->fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
@@ -1688,8 +1716,9 @@ ev_kqueue_signal_handler(struct kevent* kev)
 }
 
 static int
-ev_kqueue_periodic_init(struct periodic_watcher* watcher, int msec)
+ev_kqueue_periodic_init(struct periodic_watcher* watcher, int64_t msec, int64_t repeat_ms)
 {
+   watcher->repeat_ms = repeat_ms;
    watcher->interval = msec;
    return PGAGROAL_EVENT_RC_OK;
 }
@@ -1698,7 +1727,14 @@ static int
 ev_kqueue_periodic_start(struct periodic_watcher* watcher)
 {
    struct kevent kev;
-   EV_SET(&kev, (uintptr_t)watcher, EVFILT_TIMER, EV_ADD | EV_ENABLE, NOTE_USECONDS,
+   int flags = EV_ADD | EV_ENABLE;
+
+   if (watcher->repeat_ms == 0)
+   {
+      flags |= EV_ONESHOT;
+   }
+
+   EV_SET(&kev, (uintptr_t)watcher, EVFILT_TIMER, flags, NOTE_USECONDS,
           watcher->interval * 1000, watcher);
    if (kevent(loop->kqueuefd, &kev, 1, NULL, 0, NULL) == -1)
    {

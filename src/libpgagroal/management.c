@@ -69,7 +69,7 @@ static int write_socket(int socket, void* buf, size_t size);
 static int write_ssl(SSL* ssl, void* buf, size_t size);
 
 int
-pgagroal_management_request_flush(SSL* ssl, int socket, int32_t mode, char* database, uint8_t compression, uint8_t encryption, int32_t output_format)
+pgagroal_management_request_flush(SSL* ssl, int socket, int32_t mode, char* database, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format)
 {
    struct json* j = NULL;
    struct json* request = NULL;
@@ -86,6 +86,7 @@ pgagroal_management_request_flush(SSL* ssl, int socket, int32_t mode, char* data
 
    pgagroal_json_put(request, MANAGEMENT_ARGUMENT_MODE, (uintptr_t)mode, ValueInt32);
    pgagroal_json_put(request, MANAGEMENT_ARGUMENT_DATABASE, (uintptr_t)database, ValueString);
+   pgagroal_json_put(request, MANAGEMENT_ARGUMENT_TIMEOUT, (uintptr_t)timeout, ValueInt64);
 
    if (pgagroal_management_write_json(ssl, socket, compression, encryption, j))
    {
@@ -321,7 +322,7 @@ error:
 }
 
 int
-pgagroal_management_request_gracefully(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format)
+pgagroal_management_request_gracefully(SSL* ssl, int socket, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format)
 {
    struct json* j = NULL;
    struct json* request = NULL;
@@ -335,6 +336,8 @@ pgagroal_management_request_gracefully(SSL* ssl, int socket, uint8_t compression
    {
       goto error;
    }
+
+   pgagroal_json_put(request, MANAGEMENT_ARGUMENT_TIMEOUT, (uintptr_t)timeout, ValueInt64);
 
    if (pgagroal_management_write_json(ssl, socket, compression, encryption, j))
    {

@@ -2181,6 +2181,79 @@ pgagroal_time_format(pgagroal_time_t t, enum pgagroal_time_format_t fmt, char** 
    return 0;
 }
 
+int
+pgagroal_parse_seconds(const char* str, int64_t* out_seconds)
+{
+   char* end = NULL;
+   long long parsed;
+   int64_t value;
+   int64_t multiplier = 1;
+
+   if (str == NULL || out_seconds == NULL || str[0] == '\0')
+   {
+      return 1;
+   }
+
+   /* Reject leading sign and whitespace explicitly: the grammar is
+    * digits, optionally followed by a single unit letter. This matches
+    * the syntax accepted in pgagroal.conf for time-valued settings. */
+   if (!isdigit((unsigned char)str[0]))
+   {
+      return 1;
+   }
+
+   errno = 0;
+   parsed = strtoll(str, &end, 10);
+   if (end == str || errno == ERANGE || parsed < 0 || parsed > INT64_MAX)
+   {
+      return 1;
+   }
+   value = (int64_t)parsed;
+
+   if (*end != '\0')
+   {
+      char unit = *end++;
+      if (*end != '\0')
+      {
+         return 1;
+      }
+      switch (unit)
+      {
+         case 's':
+         case 'S':
+            multiplier = 1LL;
+            break;
+         case 'm':
+         case 'M':
+            multiplier = 60LL;
+            break;
+         case 'h':
+         case 'H':
+            multiplier = 3600LL;
+            break;
+         case 'd':
+         case 'D':
+            multiplier = 86400LL;
+            break;
+         case 'w':
+         case 'W':
+            multiplier = 604800LL;
+            break;
+         default:
+            return 1;
+      }
+   }
+
+   /* Overflow-safe multiply; multiplier is always > 0 here. */
+   if (value > INT64_MAX / multiplier)
+   {
+      return 1;
+   }
+
+   *out_seconds = value * multiplier;
+   return 0;
+}
+
 void
 pgagroal_cleanse(void* data, size_t size)
 {

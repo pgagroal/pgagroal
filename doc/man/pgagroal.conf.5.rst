@@ -116,6 +116,16 @@ max_connection_age
   'W' for weeks.
   Default is 0 (disabled)
 
+flush_timeout
+  If this value is specified without units, it is taken as seconds.
+  It supports the following units as suffixes: 'S' for seconds (default), 'M' for minutes, 'H' for hours,
+  'D' for days, and 'W' for weeks.
+  Used as the default deadline for graceful ``pgagroal-cli flush`` and ``pgagroal-cli shutdown`` operations
+  when ``-T, --timeout`` is omitted on the CLI; this timeout exists to bound the wait for long-running
+  transactions still holding pooled connections. On expiry a graceful flush escalates to ``flush all`` for the
+  targeted database and a graceful shutdown forces an immediate shutdown.
+  (disable = 0) Default is 60
+
 validation
   Should connection validation be performed. Valid options: off, foreground and background. Default is off
 

@@ -168,6 +168,7 @@ pgagroal_init_configuration(void* shm)
    config->rotate_frontend_password_timeout = PGAGROAL_TIME_SEC(DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT);
    config->rotate_frontend_password_length = MIN_PASSWORD_LENGTH;
    config->max_connection_age = PGAGROAL_TIME_SEC(DEFAULT_MAX_CONNECTION_AGE);
+   config->flush_timeout = PGAGROAL_TIME_SEC(DEFAULT_FLUSH_TIMEOUT);
    config->validation = VALIDATION_OFF;
    config->background_interval = PGAGROAL_TIME_SEC(DEFAULT_BACKGROUND_INTERVAL);
    config->max_retries = 5;
@@ -3745,6 +3746,7 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
    memcpy(&config->rotate_frontend_password_timeout, &reload->rotate_frontend_password_timeout, sizeof(config->rotate_frontend_password_timeout));
    config->rotate_frontend_password_length = reload->rotate_frontend_password_length;
    memcpy(&config->max_connection_age, &reload->max_connection_age, sizeof(config->max_connection_age));
+   memcpy(&config->flush_timeout, &reload->flush_timeout, sizeof(config->flush_timeout));
    config->validation = reload->validation;
    memcpy(&config->background_interval, &reload->background_interval, sizeof(config->background_interval));
    config->max_retries = reload->max_retries;
@@ -4457,16 +4459,13 @@ section_line(char* line, char* section)
  * @param age a pointer to the value that is going to store
  *        the resulting number of seconds
  * @param default_age a value to set when the parsing is unsuccessful
-
+ * @return 0 on success (including empty input falling back to default_age),
+ *         1 on malformed/out-of-range input
  */
 static int
 as_seconds(char* str, pgagroal_time_t* age, pgagroal_time_t default_age)
 {
-   int multiplier = 1;
-   int index;
-   char value[MISC_LENGTH];
-   bool multiplier_set = false;
-   int i_value = 0;
+   int64_t secs = 0;
 
    if (is_empty_string(str))
    {
@@ -4474,80 +4473,14 @@ as_seconds(char* str, pgagroal_time_t* age, pgagroal_time_t default_age)
       return 0;
    }
 
-   index = 0;
-   for (unsigned long i = 0; i < strlen(str); i++)
+   if (pgagroal_parse_seconds(str, &secs) != 0)
    {
-      if (isdigit(str[i]))
-      {
-         value[index++] = str[i];
-      }
-      else if (isalpha(str[i]) && multiplier_set)
-      {
-         // another extra char not allowed
-         goto error;
-      }
-      else if (isalpha(str[i]) && !multiplier_set)
-      {
-         if (str[i] == 's' || str[i] == 'S')
-         {
-            multiplier = 1;
-            multiplier_set = true;
-         }
-         else if (str[i] == 'm' || str[i] == 'M')
-         {
-            multiplier = 60;
-            multiplier_set = true;
-         }
-         else if (str[i] == 'h' || str[i] == 'H')
-         {
-            multiplier = 3600;
-            multiplier_set = true;
-         }
-         else if (str[i] == 'd' || str[i] == 'D')
-         {
-            multiplier = 24 * 3600;
-            multiplier_set = true;
-         }
-         else if (str[i] == 'w' || str[i] == 'W')
-         {
-            multiplier = 24 * 3600 * 7;
-            multiplier_set = true;
-         }
-         else
-         {
-            // unrecognized suffix
-            goto error;
-         }
-      }
-      else
-      {
-         // do not allow alien chars
-         goto error;
-      }
-   }
-
-   value[index] = '\0';
-   if (!as_int(value, &i_value))
-   {
-      // sanity check: the value
-      // must be a positive number!
-      if (i_value >= 0)
-      {
-         *age = PGAGROAL_TIME_SEC(i_value * multiplier);
-      }
-      else
-      {
-         goto error;
-      }
-
-      return 0;
-   }
-   else
-   {
-error:
       *age = default_age;
       return 1;
    }
+
+   *age = PGAGROAL_TIME_SEC(secs);
+   return 0;
 }
 
 /**
@@ -4929,6 +4862,10 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       else if (!strncmp(key, "max_connection_age", MISC_LENGTH))
       {
          return to_int(buffer, (int)pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S));
+      }
+      else if (!strncmp(key, "flush_timeout", MISC_LENGTH))
+      {
+         return to_int(buffer, (int)pgagroal_time_convert(config->flush_timeout, FORMAT_TIME_S));
       }
       else if (!strncmp(key, "validation", MISC_LENGTH))
       {
@@ -5981,6 +5918,13 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
          unknown = true;
       }
    }
+   else if (key_in_section("flush_timeout", section, key, true, &unknown))
+   {
+      if (as_seconds(value, &config->flush_timeout, PGAGROAL_TIME_SEC(DEFAULT_FLUSH_TIMEOUT)))
+      {
+         unknown = true;
+      }
+   }
    else if (key_in_section("validation", section, key, true, &unknown))
    {
       if (as_validation(value, &config->validation))
@@ -6806,6 +6750,7 @@ add_configuration_response(struct json* res)
    pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_TIMEOUT, config->rotate_frontend_password_timeout, FORMAT_TIME_S);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_ROTATE_FRONTEND_PASSWORD_LENGTH, (uintptr_t)config->rotate_frontend_password_length, ValueInt64);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_MAX_CONNECTION_AGE, (uintptr_t)pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S), ValueInt64);
+   pgagroal_json_put_time_value(res, CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT, config->flush_timeout, FORMAT_TIME_S);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_VALIDATION, (uintptr_t)config->validation, ValueInt64);
    pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_STARTUP_VALIDATION, config->startup_validation, to_startup_validation);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_BACKGROUND_INTERVAL, (uintptr_t)pgagroal_time_convert(config->background_interval, FORMAT_TIME_S), ValueInt64);

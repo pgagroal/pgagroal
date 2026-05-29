@@ -48,6 +48,16 @@ OPTIONS
 -E, --encrypt none|aes|aes256|aes192|aes128
   Encrypt the wire protocol
 
+-T, --timeout DURATION
+  Deadline for ``shutdown [gracefully]`` and ``flush [gracefully]``.
+  ``DURATION`` is a non-negative number with an optional case-insensitive unit
+  suffix: ``s`` (seconds, default), ``m`` (minutes), ``h`` (hours), ``d`` (days),
+  ``w`` (weeks). Examples: ``30``, ``30s``, ``5m``, ``1h``, ``2d``, ``1w``.
+  When omitted, falls back to ``flush_timeout`` from ``pgagroal.conf`` (built-in
+  default of ``60s`` applies when ``flush_timeout`` is not set). ``--timeout 0``
+  explicitly disables the timer (operation runs unbounded), same meaning as
+  ``flush_timeout = 0`` in ``pgagroal.conf``.
+
 -v, --verbose
   Output text string of result
 
@@ -61,14 +71,17 @@ COMMANDS
 ========
 
 flush [mode] [database]
-  Flush connections according to [mode].
-  Allowed modes are:
+  Flush connections. The [mode] can be:
+    - 'gracefully' (default): flush all connections gracefully
+    - 'idle': flush only idle connections
+    - 'all': flush all connections (USE WITH CAUTION!)
 
-    - 'gracefully' (default) to flush all connections gracefully
-    - 'idle' to flush only idle connections
-    - 'all' to flush all connections. USE WITH CAUTION!
-
-  If no [database] name is specified, applies to all databases.
+  If no [database] is specified, applies to all databases. A graceful flush can
+  be bounded with ``-T, --timeout DURATION``; on expiry remaining marked
+  connections are forcibly terminated (equivalent to ``flush all`` for the
+  targeted database). If no client currently holds a connection, the flush
+  completes immediately and no timer is armed. ``--timeout`` is silently
+  ignored for ``idle`` and ``all``.
 
 ping
   Verifies if pgagroal is up and running and checks connectivity to configured PostgreSQL servers.
@@ -85,6 +98,11 @@ shutdown [mode]
     - 'gracefully' (default): waits for active connections to quit
     - 'immediate': forces connections to close and terminate
     - 'cancel': avoid a previously issued 'shutdown gracefully'
+
+  A graceful shutdown can be bounded with ``-T, --timeout DURATION``; on expiry
+  pgagroal forces an immediate shutdown. If no client currently holds a
+  connection, pgagroal shuts down immediately and no timer is armed.
+  ``--timeout`` is silently ignored for ``immediate`` and ``cancel``.
 
 status [details]
   Status of pgagroal, with optional details. Per-server fields match **ping**. **details** adds limits and per-connection rows.

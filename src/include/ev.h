@@ -179,9 +179,10 @@ struct periodic_watcher
 #if HAVE_LINUX
    int fd; /**< File descriptor for epoll-based periodic watcher. */
 #else
-   int interval; /**< Interval for kqueue timer. */
-#endif               /* HAVE_LINUX */
-   void (*cb)(void); /**< Event callback. */
+   int64_t interval; /**< Interval for kqueue timer. */
+#endif                /* HAVE_LINUX */
+   int64_t repeat_ms; /**<  0 = oneshot, N = repeat every N ms */
+   void (*cb)(void);  /**< Event callback. */
 };
 
 /**
@@ -326,11 +327,14 @@ pgagroal_io_stop(struct io_watcher* watcher);
  * Initialize the watcher for periodic timeout events
  * @param watcher Pointer to the periodic event watcher struct
  * @param cb Callback executed on timeout
- * @param msec Interval in milliseconds for the periodic event
+ * @param msec Initial delay in milliseconds before the first fire
+ * @param repeat_ms 0 for a oneshot timer; N > 0 to repeat every N ms
+ *                  after the first fire
  * @return Return code
  */
 int
-pgagroal_periodic_init(struct periodic_watcher* watcher, periodic_cb cb, int msec);
+pgagroal_periodic_init(struct periodic_watcher* watcher, periodic_cb cb,
+                       int64_t msec, int64_t repeat_ms);
 
 /**
  * Start the watcher for a periodic timeout in the event loop

@@ -285,6 +285,7 @@ config_init(const char* output_path, bool quiet, bool force)
    char log_path[MAX_PATH];
    char max_connections[MISC_LENGTH];
    char idle_timeout[MISC_LENGTH];
+   char flush_timeout[MISC_LENGTH];
    char validation[MISC_LENGTH];
    char ev_backend[MISC_LENGTH];
    struct stat st;
@@ -336,6 +337,7 @@ config_init(const char* output_path, bool quiet, bool force)
       pgagroal_snprintf(log_path, sizeof(log_path), CONFIGURATION_DEFAULT_LOG_PATH);
       pgagroal_snprintf(max_connections, sizeof(max_connections), CONFIGURATION_DEFAULT_MAX_CONNECTIONS);
       pgagroal_snprintf(idle_timeout, sizeof(idle_timeout), CONFIGURATION_DEFAULT_IDLE_TIMEOUT);
+      pgagroal_snprintf(flush_timeout, sizeof(flush_timeout), CONFIGURATION_DEFAULT_FLUSH_TIMEOUT);
       pgagroal_snprintf(validation, sizeof(validation), CONFIGURATION_DEFAULT_VALIDATION);
       pgagroal_snprintf(ev_backend, sizeof(ev_backend), CONFIGURATION_DEFAULT_EV_BACKEND);
    }
@@ -371,6 +373,12 @@ config_init(const char* output_path, bool quiet, bool force)
       if (prompt_input("Idle timeout (seconds, 0 to disable)", CONFIGURATION_DEFAULT_IDLE_TIMEOUT, idle_timeout, sizeof(idle_timeout)))
       {
          warnx("Invalid input for idle_timeout");
+         goto error;
+      }
+
+      if (prompt_input("Flush timeout (seconds, 0 to disable)", CONFIGURATION_DEFAULT_FLUSH_TIMEOUT, flush_timeout, sizeof(flush_timeout)))
+      {
+         warnx("Invalid input for flush_timeout");
          goto error;
       }
 
@@ -437,6 +445,7 @@ config_init(const char* output_path, bool quiet, bool force)
    fprintf(file, "\n");
    write_key_value(file, CONFIGURATION_ARGUMENT_MAX_CONNECTIONS, max_connections);
    write_key_value(file, CONFIGURATION_ARGUMENT_IDLE_TIMEOUT, idle_timeout);
+   write_key_value(file, CONFIGURATION_ARGUMENT_FLUSH_TIMEOUT, flush_timeout);
    write_key_value(file, CONFIGURATION_ARGUMENT_VALIDATION, validation);
    write_key_value(file, CONFIGURATION_ARGUMENT_EV_BACKEND, ev_backend);
    fprintf(file, "\n");

@@ -100,8 +100,8 @@ static int conf_set(SSL* ssl, int socket, char* config_key, char* config_value, 
 static int details(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int disabledb(SSL* ssl, int socket, char* database, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int enabledb(SSL* ssl, int socket, char* database, uint8_t compression, uint8_t encryption, int32_t output_format);
-static int flush(SSL* ssl, int socket, int32_t mode, char* database, uint8_t compression, uint8_t encryption, int32_t output_format);
-static int gracefully(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
+static int flush(SSL* ssl, int socket, int32_t mode, char* database, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format);
+static int gracefully(SSL* ssl, int socket, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int pgagroal_shutdown(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int ping(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
 static int reload(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
@@ -345,6 +345,15 @@ usage(void)
    printf("  -C, --compress none|gz|zstd|lz4|bz2          Compress the wire protocol\n");
    printf("  -E, --encrypt none|aes|aes256|aes192|aes128  Encrypt the wire protocol using AES-GCM\n");
    printf("                |aes256gcm|aes192gcm|aes128gcm (Note: non-GCM AES modes are not supported)\n");
+   printf("  -T, --timeout DURATION                       Deadline for 'shutdown [gracefully]' and\n");
+   printf("                                                 'flush [gracefully]'. DURATION is a non-negative\n");
+   printf("                                                 number with an optional unit suffix:\n");
+   printf("                                                 s (seconds, default), m (minutes), h (hours),\n");
+   printf("                                                 d (days), w (weeks). E.g. '30', '30s', '5m',\n");
+   printf("                                                 '1h', '2d', '1w'. Omit the flag to fall back to\n");
+   printf("                                                 'flush_timeout' from pgagroal.conf. '--timeout 0'\n");
+   printf("                                                 explicitly disables the timer (runs unbounded);\n");
+   printf("                                                 same meaning as 'flush_timeout = 0' in pgagroal.conf.\n");
    printf("  -v, --verbose                                Output text string of result\n");
    printf("  -V, --version                                Display version information\n");
    printf("  -?, --help                                   Display help\n");
@@ -356,6 +365,8 @@ usage(void)
    printf("                           - 'idle' to flush only idle connections\n");
    printf("                           - 'all' to flush all connections. USE WITH CAUTION!\n");
    printf("                           If no [database] name is specified, applies to all databases.\n");
+   printf("                           With '--timeout DURATION' on 'gracefully', remaining marked\n");
+   printf("                           connections are terminated (flush all) on expiry.\n");
    printf("  ping                     Verifies if pgagroal is up and checks PostgreSQL server connectivity\n");
    printf("  enable   [database]      Enables the specified databases (or all databases)\n");
    printf("  disable  [database]      Disables the specified databases (or all databases)\n");
@@ -363,6 +374,8 @@ usage(void)
    printf("                           - 'gracefully' (default) waits for active connections to quit\n");
    printf("                           - 'immediate' forces connections to close and terminate\n");
    printf("                           - 'cancel' avoid a previously issued 'shutdown gracefully'\n");
+   printf("                           With '--timeout DURATION' on 'gracefully', pgagroal forces an\n");
+   printf("                           immediate shutdown on expiry.\n");
    printf("  status [details]         Status of pgagroal, with optional details\n");
    printf("  switch-to <server>       Switches to the specified primary server\n");
    printf("  conf <action>            Manages the configuration (e.g., reloads the configuration\n");
@@ -409,6 +422,7 @@ main(int argc, char** argv)
    int32_t output_format = MANAGEMENT_OUTPUT_FORMAT_TEXT;
    int32_t compression = MANAGEMENT_COMPRESSION_NONE;
    int32_t encryption = MANAGEMENT_ENCRYPTION_NONE;
+   int64_t timeout = -1;
    size_t command_count = sizeof(command_table) / sizeof(struct pgagroal_command);
    struct pgagroal_parsed_command parsed = {.cmd = NULL, .args = {0}};
 
@@ -425,11 +439,12 @@ main(int argc, char** argv)
             {"format", required_argument, 0, 'F'},
             {"compress", required_argument, 0, 'C'},
             {"encrypt", required_argument, 0, 'E'},
+            {"timeout", required_argument, 0, 'T'},
             {"verbose", no_argument, 0, 'v'},
             {"version", no_argument, 0, 'V'},
             {"help", no_argument, 0, '?'}};
 
-      c = getopt_long(argc, argv, "vV?c:h:p:U:P:L:F:C:E:",
+      c = getopt_long(argc, argv, "vV?c:h:p:U:P:L:F:C:E:T:",
                       long_options, &option_index);
 
       if (c == -1)
@@ -532,6 +547,19 @@ main(int argc, char** argv)
                exit(1);
             }
             break;
+         case 'T':
+         {
+            int64_t v = 0;
+            if (pgagroal_parse_seconds(optarg, &v) != 0 || v < 0)
+            {
+               warnx("pgagroal-cli: '--timeout' requires a non-negative duration "
+                     "(e.g. '0', '30', '30s', '5m', '1h', '2d', '1w'); got '%s'",
+                     optarg);
+               exit(1);
+            }
+            timeout = v;
+            break;
+         }
          case 'v':
             verbose = true;
             break;
@@ -761,7 +789,7 @@ username:
 
    if (parsed.cmd->action == MANAGEMENT_FLUSH)
    {
-      exit_code = flush(s_ssl, socket, parsed.cmd->mode, parsed.args[0], compression, encryption, output_format);
+      exit_code = flush(s_ssl, socket, parsed.cmd->mode, parsed.args[0], timeout, compression, encryption, output_format);
    }
    else if (parsed.cmd->action == MANAGEMENT_ENABLEDB)
    {
@@ -773,7 +801,7 @@ username:
    }
    else if (parsed.cmd->action == MANAGEMENT_GRACEFULLY)
    {
-      exit_code = gracefully(s_ssl, socket, compression, encryption, output_format);
+      exit_code = gracefully(s_ssl, socket, timeout, compression, encryption, output_format);
    }
    else if (parsed.cmd->action == MANAGEMENT_SHUTDOWN)
    {
@@ -873,7 +901,16 @@ static void
 help_shutdown(void)
 {
    printf("Shutdown pgagroal\n");
-   printf("  pgagroal-cli shutdown\n");
+   printf("  pgagroal-cli shutdown [gracefully|immediate|cancel]\n");
+   printf("  pgagroal-cli shutdown [gracefully] --timeout <DURATION>\n");
+   printf("    '--timeout' bounds a graceful shutdown; DURATION overrides 'flush_timeout' from pgagroal.conf.\n");
+   printf("    DURATION is a non-negative number with an optional unit suffix: s (seconds, default), m (minutes),\n");
+   printf("    h (hours), d (days), w (weeks); e.g. '30', '30s', '5m', '1h', '2d', '1w'.\n");
+   printf("    Omit '--timeout' to fall back to 'flush_timeout' from pgagroal.conf. '--timeout 0' explicitly\n");
+   printf("    disables the timer (shutdown runs unbounded), same meaning as 'flush_timeout = 0' in the conf.\n");
+   printf("    When 'flush_timeout' is not set in pgagroal.conf, the built-in default (60s) applies.\n");
+   printf("    On expiry pgagroal forces an immediate shutdown. If no client currently holds a connection,\n");
+   printf("    pgagroal shuts down immediately and no timer is armed.\n");
 }
 
 static void
@@ -927,6 +964,15 @@ help_flush(void)
 {
    printf("Flush connections\n");
    printf("  pgagroal-cli flush [gracefully|idle|all] [*|<database>]\n");
+   printf("  pgagroal-cli flush [gracefully] [*|<database>] --timeout <DURATION>\n");
+   printf("    '--timeout' bounds a graceful flush; DURATION overrides 'flush_timeout' from pgagroal.conf.\n");
+   printf("    DURATION is a non-negative number with an optional unit suffix: s (seconds, default), m (minutes),\n");
+   printf("    h (hours), d (days), w (weeks); e.g. '30', '30s', '5m', '1h', '2d', '1w'.\n");
+   printf("    Omit '--timeout' to fall back to 'flush_timeout' from pgagroal.conf. '--timeout 0' explicitly\n");
+   printf("    disables the timer (flush runs unbounded), same meaning as 'flush_timeout = 0' in the conf.\n");
+   printf("    When 'flush_timeout' is not set in pgagroal.conf, the built-in default (60s) applies.\n");
+   printf("    On expiry remaining marked connections are terminated (flush all). If no client currently\n");
+   printf("    holds a connection, the flush completes immediately and no timer is armed.\n");
 }
 
 static void
@@ -991,9 +1037,9 @@ display_helper(char* command)
 }
 
 static int
-flush(SSL* ssl, int socket, int32_t mode, char* database, uint8_t compression, uint8_t encryption, int32_t output_format)
+flush(SSL* ssl, int socket, int32_t mode, char* database, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format)
 {
-   if (pgagroal_management_request_flush(ssl, socket, mode, database, compression, encryption, output_format))
+   if (pgagroal_management_request_flush(ssl, socket, mode, database, timeout, compression, encryption, output_format))
    {
       goto error;
    }
@@ -1051,9 +1097,9 @@ error:
 }
 
 static int
-gracefully(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format)
+gracefully(SSL* ssl, int socket, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format)
 {
-   if (pgagroal_management_request_gracefully(ssl, socket, compression, encryption, output_format))
+   if (pgagroal_management_request_gracefully(ssl, socket, timeout, compression, encryption, output_format))
    {
       goto error;
    }

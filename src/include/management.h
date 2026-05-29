@@ -117,6 +117,7 @@ extern "C" {
 #define MANAGEMENT_ARGUMENT_MAX_CONNECTIONS     "MaxConnections"
 #define MANAGEMENT_ARGUMENT_MIN_CONNECTIONS     "MinConnections"
 #define MANAGEMENT_ARGUMENT_MODE                "Mode"
+#define MANAGEMENT_ARGUMENT_TIMEOUT             "Timeout"
 #define MANAGEMENT_ARGUMENT_NUMBER_OF_SERVERS   "NumberOfServers"
 #define MANAGEMENT_ARGUMENT_OUTPUT              "Output"
 #define MANAGEMENT_ARGUMENT_PASSWORD            "Password"
@@ -229,13 +230,17 @@ pgagroal_management_create_outcome_failure(struct json* json, int32_t error, str
  * @param socket The socket descriptor
  * @param mode The flush mode
  * @param database The database
+ * @param timeout Seconds to wait before forcing flush of remaining marked connections.
+ *                Negative (e.g. -1) means "use 'flush_timeout' from pgagroal.conf";
+ *                0 explicitly disables the timer (runs unbounded);
+ *                >0 means explicit seconds.
  * @param compression The compress method for wire protocol
  * @param encryption The encrypt method for wire protocol (None or *_GCM)
  * @param output_format The output format
  * @return 0 upon success, otherwise 1
  */
 int
-pgagroal_management_request_flush(SSL* ssl, int socket, int32_t mode, char* database, uint8_t compression, uint8_t encryption, int32_t output_format);
+pgagroal_management_request_flush(SSL* ssl, int socket, int32_t mode, char* database, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format);
 
 /**
  * Management operation: Enable database
@@ -267,13 +272,17 @@ pgagroal_management_request_disabledb(SSL* ssl, int socket, char* database, uint
  * Management operation: Gracefully
  * @param ssl The SSL connection
  * @param socket The socket descriptor
+ * @param timeout Seconds to wait before forcing an immediate shutdown.
+ *                Negative (e.g. -1) means "use 'flush_timeout' from pgagroal.conf";
+ *                0 explicitly disables the timer (runs unbounded);
+ *                >0 means explicit seconds.
  * @param compression The compress method for wire protocol
  * @param encryption The encrypt method for wire protocol (None or *_GCM)
  * @param output_format The output format
  * @return 0 upon success, otherwise 1
  */
 int
-pgagroal_management_request_gracefully(SSL* ssl, int socket, uint8_t compression, uint8_t encryption, int32_t output_format);
+pgagroal_management_request_gracefully(SSL* ssl, int socket, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format);
 
 /**
  * Management operation: Stop
