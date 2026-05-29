@@ -6,9 +6,9 @@
 
 This document explains how to run the pgagroal test suite, generate code coverage, and use containerized testing. All testing is now performed using the `check.sh` script with containerized PostgreSQL (recommended and default for all development and CI).
 
-**Running Specific Test Cases or Modules**
+**Setup only (no tests):** Run `<PATH_TO_PGAGROAL>/test/check.sh build` to prepare the test environment (image, pgagroal build, container, config) without running tests. pgagroal is (re)compiled only when a binary is missing or a source file is newer than the built binaries; remove the `build/` directory if you need a clean rebuild.
 
-To run one particular test case or module, use `<PATH_TO_PGAGROAL>/build/test/pgagroal_test -t <test_case_name> <project_directory> <user> <database>` or `<PATH_TO_PGAGROAL>/build/test/pgagroal_test -m <module_name> <project_directory> <user> <database>`. This requires the test environment to already be set up by `check.sh`.
+**Single test or module:** Run `<PATH_TO_PGAGROAL>/test/check.sh -t <test_name>` or `<PATH_TO_PGAGROAL>/test/check.sh -m <module_name>` (long form: `--test`, `--module`). The script sets up the environment automatically when needed, and recompiles pgagroal whenever your sources are newer than the binaries, so you do not need to run the full suite or rebuild manually first. For quick iteration, just run `<PATH_TO_PGAGROAL>/test/check.sh -t <test_name>` (or `-m <module_name>`) repeatedly; edits are picked up on the next run. Environment variables are unset when the test run finishes or is aborted.
 
 ### Containerized
 
@@ -34,6 +34,7 @@ The `check.sh` script is the main and recommended way to run the pgagroal test s
 **Subcommands:**
 
 - `setup`                  Install dependencies and build PostgreSQL image (one-time setup)
+- `build`                  Set up environment (image, build, PostgreSQL, pgagroal) without running tests
 - `clean`                  Clean up test suite environment and remove PostgreSQL image
 - `run-configs`            Run the testsuite on multiple pgagroal configurations (containerized)
 - `ci`                     Run in CI mode (local PostgreSQL, no container)
@@ -72,7 +73,7 @@ MCTF (Minimal C Test Framework) is pgagroal's custom test framework designed for
 - **No test fixtures** - No automatic setup/teardown per test suite (you must handle setup and cleanup manually in each test)
 - **No parameterized tests** - Tests cannot be parameterized (each variation needs a separate test function)
 - **No parallel or async execution** - Tests run sequentially and synchronously
-- **No built-in timeouts** - No framework-level test timeouts (rely on OS-level signals or manual timeouts)
+- **No built-in timeouts** - No framework-level test timeouts (rely on OS-level signals or manual timeouts); elapsed time is recorded for reporting only
 - **No test organization beyond modules** - No test suites, groups, tags, or metadata beyond module names extracted from filenames
 
 **Add Testcases**
@@ -112,7 +113,7 @@ The `MCTF_ASSERT` macro supports optional error messages with printf-style forma
 - **Docker or Podman** installed and running
 - **LLVM/clang** and **llvm-cov**/**llvm-profdata** installed (for coverage reports)
 
-> **Note:** The `check.sh` script always builds the project with Clang in Debug mode for coverage and testability.
+> **Note:** The `check.sh` script builds the project with Clang in Debug mode for coverage and testability when binaries are missing or sources have changed. Remove the `build/` directory to force a clean rebuild.
 
 **Notes**
 

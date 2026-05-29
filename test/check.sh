@@ -459,6 +459,24 @@ need_build() {
   return 0
 }
 
+# Returns 0 if pgagroal needs to be (re)compiled, 1 otherwise.
+# A (re)compile is needed when a binary is missing, or when any tracked
+# source file is newer than the built binaries.
+need_compile() {
+  if [[ ! -f "$TEST_DIRECTORY/pgagroal_test" ]] || [[ ! -f "$EXECUTABLE_DIRECTORY/pgagroal" ]]; then
+    return 0
+  fi
+  local bin
+  for bin in "$EXECUTABLE_DIRECTORY/pgagroal" "$TEST_DIRECTORY/pgagroal_test"; do
+    if [[ -n "$(find "$PROJECT_DIRECTORY/src" "$PROJECT_DIRECTORY/test" "$PROJECT_DIRECTORY/cmake" "$PROJECT_DIRECTORY/CMakeLists.txt" \
+                     \( -name '*.c' -o -name '*.h' -o -name 'CMakeLists.txt' -o -name '*.cmake' \) \
+                     -newer "$bin" -print -quit 2>/dev/null)" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 execute_testcases() {
    local config_name="${1:-default}"
    echo "Execute MCTF Testcases"
@@ -1048,7 +1066,6 @@ run_failover_tests() {
 }
 
 do_setup() {
-  local always_build="${1:-}"
   if [[ $MODE != "ci" ]]; then
     echo "Building PostgreSQL $ENV_PGVERSION image if necessary"
     if $CONTAINER_ENGINE image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
@@ -1086,8 +1103,8 @@ do_setup() {
     echo "pgbench found: $(which pgbench)"
   fi
   chmod -R 777 "$PGAGROAL_ROOT_DIR"
-  if [[ "$always_build" == "force" ]] || [[ "$1" != "ci-nonbuild" && "$1" != "run-configs-ci-nonbuild" ]]; then
-   echo "Building pgagroal"
+  if need_compile; then
+   echo "Building pgagroal (binaries missing or sources changed)"
    mkdir -p "$PROJECT_DIRECTORY/build"
    cd "$PROJECT_DIRECTORY/build"
    # Configure build with LLVM coverage or GCC without coverage
@@ -1103,6 +1120,8 @@ do_setup() {
         ..
    make -j$(nproc)
    cd ..
+  else
+    echo "pgagroal binaries up to date, skipping build"
   fi
   if [[ $MODE == "ci" ]]; then
   echo "Start PostgreSQL $ENV_PGVERSION locally"
@@ -1143,8 +1162,8 @@ run_tests() {
   else
     # Double-check: binaries and config must exist (cleanup removes BASE_DIR/conf, so config can be missing)
     if [[ ! -f "$EXECUTABLE_DIRECTORY/pgagroal" ]] || [[ ! -f "$TEST_DIRECTORY/pgagroal_test" ]] \
-       || [[ ! -f "$CONFIGURATION_DIRECTORY/pgagroal.conf" ]]; then
-      echo "Environment incomplete (binaries or config missing), running build"
+       || [[ ! -f "$CONFIGURATION_DIRECTORY/pgagroal.conf" ]] || need_compile; then
+      echo "Environment incomplete or sources changed, running build"
       do_setup
     else
       echo "Environment already ready, skipping build"
@@ -1244,7 +1263,7 @@ done
 if [[ -n "$SUBCOMMAND" ]]; then
   if [[ "$SUBCOMMAND" == "build" ]]; then
     detect_container_engine
-    do_setup force
+    do_setup
     exit 0
   fi
   if [[ "$SUBCOMMAND" == "setup" ]]; then
