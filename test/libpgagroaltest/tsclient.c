@@ -61,6 +61,7 @@ static char* get_databases_path();
 static char* get_log_file_path();
 static void* hold_thread_main(void* arg);
 static int scrape_limit_backend(int metrics_port, char* host, char* user, char* database);
+static int compute_client_watchdog(struct main_configuration* config, int hold_seconds);
 
 int
 pgagroal_tsclient_init(char* base_dir)
@@ -329,6 +330,7 @@ pgagroal_tsclient_execute_concurrent_holds(char* user, char* database, int clien
    const char* password = NULL;
    int failures = 0;
    int spawned = 0;
+   int watchdog;
    int rc;
 
    if (client_count <= 0 || hold_seconds < 0)
@@ -358,6 +360,11 @@ pgagroal_tsclient_execute_concurrent_holds(char* user, char* database, int clien
       goto cleanup;
    }
 
+   /* Per-client watchdog: bound each psql invocation with timeout(1) so a
+    * client that never returns cannot leave the run hung in pthread_join. See
+    * compute_client_watchdog() for how the bound is derived. */
+   watchdog = compute_client_watchdog(config, hold_seconds);
+
    for (int i = 0; i < client_count; i++)
    {
       char* cmd = NULL;
@@ -372,7 +379,9 @@ pgagroal_tsclient_execute_concurrent_holds(char* user, char* database, int clien
          cmd = pgagroal_append_char(cmd, ' ');
       }
 
-      cmd = pgagroal_append(cmd, "psql -h ");
+      cmd = pgagroal_append(cmd, "timeout -k 5 ");
+      cmd = pgagroal_append_int(cmd, watchdog);
+      cmd = pgagroal_append(cmd, " psql -h ");
       cmd = pgagroal_append(cmd, config->common.host);
       cmd = pgagroal_append(cmd, " -p ");
       cmd = pgagroal_append_int(cmd, config->common.port);
@@ -434,6 +443,7 @@ pgagroal_tsclient_limit_backend_peak(char* user, char* database, int client_coun
    int metrics_port;
    int spawned = 0;
    int peak = -1;
+   int watchdog;
    int rc;
 
    if (client_count <= 0 || hold_seconds <= 0)
@@ -469,6 +479,15 @@ pgagroal_tsclient_limit_backend_peak(char* user, char* database, int client_coun
       goto cleanup;
    }
 
+   /* Per-client watchdog. A psql session may legitimately wait up to
+    * blocking_timeout for a slot and then hold for hold_seconds (and the rule
+    * is oversubscribed here, so the surplus waits out a full hold wave before
+    * acquiring a freed slot). Bound each invocation generously above that with
+    * timeout(1) so a client that never returns -- e.g. a backend that stalls
+    * under oversubscription -- is killed and its thread can be joined, instead
+    * of leaving the run (and the CI job) hung indefinitely in pthread_join. */
+   watchdog = compute_client_watchdog(config, hold_seconds);
+
    for (int i = 0; i < client_count; i++)
    {
       char* cmd = NULL;
@@ -483,7 +502,9 @@ pgagroal_tsclient_limit_backend_peak(char* user, char* database, int client_coun
          cmd = pgagroal_append_char(cmd, ' ');
       }
 
-      cmd = pgagroal_append(cmd, "psql -h ");
+      cmd = pgagroal_append(cmd, "timeout -k 5 ");
+      cmd = pgagroal_append_int(cmd, watchdog);
+      cmd = pgagroal_append(cmd, " psql -h ");
       cmd = pgagroal_append(cmd, config->common.host);
       cmd = pgagroal_append(cmd, " -p ");
       cmd = pgagroal_append_int(cmd, config->common.port);
@@ -609,6 +630,28 @@ scrape_limit_backend(int metrics_port, char* host, char* user, char* database)
 
    unlink(tmp);
    return value;
+}
+
+/*
+ * Compute a per-client watchdog (seconds) for the concurrent-hold helpers.
+ * A client may legitimately wait up to blocking_timeout for a slot and then
+ * hold for hold_seconds; under oversubscription the surplus rides out a full
+ * hold wave before acquiring a freed slot. The bound is generously above that
+ * worst-case legitimate runtime so it only fires on a genuinely stuck client.
+ * blocking_timeout may be -1 (treated as infinite by pgagroal); there a bare
+ * fixed ceiling is used so the run cannot hang forever.
+ */
+static int
+compute_client_watchdog(struct main_configuration* config, int hold_seconds)
+{
+   int64_t blocking = (config != NULL) ? config->blocking_timeout.s : 0;
+
+   if (blocking < 0)
+   {
+      return (hold_seconds * 2) + 60;
+   }
+
+   return (int)blocking + (hold_seconds * 2) + 10;
 }
 
 static void*
