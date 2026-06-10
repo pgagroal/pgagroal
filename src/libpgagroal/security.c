@@ -1004,7 +1004,7 @@ pgagroal_remote_management_scram_sha256(char* username, char* password, int serv
       goto error;
    }
 
-   status = pgagroal_read_block_message(ssl, server_fd, &msg);
+   status = pgagroal_read_complete_message(ssl, server_fd, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
@@ -1035,7 +1035,7 @@ pgagroal_remote_management_scram_sha256(char* username, char* password, int serv
       goto error;
    }
 
-   status = pgagroal_read_block_message(ssl, server_fd, &msg);
+   status = pgagroal_read_complete_message(ssl, server_fd, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
@@ -1047,12 +1047,23 @@ pgagroal_remote_management_scram_sha256(char* username, char* password, int serv
       goto error;
    }
 
+   /* 'R' + length + AuthenticationSASLContinue + payload */
+   if (sasl_continue->length <= 9)
+   {
+      goto error;
+   }
+
    get_scram_attribute('r', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &combined_nounce);
    get_scram_attribute('s', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &base64_salt);
    get_scram_attribute('i', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &iteration_string);
    get_scram_attribute('e', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &err);
 
    if (err != NULL)
+   {
+      goto error;
+   }
+
+   if (combined_nounce == NULL || base64_salt == NULL || iteration_string == NULL)
    {
       goto error;
    }
@@ -1093,13 +1104,19 @@ pgagroal_remote_management_scram_sha256(char* username, char* password, int serv
       goto error;
    }
 
-   status = pgagroal_read_block_message(ssl, server_fd, &msg);
+   status = pgagroal_read_complete_message(ssl, server_fd, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
    }
 
    if (pgagroal_extract_message('R', msg, &sasl_final))
+   {
+      goto error;
+   }
+
+   /* 'R' + length + AuthenticationSASLFinal + 'v' attribute */
+   if (sasl_final->length <= 11)
    {
       goto error;
    }
@@ -1900,11 +1917,23 @@ retry:
       goto error;
    }
 
+   /* 'p' + length + mechanism + "n,,n=,r=" + nounce */
+   if (msg->length <= 26)
+   {
+      goto error;
+   }
+
    client_first_message_bare = calloc(1, msg->length - 25);
 
    memcpy(client_first_message_bare, msg->data + 26, msg->length - 26);
 
    get_scram_attribute('r', (char*)msg->data + 26, msg->length - 26, &client_nounce);
+
+   if (client_nounce == NULL)
+   {
+      goto error;
+   }
+
    generate_nounce(&server_nounce);
    generate_salt(&salt, &salt_length);
    pgagroal_base64_encode(salt, salt_length, &base64_salt, &base64_salt_length);
@@ -1936,7 +1965,19 @@ retry:
       goto error;
    }
 
+   /* 'p' + length + "c=biws,r=" + nounces (57 bytes) + ",p=" + proof */
+   if (msg->length < 62)
+   {
+      goto error;
+   }
+
    get_scram_attribute('p', (char*)msg->data + 5, msg->length - 5, &base64_client_proof);
+
+   if (base64_client_proof == NULL)
+   {
+      goto error;
+   }
+
    pgagroal_base64_decode(base64_client_proof, strlen(base64_client_proof), (void**)&client_proof_received, &client_proof_received_length);
 
    client_final_message_without_proof = calloc(1, 58);
@@ -2591,7 +2632,12 @@ server_scram256(char* username, char* password, int slot, SSL* server_ssl)
       goto error;
    }
 
-   status = pgagroal_read_block_message(server_ssl, server_fd, &msg);
+   status = pgagroal_read_complete_message(server_ssl, server_fd, &msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
    if (msg->length > SECURITY_BUFFER_SIZE)
    {
       pgagroal_log_message(msg);
@@ -2601,6 +2647,12 @@ server_scram256(char* username, char* password, int slot, SSL* server_ssl)
 
    sasl_continue = pgagroal_copy_message(msg);
    if (((char*)sasl_continue->data)[0] == 'E')
+   {
+      goto error;
+   }
+
+   /* 'R' + length + AuthenticationSASLContinue + payload */
+   if (sasl_continue->length <= 9)
    {
       goto error;
    }
@@ -2617,6 +2669,11 @@ server_scram256(char* username, char* password, int slot, SSL* server_ssl)
    if (err != NULL)
    {
       pgagroal_log_error("SCRAM-SHA-256: %s", err);
+      goto error;
+   }
+
+   if (combined_nounce == NULL || base64_salt == NULL || iteration_string == NULL)
+   {
       goto error;
    }
 
@@ -2660,7 +2717,12 @@ server_scram256(char* username, char* password, int slot, SSL* server_ssl)
       goto error;
    }
 
-   status = pgagroal_read_block_message(server_ssl, server_fd, &msg);
+   status = pgagroal_read_complete_message(server_ssl, server_fd, &msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
    if (msg->length > SECURITY_BUFFER_SIZE)
    {
       pgagroal_log_message(msg);
@@ -2673,6 +2735,12 @@ server_scram256(char* username, char* password, int slot, SSL* server_ssl)
    auth_index++;
 
    if (pgagroal_extract_message('R', msg, &sasl_final))
+   {
+      goto error;
+   }
+
+   /* 'R' + length + AuthenticationSASLFinal + 'v' attribute */
+   if (sasl_final->length <= 11)
    {
       goto error;
    }
@@ -4774,7 +4842,7 @@ pgagroal_scram_client_auth(char* username, char* password, int socket, SSL* serv
       goto error;
    }
 
-   status = pgagroal_read_block_message(server_ssl, socket, &msg);
+   status = pgagroal_read_complete_message(server_ssl, socket, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
@@ -4793,6 +4861,12 @@ pgagroal_scram_client_auth(char* username, char* password, int socket, SSL* serv
       goto error;
    }
 
+   /* 'R' + length + AuthenticationSASLContinue + payload */
+   if (sasl_continue->length <= 9)
+   {
+      goto error;
+   }
+
    get_scram_attribute('r', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &combined_nounce);
    get_scram_attribute('s', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &base64_salt);
    get_scram_attribute('i', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &iteration_string);
@@ -4801,6 +4875,11 @@ pgagroal_scram_client_auth(char* username, char* password, int socket, SSL* serv
    if (err != NULL)
    {
       pgagroal_log_error("SCRAM-SHA-256: %s", err);
+      goto error;
+   }
+
+   if (combined_nounce == NULL || base64_salt == NULL || iteration_string == NULL)
+   {
       goto error;
    }
 
@@ -4840,7 +4919,7 @@ pgagroal_scram_client_auth(char* username, char* password, int socket, SSL* serv
       goto error;
    }
 
-   status = pgagroal_read_block_message(server_ssl, socket, &msg);
+   status = pgagroal_read_complete_message(server_ssl, socket, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
@@ -4864,6 +4943,12 @@ pgagroal_scram_client_auth(char* username, char* password, int socket, SSL* serv
    }
 
    if (pgagroal_extract_message('R', msg, &sasl_final))
+   {
+      goto error;
+   }
+
+   /* 'R' + length + AuthenticationSASLFinal + 'v' attribute */
+   if (sasl_final->length <= 11)
    {
       goto error;
    }
@@ -5145,10 +5230,23 @@ retry:
    }
 
    /* Start the flow */
+
+   /* 'p' + length + mechanism + "n,,n=,r=" + nounce */
+   if (msg->length <= 26)
+   {
+      goto error;
+   }
+
    client_first_message_bare = calloc(1, msg->length - 25);
    memcpy(client_first_message_bare, msg->data + 26, msg->length - 26);
 
    get_scram_attribute('r', (char*)msg->data + 26, msg->length - 26, &client_nounce);
+
+   if (client_nounce == NULL)
+   {
+      goto error;
+   }
+
    generate_nounce(&server_nounce);
 
    server_first_message = calloc(1, 89);
@@ -5172,7 +5270,19 @@ retry:
       goto error;
    }
 
+   /* 'p' + length + "c=biws,r=" + nounces (57 bytes) + ",p=" + proof */
+   if (msg->length < 62)
+   {
+      goto error;
+   }
+
    get_scram_attribute('p', (char*)msg->data + 5, msg->length - 5, &base64_client_proof);
+
+   if (base64_client_proof == NULL)
+   {
+      goto error;
+   }
+
    pgagroal_base64_decode(base64_client_proof, strlen(base64_client_proof), (void**)&client_proof_received, &client_proof_received_length);
 
    client_final_message_without_proof = calloc(1, 58);
@@ -5890,6 +6000,12 @@ pgagroal_scram_client_authenticate(char* username, char* password, int server_fd
    pgagroal_free_message(msg);
    msg = NULL;
 
+   /* 'R' + length + AuthenticationSASLContinue + payload */
+   if (sasl_continue->length <= 9)
+   {
+      goto error;
+   }
+
    get_scram_attribute('r', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &combined_nounce);
    get_scram_attribute('s', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &base64_salt);
    get_scram_attribute('i', (char*)(sasl_continue->data + 9), sasl_continue->length - 9, &iteration_string);
@@ -5898,6 +6014,11 @@ pgagroal_scram_client_authenticate(char* username, char* password, int server_fd
    if (err != NULL)
    {
       pgagroal_log_error("SCRAM-SHA-256: %s", err);
+      goto error;
+   }
+
+   if (combined_nounce == NULL || base64_salt == NULL || iteration_string == NULL)
+   {
       goto error;
    }
 
@@ -5943,26 +6064,34 @@ pgagroal_scram_client_authenticate(char* username, char* password, int server_fd
 
    if (pgagroal_extract_message('R', msg, &sasl_final))
    {
-      base64_server_signature = sasl_final->data + 11;
+      goto error;
+   }
 
-      pgagroal_base64_decode(base64_server_signature, sasl_final->length - 11,
-                             (void**)&server_signature_received, &server_signature_received_length);
+   /* 'R' + length + AuthenticationSASLFinal + 'v' attribute */
+   if (sasl_final->length <= 11)
+   {
+      goto error;
+   }
 
-      if (server_signature(password_prep, salt, salt_length, iteration,
-                           NULL, 0,
-                           client_first_message_bare, sasl_response->length - 26,
-                           server_first_message, sasl_continue->length - 9,
-                           &wo_proof[0], strlen(wo_proof),
-                           &server_signature_calc, &server_signature_calc_length))
-      {
-         goto error;
-      }
+   base64_server_signature = sasl_final->data + 11;
 
-      if (server_signature_calc_length != server_signature_received_length ||
-          memcmp(server_signature_received, server_signature_calc, server_signature_calc_length) != 0)
-      {
-         goto bad_password;
-      }
+   pgagroal_base64_decode(base64_server_signature, sasl_final->length - 11,
+                          (void**)&server_signature_received, &server_signature_received_length);
+
+   if (server_signature(password_prep, salt, salt_length, iteration,
+                        NULL, 0,
+                        client_first_message_bare, sasl_response->length - 26,
+                        server_first_message, sasl_continue->length - 9,
+                        &wo_proof[0], strlen(wo_proof),
+                        &server_signature_calc, &server_signature_calc_length))
+   {
+      goto error;
+   }
+
+   if (server_signature_calc_length != server_signature_received_length ||
+       memcmp(server_signature_received, server_signature_calc, server_signature_calc_length) != 0)
+   {
+      goto bad_password;
    }
 
    /* Cleanup */

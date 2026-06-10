@@ -66,6 +66,21 @@ int
 pgagroal_read_block_message(SSL* ssl, int socket, struct message** msg);
 
 /**
+ * Read a complete typed message in blocking mode. The message must carry the
+ * standard header (1 byte kind + 4 byte length); the read continues until the
+ * number of bytes declared in the header has arrived, so a message split
+ * across multiple network segments is never returned partially. A message
+ * whose declared length is malformed (less than 4 bytes or larger than the
+ * parse buffer) is an error.
+ * @param ssl The SSL struct
+ * @param socket The socket descriptor
+ * @param msg The resulting message
+ * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
+ */
+int
+pgagroal_read_complete_message(SSL* ssl, int socket, struct message** msg);
+
+/**
  * Read a message with a timeout
  * @param ssl The SSL struct
  * @param socket The socket descriptor
