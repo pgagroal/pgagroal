@@ -250,11 +250,11 @@ pgagroal_connect(const char* hostname, int port, int* fd, bool keep_alive, bool 
    int yes = 1;
    socklen_t optlen = sizeof(int);
    int rv;
-   char sport[5];
+   char sport[6];
    int error = 0;
 
    memset(&sport, 0, sizeof(sport));
-   sprintf(&sport[0], "%d", port);
+   pgagroal_snprintf(&sport[0], sizeof(sport), "%d", port);
 
    /* Connect to server */
    memset(&hints, 0, sizeof hints);
