@@ -3,3 +3,5 @@
 _site/
 build/
 vendor/
+__pycache__/
+*.pyc
