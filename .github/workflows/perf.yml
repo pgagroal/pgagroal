@@ -1,0 +1,120 @@
+name: Performance
+
+# On-demand only: trigger from the Actions tab (Run workflow) with the number
+# of the pull request to benchmark. The PR head is measured A/B against the
+# current master on the same runner.
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number to benchmark (head vs current master)"
+        required: true
+        type: string
+
+permissions:
+  contents: read   # results go to the job summary + artifacts; no PR write needed
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    # Advisory only: a shared GitHub runner is too noisy to gate merges on, so
+    # a red run is informational, not a failure to fix. The A/B comparison is
+    # published to the job summary and the raw results are uploaded as an
+    # artifact for humans to inspect.
+    continue-on-error: true
+    container:
+      image: rockylinux/rockylinux:10
+      options: --security-opt seccomp=unconfined
+    timeout-minutes: 30
+    env:
+      PGA_PORT: "6432"
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: bench
+      PGDATABASE: benchdb
+      PGPASSWORD: benchpass
+      PGAGROAL_RUN_AS: pg
+      PERF_DURATION: "20"
+      PERF_CLIENTS: "16"
+    steps:
+      - uses: actions/checkout@v6   # the PR head
+        with:
+          ref: refs/pull/${{ inputs.pr }}/head
+
+      - name: Check out base for A/B
+        uses: actions/checkout@v6
+        with:
+          ref: master
+          path: base-src
+
+      - name: Install dependencies
+        run: |
+          dnf -y install dnf-plugins-core
+          dnf config-manager --set-enabled crb
+          dnf -y install epel-release
+          dnf -y install \
+            git gcc clang cmake make \
+            openssl openssl-devel \
+            systemd systemd-devel zlib zlib-devel \
+            libzstd libzstd-devel lz4 lz4-devel \
+            libatomic liburing liburing-devel \
+            python3 python3-docutils bzip2 bzip2-devel \
+            net-tools procps-ng util-linux sudo which
+
+      - name: Install PostgreSQL
+        run: |
+          dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+          dnf -qy module disable postgresql 2>/dev/null || true
+          dnf install -y postgresql17 postgresql17-server postgresql17-contrib postgresql17-libs postgresql17-devel
+
+      - name: Set PostgreSQL on PATH
+        run: echo "PATH=/usr/pgsql-17/bin:$PATH" >> "$GITHUB_ENV"
+
+      - name: Start PostgreSQL and init pgbench
+        run: |
+          useradd -m pg || true
+          rm -rf /tmp/pgdata && mkdir -p /tmp/pgdata && chown pg /tmp/pgdata
+          # trust auth: a vault-less pgagroal pass-through works with trust/password/md5,
+          # not scram. The auth method is incidental to a relative A/B benchmark.
+          sudo -u pg /usr/pgsql-17/bin/initdb -D /tmp/pgdata --auth-local=trust --auth-host=trust
+          sudo -u pg /usr/pgsql-17/bin/pg_ctl -D /tmp/pgdata -w -t 30 -l /tmp/pg.log -o "-c listen_addresses='localhost' -c unix_socket_directories='/tmp'" start || { tail -20 /tmp/pg.log; exit 1; }
+          for _ in $(seq 1 30); do /usr/pgsql-17/bin/pg_isready -h localhost -p 5432 && break; sleep 1; done
+          sudo -u pg /usr/pgsql-17/bin/psql -h localhost -p 5432 -d postgres -c "CREATE ROLE \"${PGUSER}\" LOGIN PASSWORD '${PGPASSWORD}';"
+          sudo -u pg /usr/pgsql-17/bin/createdb -h localhost -p 5432 -O "${PGUSER}" "${PGDATABASE}"
+          # run_ab.sh re-initialises (resets) the pgbench DB before each measured run.
+
+      - name: Build base
+        run: |
+          cmake -S "$GITHUB_WORKSPACE/base-src" -B "$GITHUB_WORKSPACE/base-src/build" -DCMAKE_BUILD_TYPE=Release -DDOCS=FALSE
+          make -C "$GITHUB_WORKSPACE/base-src/build" -j"$(nproc)"
+
+      - name: Build PR
+        run: |
+          cmake -S "$GITHUB_WORKSPACE" -B "$GITHUB_WORKSPACE/build" -DCMAKE_BUILD_TYPE=Release -DDOCS=FALSE
+          make -C "$GITHUB_WORKSPACE/build" -j"$(nproc)"
+
+      - name: Run A/B measurements
+        run: |
+          bash "$GITHUB_WORKSPACE/test/perf/run_ab.sh" \
+            "$GITHUB_WORKSPACE/base-src/build/src" \
+            "$GITHUB_WORKSPACE/build/src" \
+            "$RUNNER_TEMP/results"
+
+      - name: Compare and publish summary
+        shell: bash
+        run: |
+          # Integrity failures (missing/null data) exit non-zero and mark this step
+          # failed; a measured regression is advisory (informational) while variance
+          # is calibrated. The job is continue-on-error, so neither blocks the PR.
+          python3 "$GITHUB_WORKSPACE/test/perf/compare.py" \
+            --base "$RUNNER_TEMP/results"/base-*.json \
+            --pr   "$RUNNER_TEMP/results"/pr-*.json | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: ${{ runner.temp }}/results
+          if-no-files-found: warn
