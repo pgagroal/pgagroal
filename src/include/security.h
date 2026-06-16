@@ -40,6 +40,10 @@ extern "C" {
 
 #include <openssl/ssl.h>
 
+/* Largest SCRAM-SHA-256 iteration count we accept; caps the PBKDF2 work a peer
+ * can force on us. Well above PostgreSQL's default of 4096. */
+#define SCRAM_MAX_ITERATIONS 100000
+
 struct message;
 
 /**
