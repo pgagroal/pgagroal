@@ -73,7 +73,7 @@ cleanup:
  * succeed.
  *
  * Parameters are derived from the live configuration so the test is meaningful
- * against every test/conf/* profile exercised by run-configs. Configurations
+ * against every test/conf profile exercised by run-configs. Configurations
  * whose blocking_timeout is too small to absorb one hold cycle are skipped:
  * there the waiters are expected to time out regardless of #875, so the test
  * could not isolate the regression.

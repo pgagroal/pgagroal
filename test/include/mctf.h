@@ -344,20 +344,17 @@ mctf_format_error(const char* format, ...);
    while (0)
 
 /* Skip test macro */
-#define MCTF_SKIP(...)                                 \
-   do                                                  \
-   {                                                   \
-      mctf_errno = MCTF_CODE_SKIPPED;                  \
-      if (__VA_ARGS__)                                 \
-      {                                                \
-         mctf_errmsg = mctf_format_error(__VA_ARGS__); \
-      }                                                \
-      else                                             \
-      {                                                \
-         mctf_errmsg = strdup("Test skipped");         \
-      }                                                \
-      return MCTF_CODE_SKIPPED;                        \
-   }                                                   \
+#define MCTF_SKIP(...)                              \
+   do                                               \
+   {                                                \
+      mctf_errno = MCTF_CODE_SKIPPED;               \
+      mctf_errmsg = mctf_format_error(__VA_ARGS__); \
+      if (mctf_errmsg == NULL)                      \
+      {                                             \
+         mctf_errmsg = strdup("Test skipped");      \
+      }                                             \
+      return MCTF_CODE_SKIPPED;                     \
+   }                                                \
    while (0)
 
 /* Finish test macro */
