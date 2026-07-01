@@ -743,6 +743,9 @@ struct main_configuration
    bool tracker;                   /**< Tracker support */
    bool track_prepared_statements; /**< Track prepared statements (transaction pooling) */
 
+   char server_reset_query[MISC_LENGTH]; /**< Statement run on a backend connection before it is reused (transaction pooling) */
+   bool server_reset_query_always;       /**< Also run server_reset_query in session pooling */
+
    char unix_socket_dir[MISC_LENGTH]; /**< The directory for the Unix Domain Socket */
 
    atomic_schar su_connection; /**< The superuser connection */

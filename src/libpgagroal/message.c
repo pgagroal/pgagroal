@@ -730,25 +730,27 @@ error:
 }
 
 int
-pgagroal_write_discard_all(SSL* ssl, int socket)
+pgagroal_write_reset_query(SSL* ssl, int socket)
 {
    int status;
-   int size = 18;
+   struct main_configuration* config = (struct main_configuration*)shmem;
+   char* query = config->server_reset_query;
+   int size = 5 + (int)strlen(query) + 1;
 
-   char discard[size];
+   char reset[size];
    struct message msg;
    struct message* reply = NULL;
 
    memset(&msg, 0, sizeof(struct message));
-   memset(&discard, 0, sizeof(discard));
+   memset(&reset, 0, sizeof(reset));
 
-   pgagroal_write_byte(&discard, 'Q');
-   pgagroal_write_int32(&(discard[1]), size - 1);
-   pgagroal_write_string(&(discard[5]), "DISCARD ALL;");
+   pgagroal_write_byte(&reset, 'Q');
+   pgagroal_write_int32(&(reset[1]), size - 1);
+   pgagroal_write_string(&(reset[5]), query);
 
    msg.kind = 'Q';
    msg.length = size;
-   msg.data = &discard;
+   msg.data = &reset;
 
    if (ssl == NULL)
    {

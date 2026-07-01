@@ -191,6 +191,8 @@ pgagroal_init_configuration(void* shm)
    config->common.hugepage = HUGEPAGE_TRY;
    config->tracker = false;
    config->track_prepared_statements = false;
+   pgagroal_snprintf(config->server_reset_query, MISC_LENGTH, "DISCARD ALL");
+   config->server_reset_query_always = false;
 
    config->ev_backend = PGAGROAL_EVENT_BACKEND_AUTO;
 
@@ -3770,6 +3772,8 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
    config->common.hugepage = reload->common.hugepage;
    config->tracker = reload->tracker;
    config->track_prepared_statements = reload->track_prepared_statements;
+   memcpy(config->server_reset_query, reload->server_reset_query, MISC_LENGTH);
+   config->server_reset_query_always = reload->server_reset_query_always;
    memcpy(config->unix_socket_dir, reload->unix_socket_dir, MISC_LENGTH);
 
    /* Servers */
@@ -4935,6 +4939,14 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       else if (!strncmp(key, "track_prepared_statements", MISC_LENGTH))
       {
          return to_bool(buffer, config->track_prepared_statements);
+      }
+      else if (!strncmp(key, "server_reset_query", MISC_LENGTH))
+      {
+         return to_string(buffer, config->server_reset_query, buffer_size);
+      }
+      else if (!strncmp(key, "server_reset_query_always", MISC_LENGTH))
+      {
+         return to_bool(buffer, config->server_reset_query_always);
       }
       else
       {
@@ -6180,6 +6192,23 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
          unknown = true;
       }
    }
+   else if (key_in_section("server_reset_query", section, key, true, &unknown))
+   {
+      memset(config->server_reset_query, 0, MISC_LENGTH);
+      max = strlen(value);
+      if (max > MISC_LENGTH - 1)
+      {
+         max = MISC_LENGTH - 1;
+      }
+      memcpy(config->server_reset_query, value, max);
+   }
+   else if (key_in_section("server_reset_query_always", section, key, true, &unknown))
+   {
+      if (as_bool(value, &config->server_reset_query_always))
+      {
+         unknown = true;
+      }
+   }
    else if (key_in_section("update_process_title", section, key, true, &unknown))
    {
       if (as_update_process_title(value, &config->update_process_title, UPDATE_PROCESS_TITLE_VERBOSE))
@@ -6810,6 +6839,8 @@ add_configuration_response(struct json* res)
    pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_HUGEPAGE, config->common.hugepage, to_hugepage);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TRACKER, (uintptr_t)config->tracker, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TRACK_PREPARED_STATEMENTS, (uintptr_t)config->track_prepared_statements, ValueBool);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY, (uintptr_t)config->server_reset_query, ValueString);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_ALWAYS, (uintptr_t)config->server_reset_query_always, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_PIDFILE, (uintptr_t)config->pidfile, ValueString);
    pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, config->update_process_title, to_update_process_title);
 }

@@ -220,13 +220,13 @@ int
 pgagroal_write_deallocate_all(SSL* ssl, int socket);
 
 /**
- * Write a discard all message
+ * Write the configured connection reset query (server_reset_query) as a simple query
  * @param ssl The SSL struct
  * @param socket The socket descriptor
  * @return 0 upon success, otherwise 1
  */
 int
-pgagroal_write_discard_all(SSL* ssl, int socket);
+pgagroal_write_reset_query(SSL* ssl, int socket);
 
 /**
  * Write TLS response

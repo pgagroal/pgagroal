@@ -210,6 +210,12 @@ tracker
 track_prepared_statements
   Track prepared statements (transaction pooling). Default is off
 
+server_reset_query
+  Statement run on a backend connection as soon as it is released back to the pool. Runs in session pooling by default; an empty value disables it. Default is DISCARD ALL
+
+server_reset_query_always
+  Run server_reset_query in the transaction pipeline too, not only in session pooling. Off by default, since transaction-pooling clients should not rely on session state. Default is off
+
 pidfile
   Path to the PID file. If omitted, automatically set to ``unix_socket_dir/pgagroal.port.pid``
 

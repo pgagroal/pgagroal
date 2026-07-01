@@ -130,6 +130,8 @@ extern "C" {
 #define CONFIGURATION_ARGUMENT_HUGEPAGE                         "hugepage"
 #define CONFIGURATION_ARGUMENT_TRACKER                          "tracker"
 #define CONFIGURATION_ARGUMENT_TRACK_PREPARED_STATEMENTS        "track_prepared_statements"
+#define CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY               "server_reset_query"
+#define CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_ALWAYS        "server_reset_query_always"
 #define CONFIGURATION_ARGUMENT_PIDFILE                          "pidfile"
 #define CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE             "update_process_title"
 #define CONFIGURATION_ARGUMENT_PRIMARY                          "primary"

@@ -549,9 +549,13 @@ pgagroal_return_connection(int slot, SSL* ssl, bool transaction_mode)
 
          if (!transaction_mode)
          {
-            if (pgagroal_write_discard_all(ssl, config->connections[slot].fd))
+            /* Session pooling: reset the backend before reuse (empty disables). */
+            if (config->server_reset_query[0] != '\0')
             {
-               goto kill_connection;
+               if (pgagroal_write_reset_query(ssl, config->connections[slot].fd))
+               {
+                  goto kill_connection;
+               }
             }
          }
 

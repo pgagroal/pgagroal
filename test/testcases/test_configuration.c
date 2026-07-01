@@ -224,6 +224,47 @@ MCTF_TEST(test_configuration_reject_invalid_bool)
    MCTF_FINISH();
 }
 
+/* #941: server_reset_query is a free-form string (empty disables); accepted verbatim. */
+MCTF_TEST(test_configuration_accept_server_reset_query)
+{
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY, "DISCARD ALL");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY, "DEALLOCATE ALL");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY, "");
+
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_ALWAYS, "on");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_ALWAYS, "off");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_ALWAYS, "true");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_ALWAYS, "false");
+
+   MCTF_FINISH();
+}
+
+/* #941: server_reset_query_always is a boolean and rejects non-boolean values. */
+MCTF_TEST(test_configuration_reject_invalid_server_reset_query_always)
+{
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_ALWAYS, "maybe");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_ALWAYS, "");
+
+   MCTF_FINISH();
+}
+
+/* #941: the default reset query is DISCARD ALL and it is not forced in transaction mode. */
+MCTF_TEST(test_configuration_server_reset_query_default)
+{
+   struct main_configuration* config = calloc(1, sizeof(struct main_configuration));
+
+   MCTF_ASSERT_PTR_NONNULL(config, cleanup, "config allocation failed");
+   pgagroal_init_configuration(config);
+   MCTF_ASSERT_STR_EQ(config->server_reset_query, "DISCARD ALL", cleanup,
+                      "default server_reset_query should be 'DISCARD ALL'");
+   MCTF_ASSERT_INT_EQ((int)config->server_reset_query_always, 0, cleanup,
+                      "server_reset_query_always should default to off");
+
+cleanup:
+   free(config);
+   MCTF_FINISH();
+}
+
 MCTF_TEST(test_configuration_reject_invalid_pipeline)
 {
    pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_PIPELINE, "fast");

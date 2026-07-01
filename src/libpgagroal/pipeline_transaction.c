@@ -480,6 +480,22 @@ transaction_server(struct io_watcher* watcher)
 
          if (!fatal)
          {
+            /* In transaction pooling the reset query runs only when
+             * server_reset_query_always is enabled (PgBouncer parity). A
+             * non-empty reset (e.g. DISCARD ALL) subsumes DEALLOCATE ALL. If it
+             * fails the backend is discarded rather than returned dirty. */
+            if (config->server_reset_query_always && config->server_reset_query[0] != '\0')
+            {
+               if (pgagroal_write_reset_query(wi->server_ssl, wi->server_fd))
+               {
+                  pgagroal_tracking_event_slot(TRACKER_TX_RETURN_CONNECTION, slot);
+                  pgagroal_kill_connection(slot, wi->server_ssl);
+                  slot = -1;
+                  goto return_error;
+               }
+               deallocate = false;
+            }
+
             if (deallocate)
             {
                pgagroal_write_deallocate_all(wi->server_ssl, wi->server_fd);
