@@ -616,6 +616,133 @@ pgagroal_conf_get(SSL* ssl, int client_fd, uint8_t compression, uint8_t encrypti
 void
 pgagroal_conf_set(SSL* ssl, int client_fd, uint8_t compression, uint8_t encryption, struct json* payload, bool* restart_required, bool* success);
 
+/**
+ * Parse a string as an integer
+ * @param str The string to parse
+ * @param i The resulting integer
+ * @return 0 on success, 1 on failure
+ */
+int
+pgagroal_as_int(char* str, int* i);
+
+/**
+ * Parse a string as a boolean
+ * @param str The string to parse
+ * @param b The resulting boolean
+ * @return 0 on success, 1 on failure
+ */
+int
+pgagroal_as_bool(char* str, bool* b);
+
+/**
+ * Parse a string as a logging type
+ * @param str The string to parse
+ * @param type The resulting logging type
+ * @return 0 on success, 1 on failure
+ */
+int
+pgagroal_as_logging_type(char* str, int* type);
+
+/**
+ * Parse a string as a logging level
+ * @param str The string to parse
+ * @return The logging level constant
+ */
+int
+pgagroal_as_logging_level(char* str);
+
+/**
+ * Parse a string as a validation mode
+ * @param str The string to parse
+ * @param val The resulting validation mode
+ * @return 0 on success, 1 on failure
+ */
+int
+pgagroal_as_validation(char* str, int* val);
+
+/**
+ * Parse a string as a number of bytes
+ * @param str The string to parse
+ * @param bytes The resulting bytes value
+ * @param default_bytes The default value
+ * @return The parsed bytes value
+ */
+unsigned int
+pgagroal_as_bytes(char* str, unsigned int* bytes, unsigned int default_bytes);
+
+/**
+ * Parse a string as a number of seconds
+ * @param str The string to parse
+ * @param result The resulting time value
+ * @param default_val The default value
+ * @return 0 on success, 1 on failure
+ */
+int
+pgagroal_as_seconds(char* str, pgagroal_time_t* result, pgagroal_time_t default_val);
+
+/**
+ * Parse a string as a pipeline type
+ * @param str The string to parse
+ * @param pipeline The resulting pipeline type
+ * @return 0 on success, 1 on failure
+ */
+int
+pgagroal_as_pipeline(char* str, int* pipeline);
+
+/**
+ * Parse a string as a hugepage setting
+ * @param str The string to parse
+ * @param hp The resulting hugepage setting
+ * @return 0 on success, 1 on failure
+ */
+int
+pgagroal_as_hugepage(char* str, unsigned char* hp);
+
+/**
+ * Parse a string as a startup validation mode
+ * @param str The string to parse
+ * @param sv The resulting startup validation mode
+ * @return 0 on success, 1 on failure
+ */
+int
+pgagroal_as_startup_validation(char* str, int* sv);
+
+/**
+ * Parse a string as a logging mode
+ * @param str The string to parse
+ * @param mode The resulting logging mode
+ * @return 0 on success, 1 on failure
+ */
+int
+pgagroal_as_logging_mode(char* str, int* mode);
+
+/**
+ * Parse a string as a logging rotation size
+ * @param str The string to parse
+ * @param size The resulting size
+ * @return 0 on success, 1 on failure
+ */
+int
+pgagroal_as_logging_rotation_size(char* str, unsigned int* size);
+
+/**
+ * Parse a string as an update process title policy
+ * @param str The string to parse
+ * @param policy The resulting policy
+ * @param default_policy The default policy
+ * @return The parsed policy value
+ */
+unsigned int
+pgagroal_as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy);
+
+/**
+ * Convert a string to an ev_backend_t enum value
+ * @param str The string to parse
+ * @return The ev_backend_t value, or PGAGROAL_EVENT_BACKEND_INVALID on failure
+ */
+ev_backend_t
+pgagroal_to_backend_type(char* str);
+
 #ifdef __cplusplus
 }
 #endif

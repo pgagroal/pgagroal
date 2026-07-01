@@ -353,9 +353,17 @@ config_init(const char* output_path, bool quiet, bool force)
       {
          if (prompt_input("Port (required)", CONFIGURATION_DEFAULT_PORT, port, sizeof(port)) == 0)
          {
-            break;
+            int port_val;
+            if (pgagroal_as_int(port, &port_val) == 0)
+            {
+               break;
+            }
+            printf("  Invalid port value. Please enter a valid integer.\n");
          }
-         printf("  port is required. Please enter a value.\n");
+         else
+         {
+            printf("  port is required. Please enter a value.\n");
+         }
       }
 
       if (prompt_input("Unix socket directory", CONFIGURATION_DEFAULT_UNIX_SOCKET_DIR, unix_socket_dir, sizeof(unix_socket_dir)))
@@ -364,58 +372,155 @@ config_init(const char* output_path, bool quiet, bool force)
          goto error;
       }
 
-      if (prompt_input("Max connections", CONFIGURATION_DEFAULT_MAX_CONNECTIONS, max_connections, sizeof(max_connections)))
+      while (1)
       {
-         warnx("Invalid input for max_connections");
-         goto error;
+         if (prompt_input("Max connections", CONFIGURATION_DEFAULT_MAX_CONNECTIONS, max_connections, sizeof(max_connections)) == 0)
+         {
+            int max_conn_val;
+            if (pgagroal_as_int(max_connections, &max_conn_val) == 0)
+            {
+               break;
+            }
+            printf("  Invalid value. Please enter a valid integer.\n");
+         }
+         else
+         {
+            printf("  max_connections is required. Please enter a value.\n");
+         }
       }
 
-      if (prompt_input("Idle timeout (seconds, 0 to disable)", CONFIGURATION_DEFAULT_IDLE_TIMEOUT, idle_timeout, sizeof(idle_timeout)))
+      while (1)
       {
-         warnx("Invalid input for idle_timeout");
-         goto error;
+         if (prompt_input("Idle timeout (seconds, 0 to disable)", CONFIGURATION_DEFAULT_IDLE_TIMEOUT, idle_timeout, sizeof(idle_timeout)) == 0)
+         {
+            int idle_val;
+            if (pgagroal_as_int(idle_timeout, &idle_val) == 0)
+            {
+               break;
+            }
+            printf("  Invalid value. Please enter a valid integer.\n");
+         }
+         else
+         {
+            printf("  idle_timeout is required. Please enter a value.\n");
+         }
       }
 
-      if (prompt_input("Flush timeout (seconds, 0 to disable)", CONFIGURATION_DEFAULT_FLUSH_TIMEOUT, flush_timeout, sizeof(flush_timeout)))
+      while (1)
       {
-         warnx("Invalid input for flush_timeout");
-         goto error;
+         if (prompt_input("Flush timeout (seconds, 0 to disable)", CONFIGURATION_DEFAULT_FLUSH_TIMEOUT, flush_timeout, sizeof(flush_timeout)) == 0)
+         {
+            int flush_val;
+            if (pgagroal_as_int(flush_timeout, &flush_val) == 0)
+            {
+               break;
+            }
+            printf("  Invalid value. Please enter a valid integer.\n");
+         }
+         else
+         {
+            printf("  flush_timeout is required. Please enter a value.\n");
+         }
       }
 
-      if (prompt_input("Validation (off, foreground, background)", CONFIGURATION_DEFAULT_VALIDATION, validation, sizeof(validation)))
+      while (1)
       {
-         warnx("Invalid input for validation");
-         goto error;
+         if (prompt_input("Validation (off, foreground, background)", CONFIGURATION_DEFAULT_VALIDATION, validation, sizeof(validation)) == 0)
+         {
+            int val_mode;
+            if (pgagroal_as_validation(validation, &val_mode) == 0)
+            {
+               break;
+            }
+            printf("  Invalid value. Please enter one of: off, foreground, background.\n");
+         }
+         else
+         {
+            printf("  validation is required. Please enter a value.\n");
+         }
       }
 
-      if (prompt_input("Event backend (auto, io_uring, epoll, kqueue)", CONFIGURATION_DEFAULT_EV_BACKEND, ev_backend, sizeof(ev_backend)))
+      while (1)
       {
-         warnx("Invalid input for ev_backend");
-         goto error;
+         if (prompt_input("Event backend (auto, io_uring, epoll, kqueue)", CONFIGURATION_DEFAULT_EV_BACKEND, ev_backend, sizeof(ev_backend)) == 0)
+         {
+            if (pgagroal_to_backend_type(ev_backend) != PGAGROAL_EVENT_BACKEND_INVALID)
+            {
+               break;
+            }
+            printf("  Invalid value. Please enter one of: auto, io_uring, epoll, kqueue.\n");
+         }
+         else
+         {
+            printf("  ev_backend is required. Please enter a value.\n");
+         }
       }
 
-      if (prompt_input("Metrics port (0 to disable)", CONFIGURATION_DEFAULT_METRICS, metrics, sizeof(metrics)))
+      while (1)
       {
-         warnx("Invalid input for metrics");
-         goto error;
+         if (prompt_input("Metrics port (0 to disable)", CONFIGURATION_DEFAULT_METRICS, metrics, sizeof(metrics)) == 0)
+         {
+            int metrics_val;
+            if (pgagroal_as_int(metrics, &metrics_val) == 0)
+            {
+               break;
+            }
+            printf("  Invalid value. Please enter a valid integer.\n");
+         }
+         else
+         {
+            printf("  metrics port is required. Please enter a value.\n");
+         }
       }
 
-      if (prompt_input("Management port (0 to disable)", CONFIGURATION_DEFAULT_MANAGEMENT, management, sizeof(management)))
+      while (1)
       {
-         warnx("Invalid input for management");
-         goto error;
+         if (prompt_input("Management port (0 to disable)", CONFIGURATION_DEFAULT_MANAGEMENT, management, sizeof(management)) == 0)
+         {
+            int mgmt_val;
+            if (pgagroal_as_int(management, &mgmt_val) == 0)
+            {
+               break;
+            }
+            printf("  Invalid value. Please enter a valid integer.\n");
+         }
+         else
+         {
+            printf("  management port is required. Please enter a value.\n");
+         }
       }
 
-      if (prompt_input("Log type (console, file, syslog)", CONFIGURATION_DEFAULT_LOG_TYPE, log_type, sizeof(log_type)))
+      while (1)
       {
-         warnx("Invalid input for log_type");
-         goto error;
+         if (prompt_input("Log type (console, file, syslog)", CONFIGURATION_DEFAULT_LOG_TYPE, log_type, sizeof(log_type)) == 0)
+         {
+            int log_type_val;
+            if (pgagroal_as_logging_type(log_type, &log_type_val) == 0)
+            {
+               break;
+            }
+            printf("  Invalid value. Please enter one of: console, file, syslog.\n");
+         }
+         else
+         {
+            printf("  log_type is required. Please enter a value.\n");
+         }
       }
 
-      if (prompt_input("Log level (fatal, error, warn, info, debug, trace)", CONFIGURATION_DEFAULT_LOG_LEVEL, log_level, sizeof(log_level)))
+      while (1)
       {
-         warnx("Invalid input for log_level");
-         goto error;
+         if (prompt_input("Log level (fatal, error, warn, info, debug, trace)", CONFIGURATION_DEFAULT_LOG_LEVEL, log_level, sizeof(log_level)) == 0)
+         {
+            if (pgagroal_as_logging_level(log_level) != PGAGROAL_LOGGING_LEVEL_FATAL || !strcasecmp(log_level, "fatal"))
+            {
+               break;
+            }
+            printf("  Invalid value. Please enter one of: fatal, error, warn, info, debug, trace.\n");
+         }
+         else
+         {
+            printf("  log_level is required. Please enter a value.\n");
+         }
       }
 
       if (prompt_input("Log path", CONFIGURATION_DEFAULT_LOG_PATH, log_path, sizeof(log_path)))

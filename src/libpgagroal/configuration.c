@@ -66,24 +66,24 @@
 
 static int extract_key_value(char* str, char** key, char** value);
 static int extract_syskey_value(char* str, char** key, char** value);
-static int as_int(char* str, int* i);
-static int as_bool(char* str, bool* b);
-static int as_logging_type(char* str, int* type);
-static int as_logging_level(char* str);
-static int as_logging_mode(char* str, int* mode);
+int pgagroal_as_int(char* str, int* i);
+int pgagroal_as_bool(char* str, bool* b);
+int pgagroal_as_logging_type(char* str, int* type);
+int pgagroal_as_logging_level(char* str);
+int pgagroal_as_logging_mode(char* str, int* mode);
 
-static int as_logging_rotation_size(char* str, unsigned int* size);
-static int as_validation(char* str, int* val);
-static int as_pipeline(char* str, int* pipeline);
-static int as_hugepage(char* str, unsigned char* hp);
-static int as_startup_validation(char* str, int* sv);
-static unsigned int as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy);
+int pgagroal_as_logging_rotation_size(char* str, unsigned int* size);
+int pgagroal_as_validation(char* str, int* val);
+int pgagroal_as_pipeline(char* str, int* pipeline);
+int pgagroal_as_hugepage(char* str, unsigned char* hp);
+int pgagroal_as_startup_validation(char* str, int* sv);
+unsigned int pgagroal_as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy);
 static int extract_value(char* str, int offset, char** value);
 static void extract_hba(char* str, char** type, char** database, char** user, char** address, char** method);
 static void extract_limit(char* str, int server_max, char** database, char** user, int* max_size, int* initial_size, int* min_size, char aliases[MAX_ALIASES][MAX_DATABASE_LENGTH], int* aliases_count);
 static void copy_limit(struct limit* dst, struct limit* src);
-static int as_seconds(char* str, pgagroal_time_t* result, pgagroal_time_t default_val);
-static unsigned int as_bytes(char* str, unsigned int* bytes, unsigned int default_bytes);
+int pgagroal_as_seconds(char* str, pgagroal_time_t* result, pgagroal_time_t default_val);
+unsigned int pgagroal_as_bytes(char* str, unsigned int* bytes, unsigned int default_bytes);
 static int extract_alias_with_space(char* str, int offset, char** db_part);
 
 static bool transfer_configuration(struct main_configuration* config, struct main_configuration* reload, bool* health_check_changed);
@@ -134,7 +134,7 @@ static void add_limits_configuration_response(struct json* res);
 
 static bool is_supported_backend(ev_backend_t backend);
 static char* to_backend_str(ev_backend_t value);
-static ev_backend_t to_backend_type(char* str);
+ev_backend_t pgagroal_to_backend_type(char* str);
 
 /**
  *
@@ -2766,8 +2766,8 @@ error:
    return 1;
 }
 
-static int
-as_int(char* str, int* i)
+int
+pgagroal_as_int(char* str, int* i)
 {
    char* endptr;
    long val;
@@ -2801,8 +2801,8 @@ error:
    return 1;
 }
 
-static int
-as_bool(char* str, bool* b)
+int
+pgagroal_as_bool(char* str, bool* b)
 {
    if (!strcasecmp(str, "true") || !strcasecmp(str, "on") || !strcasecmp(str, "yes") || !strcasecmp(str, "1"))
    {
@@ -2819,8 +2819,8 @@ as_bool(char* str, bool* b)
    return 1;
 }
 
-static int
-as_logging_type(char* str, int* type)
+int
+pgagroal_as_logging_type(char* str, int* type)
 {
    if (!strcasecmp(str, "console"))
    {
@@ -2843,8 +2843,8 @@ as_logging_type(char* str, int* type)
    return 1;
 }
 
-static int
-as_logging_level(char* str)
+int
+pgagroal_as_logging_level(char* str)
 {
    size_t size = 0;
    int debug_level = 1;
@@ -2861,7 +2861,7 @@ as_logging_level(char* str)
             return PGAGROAL_LOGGING_LEVEL_FATAL;
          }
          memcpy(debug_value, str + 5, size);
-         if (as_int(debug_value, &debug_level))
+         if (pgagroal_as_int(debug_value, &debug_level))
          {
             // cannot parse, set it to 1
             debug_level = 1;
@@ -2926,8 +2926,8 @@ as_logging_level(char* str)
    return PGAGROAL_LOGGING_LEVEL_INFO;
 }
 
-static int
-as_logging_mode(char* str, int* mode)
+int
+pgagroal_as_logging_mode(char* str, int* mode)
 {
    if (!strcasecmp(str, "a") || !strcasecmp(str, "append"))
    {
@@ -2944,8 +2944,8 @@ as_logging_mode(char* str, int* mode)
    return 1;
 }
 
-static int
-as_validation(char* str, int* val)
+int
+pgagroal_as_validation(char* str, int* val)
 {
    if (!strcasecmp(str, "off"))
    {
@@ -2968,8 +2968,8 @@ as_validation(char* str, int* val)
    return 1;
 }
 
-static int
-as_pipeline(char* str, int* pipeline)
+int
+pgagroal_as_pipeline(char* str, int* pipeline)
 {
    if (!strcasecmp(str, "auto"))
    {
@@ -2998,8 +2998,8 @@ as_pipeline(char* str, int* pipeline)
    return 1;
 }
 
-static int
-as_hugepage(char* str, unsigned char* hp)
+int
+pgagroal_as_hugepage(char* str, unsigned char* hp)
 {
    if (!strcasecmp(str, "off"))
    {
@@ -3022,8 +3022,8 @@ as_hugepage(char* str, unsigned char* hp)
    return 1;
 }
 
-static int
-as_startup_validation(char* str, int* sv)
+int
+pgagroal_as_startup_validation(char* str, int* sv)
 {
    if (!strcasecmp(str, "off"))
    {
@@ -3263,7 +3263,7 @@ extract_limit(char* str, int server_max, char** database, char** user, int* max_
    }
    else
    {
-      if (as_int(value, max_size))
+      if (pgagroal_as_int(value, max_size))
       {
          *max_size = -1;
          goto cleanup;
@@ -3282,7 +3282,7 @@ extract_limit(char* str, int server_max, char** database, char** user, int* max_
       }
       else
       {
-         if (as_int(value, initial_size))
+         if (pgagroal_as_int(value, initial_size))
          {
             *initial_size = 0;
          }
@@ -3301,7 +3301,7 @@ extract_limit(char* str, int server_max, char** database, char** user, int* max_
       }
       else
       {
-         if (as_int(value, min_size))
+         if (pgagroal_as_int(value, min_size))
          {
             *min_size = 0;
          }
@@ -4275,10 +4275,10 @@ is_empty_string(char* s)
  * Returns 0 if parsing ok, 1 otherwise.
  *
  */
-static int
-as_logging_rotation_size(char* str, unsigned int* size)
+int
+pgagroal_as_logging_rotation_size(char* str, unsigned int* size)
 {
-   return as_bytes(str, size, PGAGROAL_LOGGING_ROTATION_DISABLED);
+   return pgagroal_as_bytes(str, size, PGAGROAL_LOGGING_ROTATION_DISABLED);
 }
 
 void
@@ -4463,8 +4463,8 @@ section_line(char* line, char* section)
  * @return 0 on success (including empty input falling back to default_age),
  *         1 on malformed/out-of-range input
  */
-static int
-as_seconds(char* str, pgagroal_time_t* age, pgagroal_time_t default_age)
+int
+pgagroal_as_seconds(char* str, pgagroal_time_t* age, pgagroal_time_t default_age)
 {
    int64_t secs = 0;
 
@@ -4503,8 +4503,8 @@ as_seconds(char* str, pgagroal_time_t* age, pgagroal_time_t default_age)
  * @return 1 if parsing is unable to understand the string, 0 is parsing is
  *         performed correctly (or almost correctly, e.g., empty string)
  */
-static unsigned int
-as_bytes(char* str, unsigned int* bytes, unsigned int default_bytes)
+unsigned int
+pgagroal_as_bytes(char* str, unsigned int* bytes, unsigned int default_bytes)
 {
    int multiplier = 1;
    int index;
@@ -4567,7 +4567,7 @@ as_bytes(char* str, unsigned int* bytes, unsigned int default_bytes)
    }
 
    value[index] = '\0';
-   if (!as_int(value, &i_value))
+   if (!pgagroal_as_int(value, &i_value))
    {
       // sanity check: the value
       // must be a positive number!
@@ -4602,8 +4602,8 @@ error:
  * @return 0 on success, 1 on error. In any case the `policy` variable is set to
  * `default_policy`.
  */
-static unsigned int
-as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy)
+unsigned int
+pgagroal_as_update_process_title(char* str, unsigned int* policy, unsigned int default_policy)
 {
    if (is_empty_string(str))
    {
@@ -5572,8 +5572,8 @@ to_log_type(char* where, int value)
  * @return The corresponding ev_backend_t value for the given string. If the input
  * string is not recognized, EV_BACKEND_AUTO is returned
  */
-static ev_backend_t
-to_backend_type(char* str)
+ev_backend_t
+pgagroal_to_backend_type(char* str)
 {
    if (is_empty_string(str))
    {
@@ -5674,7 +5674,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("port", section, key, true, NULL))
    {
-      if (as_int(value, &config->common.port))
+      if (pgagroal_as_int(value, &config->common.port))
       {
          unknown = true;
       }
@@ -5683,7 +5683,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    {
       memset(&srv->name, 0, MISC_LENGTH);
       memcpy(&srv->name, section, strlen(section));
-      if (as_int(value, &srv->port))
+      if (pgagroal_as_int(value, &srv->port))
       {
          unknown = true;
       }
@@ -5692,7 +5692,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    else if (key_in_section("primary", section, key, false, &unknown))
    {
       bool b = false;
-      if (as_bool(value, &b))
+      if (pgagroal_as_bool(value, &b))
       {
          unknown = true;
       }
@@ -5707,7 +5707,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("metrics", section, key, true, &unknown))
    {
-      if (as_int(value, &config->common.metrics))
+      if (pgagroal_as_int(value, &config->common.metrics))
       {
          unknown = true;
       }
@@ -5744,42 +5744,42 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("metrics_cache_max_age", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.metrics_cache_max_age, PGAGROAL_TIME_DISABLED))
+      if (pgagroal_as_seconds(value, &config->common.metrics_cache_max_age, PGAGROAL_TIME_DISABLED))
       {
          unknown = true;
       }
    }
    else if (key_in_section("metrics_cache_max_size", section, key, true, &unknown))
    {
-      if (as_bytes(value, &config->common.metrics_cache_max_size, PROMETHEUS_DEFAULT_CACHE_SIZE))
+      if (pgagroal_as_bytes(value, &config->common.metrics_cache_max_size, PROMETHEUS_DEFAULT_CACHE_SIZE))
       {
          unknown = true;
       }
    }
    else if (key_in_section("management", section, key, true, &unknown))
    {
-      if (as_int(value, &config->management))
+      if (pgagroal_as_int(value, &config->management))
       {
          unknown = true;
       }
    }
    else if (key_in_section("console", section, key, true, &unknown))
    {
-      if (as_int(value, &config->console))
+      if (pgagroal_as_int(value, &config->console))
       {
          unknown = true;
       }
    }
    else if (key_in_section("pipeline", section, key, true, &unknown))
    {
-      if (as_pipeline(value, &config->pipeline))
+      if (pgagroal_as_pipeline(value, &config->pipeline))
       {
          unknown = true;
       }
    }
    else if (key_in_section("failover", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->failover))
+      if (pgagroal_as_bool(value, &config->failover))
       {
          unknown = true;
       }
@@ -5809,21 +5809,21 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("auth_query", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->authquery))
+      if (pgagroal_as_bool(value, &config->authquery))
       {
          unknown = true;
       }
    }
    else if (key_in_section("tls", section, key, true, NULL))
    {
-      if (as_bool(value, &config->common.tls))
+      if (pgagroal_as_bool(value, &config->common.tls))
       {
          unknown = true;
       }
    }
    else if (key_in_section("tls", section, key, false, &unknown))
    {
-      if (as_bool(value, &srv->tls))
+      if (pgagroal_as_bool(value, &srv->tls))
       {
          unknown = true;
       }
@@ -5890,7 +5890,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("blocking_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->blocking_timeout, PGAGROAL_TIME_SEC(DEFAULT_BLOCKING_TIMEOUT)))
+      if (pgagroal_as_seconds(value, &config->blocking_timeout, PGAGROAL_TIME_SEC(DEFAULT_BLOCKING_TIMEOUT)))
       {
          unknown = true;
       }
@@ -5899,7 +5899,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    {
       int crd = DEFAULT_CONNECTION_RETRY_DELAY;
 
-      if (as_int(value, &crd))
+      if (pgagroal_as_int(value, &crd))
       {
          unknown = true;
       }
@@ -5920,77 +5920,77 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("idle_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->idle_timeout, PGAGROAL_TIME_SEC(DEFAULT_IDLE_TIMEOUT)))
+      if (pgagroal_as_seconds(value, &config->idle_timeout, PGAGROAL_TIME_SEC(DEFAULT_IDLE_TIMEOUT)))
       {
          unknown = true;
       }
    }
    else if (key_in_section("rotate_frontend_password_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->rotate_frontend_password_timeout, PGAGROAL_TIME_SEC(DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT)))
+      if (pgagroal_as_seconds(value, &config->rotate_frontend_password_timeout, PGAGROAL_TIME_SEC(DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT)))
       {
          unknown = true;
       }
    }
    else if (key_in_section("rotate_frontend_password_length", section, key, true, &unknown))
    {
-      if (as_int(value, &config->rotate_frontend_password_length))
+      if (pgagroal_as_int(value, &config->rotate_frontend_password_length))
       {
          unknown = true;
       }
    }
    else if (key_in_section("max_connection_age", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->max_connection_age, PGAGROAL_TIME_SEC(DEFAULT_MAX_CONNECTION_AGE)))
+      if (pgagroal_as_seconds(value, &config->max_connection_age, PGAGROAL_TIME_SEC(DEFAULT_MAX_CONNECTION_AGE)))
       {
          unknown = true;
       }
    }
    else if (key_in_section("flush_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->flush_timeout, PGAGROAL_TIME_SEC(DEFAULT_FLUSH_TIMEOUT)))
+      if (pgagroal_as_seconds(value, &config->flush_timeout, PGAGROAL_TIME_SEC(DEFAULT_FLUSH_TIMEOUT)))
       {
          unknown = true;
       }
    }
    else if (key_in_section("validation", section, key, true, &unknown))
    {
-      if (as_validation(value, &config->validation))
+      if (pgagroal_as_validation(value, &config->validation))
       {
          unknown = true;
       }
    }
    else if (key_in_section("background_interval", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->background_interval, PGAGROAL_TIME_SEC(DEFAULT_BACKGROUND_INTERVAL)))
+      if (pgagroal_as_seconds(value, &config->background_interval, PGAGROAL_TIME_SEC(DEFAULT_BACKGROUND_INTERVAL)))
       {
          unknown = true;
       }
    }
    else if (key_in_section("max_retries", section, key, true, &unknown))
    {
-      if (as_int(value, &config->max_retries))
+      if (pgagroal_as_int(value, &config->max_retries))
       {
          unknown = true;
       }
    }
    else if (key_in_section("health_check", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->health_check))
+      if (pgagroal_as_bool(value, &config->health_check))
       {
          unknown = true;
       }
    }
    else if (key_in_section("health_check_period", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->health_check_period, PGAGROAL_TIME_SEC(DEFAULT_HEALTH_CHECK_PERIOD)))
+      if (pgagroal_as_seconds(value, &config->health_check_period, PGAGROAL_TIME_SEC(DEFAULT_HEALTH_CHECK_PERIOD)))
       {
          unknown = true;
       }
    }
    else if (key_in_section("health_check_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->health_check_timeout, PGAGROAL_TIME_SEC(DEFAULT_HEALTH_CHECK_TIMEOUT)))
+      if (pgagroal_as_seconds(value, &config->health_check_timeout, PGAGROAL_TIME_SEC(DEFAULT_HEALTH_CHECK_TIMEOUT)))
       {
          unknown = true;
       }
@@ -6007,28 +6007,28 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("startup_validation", section, key, true, &unknown))
    {
-      if (as_startup_validation(value, &config->startup_validation))
+      if (pgagroal_as_startup_validation(value, &config->startup_validation))
       {
          unknown = true;
       }
    }
    else if (key_in_section("authentication_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.authentication_timeout, PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT)))
+      if (pgagroal_as_seconds(value, &config->common.authentication_timeout, PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT)))
       {
          unknown = true;
       }
    }
    else if (key_in_section("disconnect_client", section, key, true, &unknown))
    {
-      if (as_int(value, &config->disconnect_client))
+      if (pgagroal_as_int(value, &config->disconnect_client))
       {
          unknown = true;
       }
    }
    else if (key_in_section("disconnect_client_force", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->disconnect_client_force))
+      if (pgagroal_as_bool(value, &config->disconnect_client_force))
       {
          unknown = true;
       }
@@ -6045,21 +6045,21 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("allow_unknown_users", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->allow_unknown_users))
+      if (pgagroal_as_bool(value, &config->allow_unknown_users))
       {
          unknown = true;
       }
    }
    else if (key_in_section("log_type", section, key, true, &unknown))
    {
-      if (as_logging_type(value, &config->common.log_type))
+      if (pgagroal_as_logging_type(value, &config->common.log_type))
       {
          unknown = true;
       }
    }
    else if (key_in_section("log_level", section, key, true, &unknown))
    {
-      config->common.log_level = as_logging_level(value);
+      config->common.log_level = pgagroal_as_logging_level(value);
    }
    else if (key_in_section("log_path", section, key, true, &unknown))
    {
@@ -6073,14 +6073,14 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("log_rotation_size", section, key, true, &unknown))
    {
-      if (as_logging_rotation_size(value, &config->common.log_rotation_size))
+      if (pgagroal_as_logging_rotation_size(value, &config->common.log_rotation_size))
       {
          unknown = true;
       }
    }
    else if (key_in_section("log_rotation_age", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.log_rotation_age, PGAGROAL_TIME_DISABLED))
+      if (pgagroal_as_seconds(value, &config->common.log_rotation_age, PGAGROAL_TIME_DISABLED))
       {
          unknown = true;
       }
@@ -6098,28 +6098,28 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("log_connections", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->common.log_connections))
+      if (pgagroal_as_bool(value, &config->common.log_connections))
       {
          unknown = true;
       }
    }
    else if (key_in_section("log_disconnections", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->common.log_disconnections))
+      if (pgagroal_as_bool(value, &config->common.log_disconnections))
       {
          unknown = true;
       }
    }
    else if (key_in_section("log_mode", section, key, true, &unknown))
    {
-      if (as_logging_mode(value, &config->common.log_mode))
+      if (pgagroal_as_logging_mode(value, &config->common.log_mode))
       {
          unknown = true;
       }
    }
    else if (key_in_section("max_connections", section, key, true, &unknown))
    {
-      if (as_int(value, &config->max_connections))
+      if (pgagroal_as_int(value, &config->max_connections))
       {
          unknown = true;
       }
@@ -6136,53 +6136,53 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("ev_backend", section, key, true, &unknown))
    {
-      config->ev_backend = to_backend_type(value);
+      config->ev_backend = pgagroal_to_backend_type(value);
    }
    else if (key_in_section("keep_alive", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->keep_alive))
+      if (pgagroal_as_bool(value, &config->keep_alive))
       {
          unknown = true;
       }
    }
    else if (key_in_section("nodelay", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->nodelay))
+      if (pgagroal_as_bool(value, &config->nodelay))
       {
          unknown = true;
       }
    }
    else if (key_in_section("backlog", section, key, true, &unknown))
    {
-      if (as_int(value, &config->backlog))
+      if (pgagroal_as_int(value, &config->backlog))
       {
          unknown = true;
       }
    }
    else if (key_in_section("hugepage", section, key, true, &unknown))
    {
-      if (as_hugepage(value, &config->common.hugepage))
+      if (pgagroal_as_hugepage(value, &config->common.hugepage))
       {
          unknown = true;
       }
    }
    else if (key_in_section("tracker", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->tracker))
+      if (pgagroal_as_bool(value, &config->tracker))
       {
          unknown = true;
       }
    }
    else if (key_in_section("track_prepared_statements", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->track_prepared_statements))
+      if (pgagroal_as_bool(value, &config->track_prepared_statements))
       {
          unknown = true;
       }
    }
    else if (key_in_section("update_process_title", section, key, true, &unknown))
    {
-      if (as_update_process_title(value, &config->update_process_title, UPDATE_PROCESS_TITLE_VERBOSE))
+      if (pgagroal_as_update_process_title(value, &config->update_process_title, UPDATE_PROCESS_TITLE_VERBOSE))
       {
          unknown = true;
       }
@@ -6244,7 +6244,7 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("port", section, key, true, NULL))
    {
-      if (as_int(value, &config->common.port))
+      if (pgagroal_as_int(value, &config->common.port))
       {
          unknown = true;
       }
@@ -6253,14 +6253,14 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    {
       memset(&srv->server.name, 0, MISC_LENGTH);
       memcpy(&srv->server.name, section, strlen(section));
-      if (as_int(value, &srv->server.port))
+      if (pgagroal_as_int(value, &srv->server.port))
       {
          unknown = true;
       }
    }
    else if (key_in_section("ev_backend", section, key, true, &unknown))
    {
-      config->ev_backend = to_backend_type(value);
+      config->ev_backend = pgagroal_to_backend_type(value);
    }
    else if (key_in_section("user", section, key, false, &unknown))
    {
@@ -6274,7 +6274,7 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("tls", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->common.tls))
+      if (pgagroal_as_bool(value, &config->common.tls))
       {
          unknown = true;
       }
@@ -6326,7 +6326,7 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("metrics", section, key, true, &unknown))
    {
-      if (as_int(value, &config->common.metrics))
+      if (pgagroal_as_int(value, &config->common.metrics))
       {
          unknown = true;
       }
@@ -6363,35 +6363,35 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("metrics_cache_max_age", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.metrics_cache_max_age, PGAGROAL_TIME_DISABLED))
+      if (pgagroal_as_seconds(value, &config->common.metrics_cache_max_age, PGAGROAL_TIME_DISABLED))
       {
          unknown = true;
       }
    }
    else if (key_in_section("metrics_cache_max_size", section, key, true, &unknown))
    {
-      if (as_bytes(value, &config->common.metrics_cache_max_size, PROMETHEUS_DEFAULT_CACHE_SIZE))
+      if (pgagroal_as_bytes(value, &config->common.metrics_cache_max_size, PROMETHEUS_DEFAULT_CACHE_SIZE))
       {
          unknown = true;
       }
    }
    else if (key_in_section("authentication_timeout", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.authentication_timeout, PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT)))
+      if (pgagroal_as_seconds(value, &config->common.authentication_timeout, PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT)))
       {
          unknown = true;
       }
    }
    else if (key_in_section("log_type", section, key, true, &unknown))
    {
-      if (as_logging_type(value, &config->common.log_type))
+      if (pgagroal_as_logging_type(value, &config->common.log_type))
       {
          unknown = true;
       }
    }
    else if (key_in_section("log_level", section, key, true, &unknown))
    {
-      config->common.log_level = as_logging_level(value);
+      config->common.log_level = pgagroal_as_logging_level(value);
    }
    else if (key_in_section("log_path", section, key, true, &unknown))
    {
@@ -6404,14 +6404,14 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("log_rotation_size", section, key, true, &unknown))
    {
-      if (as_logging_rotation_size(value, &config->common.log_rotation_size))
+      if (pgagroal_as_logging_rotation_size(value, &config->common.log_rotation_size))
       {
          unknown = true;
       }
    }
    else if (key_in_section("log_rotation_age", section, key, true, &unknown))
    {
-      if (as_seconds(value, &config->common.log_rotation_age, PGAGROAL_TIME_DISABLED))
+      if (pgagroal_as_seconds(value, &config->common.log_rotation_age, PGAGROAL_TIME_DISABLED))
       {
          unknown = true;
       }
@@ -6428,28 +6428,28 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("log_connections", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->common.log_connections))
+      if (pgagroal_as_bool(value, &config->common.log_connections))
       {
          unknown = true;
       }
    }
    else if (key_in_section("log_disconnections", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->common.log_disconnections))
+      if (pgagroal_as_bool(value, &config->common.log_disconnections))
       {
          unknown = true;
       }
    }
    else if (key_in_section("log_mode", section, key, true, &unknown))
    {
-      if (as_logging_mode(value, &config->common.log_mode))
+      if (pgagroal_as_logging_mode(value, &config->common.log_mode))
       {
          unknown = true;
       }
    }
    else if (key_in_section("hugepage", section, key, true, &unknown))
    {
-      if (as_hugepage(value, &config->common.hugepage))
+      if (pgagroal_as_hugepage(value, &config->common.hugepage))
       {
          unknown = true;
       }
@@ -6691,19 +6691,19 @@ pgagroal_apply_limit_configuration_string(struct limit* limit,
    }
    else if (!strncmp(context, PGAGROAL_LIMIT_ENTRY_MAX_SIZE, MISC_LENGTH))
    {
-      return as_int(value, &limit->max_size);
+      return pgagroal_as_int(value, &limit->max_size);
    }
    else if (!strncmp(context, PGAGROAL_LIMIT_ENTRY_MIN_SIZE, MISC_LENGTH))
    {
-      return as_int(value, &limit->min_size);
+      return pgagroal_as_int(value, &limit->min_size);
    }
    else if (!strncmp(context, PGAGROAL_LIMIT_ENTRY_INITIAL_SIZE, MISC_LENGTH))
    {
-      return as_int(value, &limit->initial_size);
+      return pgagroal_as_int(value, &limit->initial_size);
    }
    else if (!strncmp(context, PGAGROAL_LIMIT_ENTRY_LINENO, MISC_LENGTH))
    {
-      return as_int(value, &limit->lineno);
+      return pgagroal_as_int(value, &limit->lineno);
    }
    else
    {
