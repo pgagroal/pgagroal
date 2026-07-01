@@ -348,7 +348,7 @@ mctf_format_error(const char* format, ...);
    do                                                  \
    {                                                   \
       mctf_errno = MCTF_CODE_SKIPPED;                  \
-      if (__VA_ARGS__)                                 \
+      if (sizeof(#__VA_ARGS__) > 1)                    \
       {                                                \
          mctf_errmsg = mctf_format_error(__VA_ARGS__); \
       }                                                \
