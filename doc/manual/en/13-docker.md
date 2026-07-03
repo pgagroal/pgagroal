@@ -81,17 +81,17 @@ docker build -t pgagroal:latest -f ./contrib/docker/Dockerfile.alpine .
 podman build -t pgagroal:latest -f ./contrib/docker/Dockerfile.alpine .
 ```
 
-2. **Rocky Linux 9-based image**
+2. **Rocky Linux 10-based image**
 
 **Using Docker**
 ```sh
-docker build -t pgagroal:latest -f ./contrib/docker/Dockerfile.rocky9 .
+docker build -t pgagroal:latest -f ./contrib/docker/Dockerfile.rocky10 .
 ```
 
 **Using Podman**
 
 ```sh
-podman build -t pgagroal:latest -f ./contrib/docker/Dockerfile.rocky9 .
+podman build -t pgagroal:latest -f ./contrib/docker/Dockerfile.rocky10 .
 ```
 
 **Step 4: Run pgagroal as a Docker Container**
