@@ -235,7 +235,7 @@ jobs:
         uses: vmactions/freebsd-vm@v1
         id: freebsd-vm
         with:
-          release: "14.3"
+          release: "14.4"
           usesh: true
           envs: "PATH,GITHUB_ENV,GITHUB_WORKSPACE,GITHUB_OUTPUT"
           mem: 4096
