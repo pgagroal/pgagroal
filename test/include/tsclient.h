@@ -102,6 +102,23 @@ pgagroal_tsclient_init_pgbench(char* user, char* database, int scale);
 int
 pgagroal_tsclient_execute_concurrent_holds(char* user, char* database, int client_count, int hold_seconds);
 
+/**
+ * Drive client_count concurrent holds against a per-rule max_size cap and
+ * sample pgagroal's own live-backend counter for the rule while they run.
+ * Reads the pgagroal_limit type="backend" series from the metrics endpoint
+ * (issue #905) and returns the peak observed during the hold window. Used to
+ * assert that the per-rule max_size hard cap (issue #848) is never exceeded
+ * under concurrent contention.
+ * @param user name of the user
+ * @param database name of the database
+ * @param client_count number of concurrent psql sessions to spawn
+ * @param hold_seconds duration of the pg_sleep() hold per session
+ * @return the peak per-rule live backend count, or -1 if the metrics endpoint
+ * is disabled or could not be scraped
+ */
+int
+pgagroal_tsclient_limit_backend_peak(char* user, char* database, int client_count, int hold_seconds);
+
 #ifdef __cplusplus
 }
 #endif

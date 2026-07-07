@@ -31,6 +31,8 @@
 #include <tsclient.h>
 #include <mctf.h>
 
+#include <string.h>
+
 /* Upper bound on max_connections for the retry-path saturation test: above
  * this, oversubscribing the pool would spawn more backends than PostgreSQL's
  * default max_connections and the CI runner can sustain. */
@@ -115,6 +117,72 @@ MCTF_TEST(test_pgagroal_pool_saturation_retry)
    MCTF_ASSERT(ok, cleanup,
                "%d concurrent clients (max_connections + 2) did not all acquire freed slots within blocking_timeout (retry-path regression #875)",
                client_count);
+cleanup:
+   MCTF_FINISH();
+}
+
+/*
+ * Regression test for issue #848: the per-rule max_size cap must be a hard cap.
+ * Before #903 the sub-cap was a count-then-create check (TOCTOU): concurrent
+ * acquirers each read a stale per-rule count and then each created a backend,
+ * driving the rule's live backend count past max_size. The fix reserves
+ * against the cap atomically, so live backends for a rule never exceed
+ * max_size.
+ *
+ * The test oversubscribes a rule: it drives (2 * max_size) concurrent holds.
+ * The first max_size clients take every backend slot for the rule; the surplus
+ * block on the cap. While they hold, it samples pgagroal's own per-rule live
+ * backend counter (the pgagroal_limit type="backend" series exposed in #905)
+ * and asserts the peak never exceeds max_size. Sampling pgagroal's authoritative
+ * counter avoids the pg_stat_activity teardown-lag over-count that made the
+ * first attempt unreliable in CI.
+ *
+ * Parameters are derived from the live configuration. Configurations without
+ * the metrics endpoint enabled, or without a per-rule limit for this
+ * user/database, are skipped: there the cap counter cannot be observed.
+ */
+MCTF_TEST(test_pgagroal_pool_max_size_cap)
+{
+   struct main_configuration* config = (struct main_configuration*)shmem;
+   int max_size = 0;
+   int found_rule = 0;
+   int client_count = 0;
+   int peak = -1;
+
+   if (config == NULL)
+   {
+      MCTF_SKIP("configuration not available");
+   }
+   if (config->common.metrics <= 0)
+   {
+      MCTF_SKIP("metrics endpoint not enabled; cannot read the per-rule backend counter");
+   }
+
+   for (int i = 0; i < config->number_of_limits; i++)
+   {
+      if (!strcmp((const char*)config->limits[i].username, user) &&
+          !strcmp((const char*)config->limits[i].database, database))
+      {
+         max_size = config->limits[i].max_size;
+         found_rule = 1;
+         break;
+      }
+   }
+
+   if (!found_rule || max_size <= 0)
+   {
+      MCTF_SKIP("no per-rule max_size limit for %s/%s", user, database);
+   }
+
+   client_count = max_size * 2;
+
+   peak = pgagroal_tsclient_limit_backend_peak(user, database, client_count, 3);
+
+   MCTF_ASSERT(peak >= 0, cleanup,
+               "failed to sample the pgagroal_limit type=\"backend\" series for %s/%s", user, database);
+   MCTF_ASSERT(peak <= max_size, cleanup,
+               "per-rule live backends peaked at %d, exceeding max_size %d (cap regression #848)",
+               peak, max_size);
 cleanup:
    MCTF_FINISH();
 }
