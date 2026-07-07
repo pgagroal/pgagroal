@@ -6204,7 +6204,7 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
    }
    else if (key_in_section("server_reset_query_always", section, key, true, &unknown))
    {
-      if (as_bool(value, &config->server_reset_query_always))
+      if (pgagroal_as_bool(value, &config->server_reset_query_always))
       {
          unknown = true;
       }
