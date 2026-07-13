@@ -78,6 +78,9 @@ typedef struct mctf_result
    int error_code;        /**< Error code associated with a failure or skip. */
    char* error_message;   /**< Dynamically allocated, human readable error message. */
    long elapsed_ms;       /**< Execution time of the test in milliseconds. */
+   long log_offset_start; /**< Start offset in pgagroal log for this test, or -1 if unavailable. */
+   long log_offset_end;   /**< End offset in pgagroal log for this test, or -1 if unavailable. */
+   bool has_error_log;    /**< True if an ERROR-level line was observed in this test log slice. */
 } mctf_result_t;
 
 /**
@@ -141,6 +144,10 @@ mctf_log_environment(void);
 /* Get test results */
 const mctf_result_t*
 mctf_get_results(size_t* count);
+
+/* Return true if a result contains ERROR-level log output. */
+bool
+mctf_result_has_error_log(size_t result_index);
 
 /* Internal helper: format error message */
 char*
