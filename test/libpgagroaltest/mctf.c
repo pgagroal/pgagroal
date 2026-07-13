@@ -29,12 +29,15 @@
 #include <mctf.h>
 
 #include <errno.h>
+#include <setjmp.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 #include <sys/time.h>
 
 /* Global error number */
@@ -42,6 +45,21 @@ int mctf_errno = 0;
 
 /* Global error message */
 char* mctf_errmsg = NULL;
+
+/* Per-test timeout machinery. SIGALRM fires when a test exceeds its budget;
+ * the handler jumps back to the runner, which records a timeout failure. The
+ * test runner does not otherwise use SIGALRM, so there is no handler to clash
+ * with. */
+static sigjmp_buf g_timeout_jmp;
+static volatile sig_atomic_t g_timed_out = 0;
+
+static void
+mctf_timeout_handler(int sig)
+{
+   (void)sig;
+   g_timed_out = 1;
+   siglongjmp(g_timeout_jmp, 1);
+}
 
 /* Global test runner */
 static mctf_runner_t g_runner = {0};
@@ -276,6 +294,14 @@ mctf_cleanup(void)
 void
 mctf_register_test(const char* name, const char* module, const char* file, mctf_test_func_t func)
 {
+   mctf_register_test_with_timeout(name, module, file, func, MCTF_DEFAULT_TIMEOUT_SECONDS);
+}
+
+/* Register a test with a non-default per-test timeout (0 = no timeout) */
+void
+mctf_register_test_with_timeout(const char* name, const char* module, const char* file,
+                                mctf_test_func_t func, unsigned int timeout_seconds)
+{
    if (!g_initialized)
    {
       mctf_init();
@@ -316,6 +342,7 @@ mctf_register_test(const char* name, const char* module, const char* file, mctf_
    }
 
    test->func = func;
+   test->timeout_seconds = timeout_seconds;
    test->next = g_runner.tests;
    g_runner.tests = test;
    g_runner.test_count++;
@@ -430,6 +457,7 @@ mctf_run_tests(mctf_filter_type_t filter_type, const char* filter)
       result->line = 0; /* Not stored in test structure */
       result->passed = false;
       result->skipped = false;
+      result->timed_out = false;
       result->error_code = 0;
       result->error_message = NULL;
 
@@ -442,7 +470,33 @@ mctf_run_tests(mctf_filter_type_t filter_type, const char* filter)
          free(mctf_errmsg);
          mctf_errmsg = NULL;
       }
-      int ret = test->func();
+
+      /* Run the test under a wall-clock timeout. On expiry SIGALRM fires and
+       * the handler jumps back here, so a hung test fails fast and named
+       * instead of stalling the run until the CI job timeout. A zero budget
+       * (MCTF_TEST_NO_TIMEOUT) schedules no alarm, so the test runs untimed. */
+      int ret;
+      struct sigaction sa_timeout, sa_prev;
+      g_timed_out = 0;
+      memset(&sa_timeout, 0, sizeof(sa_timeout));
+      sa_timeout.sa_handler = mctf_timeout_handler;
+      sigemptyset(&sa_timeout.sa_mask);
+      sa_timeout.sa_flags = 0; /* no SA_RESTART: let the alarm interrupt blocking calls */
+      sigaction(SIGALRM, &sa_timeout, &sa_prev);
+
+      if (sigsetjmp(g_timeout_jmp, 1) == 0)
+      {
+         alarm(test->timeout_seconds);
+         ret = test->func();
+      }
+      else
+      {
+         /* Jumped here from the SIGALRM handler: the test exceeded its budget.
+          * Its resources may leak, but the run is already failing. */
+         ret = MCTF_CODE_TIMEOUT;
+      }
+      alarm(0);
+      sigaction(SIGALRM, &sa_prev, NULL);
 
       clock_gettime(CLOCK_MONOTONIC, &end_time);
 
@@ -459,7 +513,27 @@ mctf_run_tests(mctf_filter_type_t filter_type, const char* filter)
       /* (Older callers that don't care about timing simply ignore this field.) */
       result->elapsed_ms = elapsed_ms;
 
-      if (ret == MCTF_CODE_SKIPPED)
+      if (ret == MCTF_CODE_TIMEOUT)
+      {
+         result->passed = false;
+         result->timed_out = true;
+         result->error_code = (int)test->timeout_seconds;
+         result->error_message = mctf_format_error("Timed out after %u seconds", test->timeout_seconds);
+         g_runner.failed_count++;
+
+         mctf_logf("  %s (%02ld:%02ld:%02ld,%03ld) [TIMEOUT] (%s) - exceeded %u seconds\n",
+                   test->name, hours, minutes, seconds, milliseconds,
+                   test->file, test->timeout_seconds);
+
+         /* A timed-out test may have left partial error state behind. */
+         mctf_errno = 0;
+         if (mctf_errmsg)
+         {
+            free(mctf_errmsg);
+            mctf_errmsg = NULL;
+         }
+      }
+      else if (ret == MCTF_CODE_SKIPPED)
       {
          result->skipped = true;
          result->error_code = mctf_errno; /* Store line number */

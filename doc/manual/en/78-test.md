@@ -68,12 +68,12 @@ MCTF (Minimal C Test Framework) is pgagroal's custom test framework designed for
 - **Cleanup pattern** - Structured cleanup using goto labels for resource management
 - **Error tracking** - Automatic error tracking with line numbers and custom error messages
 - **Multiple assertion types** - Various assertion macros ('MCTF_ASSERT', 'MCTF_ASSERT_PTR_NONNULL', 'MCTF_ASSERT_INT_EQ', 'MCTF_ASSERT_STR_EQ', etc.)
+- **Per-test timeouts** - Every test runs under a wall-clock timeout (default 300 seconds), so a hung test fails fast as a named '[TIMEOUT]' failure instead of stalling the run; raise the budget per test with 'MCTF_TEST(name, secs)' or opt out with 'MCTF_TEST_NO_TIMEOUT(name)'
 
 **What MCTF Cannot Do (Limitations):**
 - **No test fixtures** - No automatic setup/teardown per test suite (you must handle setup and cleanup manually in each test)
 - **No parameterized tests** - Tests cannot be parameterized (each variation needs a separate test function)
 - **No parallel or async execution** - Tests run sequentially and synchronously
-- **No built-in timeouts** - No framework-level test timeouts (rely on OS-level signals or manual timeouts); elapsed time is recorded for reporting only
 - **No test organization beyond modules** - No test suites, groups, tags, or metadata beyond module names extracted from filenames
 
 **Add Testcases**
@@ -107,6 +107,13 @@ The `MCTF_ASSERT` macro supports optional error messages with printf-style forma
 - **With formatted message:** `MCTF_ASSERT(condition, cleanup, "got %d, expected 0", value);`
 - Format arguments (like `value`) are optional and only needed when the message contains format specifiers (`%d`, `%s`, etc.)
 - Multiple format arguments: `MCTF_ASSERT(a == b, cleanup, "expected %d but got %d", expected, actual);`
+
+**Test Timeouts:**
+
+Every test runs under a wall-clock timeout of 300 seconds by default. A test that exceeds its budget is aborted and reported as a `[TIMEOUT]` failure instead of hanging the run until the CI job timeout.
+- **Default:** `MCTF_TEST(test_name)` - runs under the 300-second default timeout
+- **Explicit budget:** `MCTF_TEST(test_name, 600)` - for tests that legitimately need longer
+- **No timeout:** `MCTF_TEST_NO_TIMEOUT(test_name)` - explicit opt-out for tests whose duration is unbounded by design; prefer an explicit budget where possible
 
 **Prerequisites**
 

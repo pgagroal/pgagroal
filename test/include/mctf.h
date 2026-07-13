@@ -42,6 +42,15 @@ extern "C" {
 
 /* Special error codes */
 #define MCTF_CODE_SKIPPED (-1)
+#define MCTF_CODE_TIMEOUT (-2)
+
+/* Default per-test wall-clock budget, in seconds. Generous enough that no
+ * healthy test trips it (the slowest integration tests spawn a handful of
+ * psql sessions and finish well under a minute), while still turning a hung
+ * test into a fast, named failure instead of stalling until the CI job
+ * timeout. Individual tests can raise this with MCTF_TEST(name, secs) or
+ * opt out entirely with MCTF_TEST_NO_TIMEOUT(name). */
+#define MCTF_DEFAULT_TIMEOUT_SECONDS 300
 
 /* Filter types */
 typedef enum {
@@ -58,11 +67,12 @@ typedef int (*mctf_test_func_t)(void);
  */
 typedef struct mctf_test
 {
-   char* name;             /**< Human readable test name. */
-   char* module;           /**< Logical module/group this test belongs to. */
-   char* file;             /**< Source file where the test is defined. */
-   mctf_test_func_t func;  /**< Function implementing the test. */
-   struct mctf_test* next; /**< Pointer to the next test in the registration list. */
+   char* name;                   /**< Human readable test name. */
+   char* module;                 /**< Logical module/group this test belongs to. */
+   char* file;                   /**< Source file where the test is defined. */
+   mctf_test_func_t func;        /**< Function implementing the test. */
+   unsigned int timeout_seconds; /**< Per-test wall-clock budget in seconds (0 = no timeout). */
+   struct mctf_test* next;       /**< Pointer to the next test in the registration list. */
 } mctf_test_t;
 
 /**
@@ -75,6 +85,7 @@ typedef struct mctf_result
    int line;              /**< Line number of the failing assertion, or 0 on success. */
    bool passed;           /**< True if the test completed successfully. */
    bool skipped;          /**< True if the test was explicitly skipped. */
+   bool timed_out;        /**< True if the test was aborted by its timeout. */
    int error_code;        /**< Error code associated with a failure or skip. */
    char* error_message;   /**< Dynamically allocated, human readable error message. */
    long elapsed_ms;       /**< Execution time of the test in milliseconds. */
@@ -109,6 +120,11 @@ mctf_cleanup(void);
 /* Register a test (called automatically via constructor) */
 void
 mctf_register_test(const char* name, const char* module, const char* file, mctf_test_func_t func);
+
+/* Register a test with a non-default per-test timeout (seconds; 0 = no timeout) */
+void
+mctf_register_test_with_timeout(const char* name, const char* module, const char* file,
+                                mctf_test_func_t func, unsigned int timeout_seconds);
 
 /* Extract module name from file path */
 const char*
@@ -146,18 +162,34 @@ mctf_get_results(size_t* count);
 char*
 mctf_format_error(const char* format, ...);
 
-/* Test registration macro with constructor attribute */
-#define MCTF_TEST(test_name)                                            \
-   static int test_name##_impl(void);                                   \
-   static void test_name##_register(void) __attribute__((constructor)); \
-   static void test_name##_register(void)                               \
-   {                                                                    \
-      mctf_register_test(#test_name,                                    \
-                         mctf_extract_module_name(__FILE__),            \
-                         mctf_extract_filename(__FILE__),               \
-                         test_name##_impl);                             \
-   }                                                                    \
+/* Shared registration body for the MCTF_TEST macro family */
+#define MCTF_TEST_IMPL(test_name, secs)                                   \
+   static int test_name##_impl(void);                                     \
+   static void test_name##_register(void) __attribute__((constructor));   \
+   static void test_name##_register(void)                                 \
+   {                                                                      \
+      mctf_register_test_with_timeout(#test_name,                         \
+                                      mctf_extract_module_name(__FILE__), \
+                                      mctf_extract_filename(__FILE__),    \
+                                      test_name##_impl,                   \
+                                      (secs));                            \
+   }                                                                      \
    static int test_name##_impl(void)
+
+#define MCTF_TEST_DEFAULT(test_name)            MCTF_TEST_IMPL(test_name, MCTF_DEFAULT_TIMEOUT_SECONDS)
+#define MCTF_TEST_WITH_TIMEOUT(test_name, secs) MCTF_TEST_IMPL(test_name, secs)
+#define MCTF_TEST_SELECT(_1, _2, macro, ...)    macro
+
+/* Test registration macro with constructor attribute and an optional per-test
+ * timeout: MCTF_TEST(name) runs under MCTF_DEFAULT_TIMEOUT_SECONDS, while
+ * MCTF_TEST(name, secs) sets an explicit wall-clock budget for tests that
+ * legitimately run longer. */
+#define MCTF_TEST(...) MCTF_TEST_SELECT(__VA_ARGS__, MCTF_TEST_WITH_TIMEOUT, MCTF_TEST_DEFAULT)(__VA_ARGS__)
+
+/* Test registration macro without any timeout. An explicit opt-out for tests
+ * whose duration is unbounded by design; a hang in such a test stalls the run
+ * until the CI job timeout, so prefer MCTF_TEST(name, secs) where possible. */
+#define MCTF_TEST_NO_TIMEOUT(test_name) MCTF_TEST_IMPL(test_name, 0)
 
 /* Assertion macro with cleanup label and optional message */
 #define MCTF_ASSERT(condition, error_label, ...)                                 \
