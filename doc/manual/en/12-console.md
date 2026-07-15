@@ -39,6 +39,7 @@ When you first load the console, you see the **home page** with:
 
 - **Service header** showing pgagroal service status (Running or Unavailable)
 - **Version** of pgagroal
+- **Search bar** to find metrics across categories
 - **Category selector** dropdown to choose which metric group to view
 - **View selector** (Simple or Advanced mode)
 - **Server filter** dropdown to choose which PostgreSQL servers to display
@@ -84,7 +85,19 @@ The **Server filter** dropdown:
 
 ![Web console home page server filter](images/console_home_server_filter.png)
 
-### 6. Refresh button
+### 6. Search across categories
+
+The **Search** bar appears above all other filters.
+
+- Enter at least **3 characters** to activate search filtering.
+- Search matches text in metric rows (name, type, value, and labels) and categories.
+- Matches are shown across **all categories**, not only the currently selected one.
+- Server filtering is still applied while search is active.
+- If fewer than 3 characters are entered, the page returns to normal selected-category view.
+
+![Web console home page search bar](../images/console_home_search_bar.png)
+
+### 7. Refresh control
 
 Click **Refresh** in the header (next to the **Updated** timestamp) to reload
 all metrics and service status.
