@@ -432,12 +432,16 @@ export_pgagroal_test_variables() {
 
   echo "export PGPASSWORD=$PG_USER_PASSWORD"
   export PGPASSWORD=$PG_USER_PASSWORD
+
+  echo "export PGAGROAL_TEST_BIN=$EXECUTABLE_DIRECTORY"
+  export PGAGROAL_TEST_BIN=$EXECUTABLE_DIRECTORY
 }
 
 unset_pgagroal_test_variables() {
   unset PGAGROAL_TEST_BASE_DIR
   unset PGAGROAL_TEST_CONF
   unset PGPASSWORD
+  unset PGAGROAL_TEST_BIN
   unset LLVM_PROFILE_FILE
   unset CC
 }

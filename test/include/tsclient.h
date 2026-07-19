@@ -119,6 +119,31 @@ pgagroal_tsclient_execute_concurrent_holds(char* user, char* database, int clien
 int
 pgagroal_tsclient_limit_backend_peak(char* user, char* database, int client_count, int hold_seconds);
 
+/**
+* Run a pgagroal-cli management command against the running test instance,
+ * using the testsuite configuration so the CLI targets the same management
+ * endpoint the instance listens on.
+ * @param args the pgagroal-cli arguments (e.g. "status")
+ * @return 0 if pgagroal-cli exited successfully, otherwise 1
+ */
+int
+pgagroal_tsclient_execute_cli(char* args);
+
+/**
+ * Keep one client connected (BEGIN; SELECT pg_sleep(hold_seconds); COMMIT;) and
+ * run a pgagroal-cli management command while it is connected. Regression
+ * harness for issue #946: in pipeline = transaction the CLI was reset by a
+ * worker that had bound the management socket. Fails if the held client did not
+ * run or the CLI did not succeed.
+ * @param user name of the user
+ * @param database name of the database
+ * @param cli_args the pgagroal-cli arguments to run during the hold (e.g. "status")
+ * @param hold_seconds duration of the pg_sleep() hold (coerced to >= 2)
+ * @return 0 if the CLI succeeded while the client was connected, otherwise 1
+ */
+int
+pgagroal_tsclient_cli_during_hold(char* user, char* database, char* cli_args, int hold_seconds);
+
 #ifdef __cplusplus
 }
 #endif

@@ -46,6 +46,7 @@
 #include <time.h>
 #include <sys/mman.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 char project_directory[BUFFER_SIZE];
@@ -710,4 +711,95 @@ get_log_file_path()
    memcpy(log_file_path + project_directory_length, PGBENCH_LOG_FILE_TRAIL, log_trail_length);
 
    return log_file_path;
+}
+
+int
+pgagroal_tsclient_execute_cli(char* args)
+{
+   char* configuration_path = NULL;
+   char* cmd = NULL;
+   char* conf = NULL;
+   char* bin_dir = NULL;
+   int ret;
+
+   /* Target the running instance's own config (exported by the test harness) so
+    * the CLI reaches the same management endpoint; fall back to the tsclient
+    * configuration path. */
+   conf = getenv("PGAGROAL_TEST_CONF");
+   if (conf == NULL)
+   {
+      configuration_path = get_configuration_path();
+      conf = configuration_path;
+   }
+   if (conf == NULL)
+   {
+      return 1;
+   }
+
+   /* pgagroal-cli is not installed on PATH during tests; the harness exports its
+    * directory (PGAGROAL_TEST_BIN). */
+   bin_dir = getenv("PGAGROAL_TEST_BIN");
+
+   if (bin_dir != NULL)
+   {
+      cmd = pgagroal_append(cmd, bin_dir);
+      cmd = pgagroal_append_char(cmd, '/');
+   }
+   cmd = pgagroal_append(cmd, "pgagroal-cli -c ");
+   cmd = pgagroal_append(cmd, conf);
+   cmd = pgagroal_append_char(cmd, ' ');
+   cmd = pgagroal_append(cmd, args);
+
+   ret = system(cmd);
+
+   free(cmd);
+   free(configuration_path);
+
+   return (ret == 0) ? 0 : 1;
+}
+
+int
+pgagroal_tsclient_cli_during_hold(char* user, char* database, char* cli_args, int hold_seconds)
+{
+   pid_t hold;
+   int cli_rc;
+   int status;
+
+   if (hold_seconds < 2)
+   {
+      hold_seconds = 3;
+   }
+
+   /* Hold one client connected in a child process so a transaction worker is
+    * live while the CLI runs, reusing the existing hold machinery
+    * (BEGIN; SELECT pg_sleep(n); COMMIT;). */
+   hold = fork();
+   if (hold < 0)
+   {
+      return 1;
+   }
+   if (hold == 0)
+   {
+      int rc = pgagroal_tsclient_execute_concurrent_holds(user, database, 1, hold_seconds);
+      _exit(rc == 0 ? 0 : 1);
+   }
+
+   /* Let the held client connect, then run the management command while it is
+    * still connected. */
+   sleep(1);
+   cli_rc = pgagroal_tsclient_execute_cli(cli_args);
+
+   if (waitpid(hold, &status, 0) < 0)
+   {
+      return 1;
+   }
+
+   /* A false pass is worse than a failure: if the held client never ran, the
+    * CLI would trivially succeed. Require both the hold and the CLI to succeed. */
+   if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+   {
+      return 1;
+   }
+
+   return cli_rc;
 }
