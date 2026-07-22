@@ -71,7 +71,7 @@ extern "C" {
 #define DEFAULT_BUFFER_SIZE                      131072
 #define RECV_BUFFER_HEADROOM                     8
 #define MESSAGE_PARSE_BUFFER_SIZE                (DEFAULT_BUFFER_SIZE - RECV_BUFFER_HEADROOM)
-#define SECURITY_BUFFER_SIZE                     1024
+#define SECURITY_BUFFER_SIZE                     16384 /* Must hold a PasswordMessage carrying a MAX_PASSWORD_LENGTH credential (cloud IAM tokens) */
 #define HTTP_BUFFER_SIZE                         1024
 
 #define DEFAULT_BLOCKING_TIMEOUT                 30
@@ -93,8 +93,7 @@ extern "C" {
 #define MAX_ADDRESS_LENGTH                       64
 #define DEFAULT_PASSWORD_LENGTH                  64
 #define MIN_PASSWORD_LENGTH                      8
-#define MAX_PASSWORD_LENGTH                      1024
-#define MAX_PASSWORD_CHARS                       256
+#define MAX_PASSWORD_LENGTH                      8192 /* Bytes; the single password-length limit, sized for cloud IAM DB-auth tokens (AWS RDS/Aurora, Azure AD, GCP) */
 #define MAX_APPLICATION_NAME                     64
 #define MAX_ALIASES                              8
 #define MAX_CERTIFICATES                         70

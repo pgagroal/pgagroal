@@ -2524,6 +2524,12 @@ server_password(char* username, char* password, int slot, SSL* server_ssl)
       goto error;
    }
 
+   if (password_msg->length > SECURITY_BUFFER_SIZE)
+   {
+      pgagroal_log_error("Password message too large: %ld", password_msg->length);
+      goto error;
+   }
+
    config->connections[slot].security_lengths[auth_index] = password_msg->length;
    memcpy(&config->connections[slot].security_messages[auth_index], password_msg->data, password_msg->length);
    auth_index++;
@@ -3534,7 +3540,6 @@ error:
 static int
 sasl_prep(char* password, char** password_prep)
 {
-   size_t char_count;
    size_t password_len;
 
    if (!password || !password_prep)
@@ -3561,9 +3566,8 @@ sasl_prep(char* password, char** password_prep)
       goto error;
    }
 
-   // Validate the character count in the password
-   char_count = pgagroal_utf8_char_length((const unsigned char*)password, password_len);
-   if (char_count == (size_t)-1 || char_count > MAX_PASSWORD_CHARS)
+   // Enforce the password byte-length limit
+   if (password_len >= MAX_PASSWORD_LENGTH)
    {
       goto error;
    }

@@ -61,8 +61,15 @@
 #include <systemd/sd-daemon.h>
 #endif
 
-#define LINE_LENGTH        512
-#define MAX_PASSWORD_CHARS 256 /* Maximum UTF-8 characters in password */
+#define LINE_LENGTH 512
+
+/*
+ * Credential files (users/frontend/admins/superuser/vault) store each entry as
+ * "username:base64(AES-256-GCM(password))". A password near MAX_PASSWORD_LENGTH
+ * (cloud IAM DB-auth tokens) expands under encryption + base64 well beyond
+ * LINE_LENGTH, so these files are read with a dedicated, larger line buffer.
+ */
+#define MAX_USER_LINE_LENGTH 16384
 
 static int extract_key_value(char* str, char** key, char** value);
 static int extract_syskey_value(char* str, char** key, char** value);
@@ -1661,7 +1668,7 @@ int
 pgagroal_read_users_configuration(void* shm, char* filename)
 {
    FILE* file;
-   char line[LINE_LENGTH];
+   char line[MAX_USER_LINE_LENGTH];
    int index;
    char* master_key = NULL;
    char* username = NULL;
@@ -1729,20 +1736,17 @@ pgagroal_read_users_configuration(void* shm, char* filename)
             continue;
          }
 
-         // Check character length
-         size_t char_count = pgagroal_utf8_char_length((unsigned char*)password, strlen(password));
          if (strlen(username) < MAX_USERNAME_LENGTH &&
-             strlen(password) < MAX_PASSWORD_LENGTH &&
-             char_count != (size_t)-1 && char_count <= MAX_PASSWORD_CHARS)
+             strlen(password) < MAX_PASSWORD_LENGTH)
          {
             memcpy(&config->users[index].username, username, strlen(username));
             memcpy(&config->users[index].password, password, strlen(password));
          }
          else
          {
-            if (char_count > MAX_PASSWORD_CHARS)
+            if (strlen(password) >= MAX_PASSWORD_LENGTH)
             {
-               pgagroal_log_warn("Password too long for user '%s' (%zu characters)", username, char_count);
+               pgagroal_log_warn("Password too long for user '%s' (%zu bytes, max %d)", username, strlen(password), MAX_PASSWORD_LENGTH - 1);
             }
             printf("pgagroal: Invalid USER entry\n");
             printf("%s\n", line);
@@ -1800,7 +1804,7 @@ int
 pgagroal_read_frontend_users_configuration(void* shm, char* filename)
 {
    FILE* file;
-   char line[LINE_LENGTH];
+   char line[MAX_USER_LINE_LENGTH];
    int index;
    char* master_key = NULL;
    char* username = NULL;
@@ -1868,20 +1872,17 @@ pgagroal_read_frontend_users_configuration(void* shm, char* filename)
             continue;
          }
 
-         // Check character length
-         size_t char_count = pgagroal_utf8_char_length((unsigned char*)password, strlen(password));
          if (strlen(username) < MAX_USERNAME_LENGTH &&
-             strlen(password) < MAX_PASSWORD_LENGTH &&
-             char_count != (size_t)-1 && char_count <= MAX_PASSWORD_CHARS)
+             strlen(password) < MAX_PASSWORD_LENGTH)
          {
             memcpy(&config->frontend_users[index].username, username, strlen(username));
             memcpy(&config->frontend_users[index].password, password, strlen(password));
          }
          else
          {
-            if (char_count > MAX_PASSWORD_CHARS)
+            if (strlen(password) >= MAX_PASSWORD_LENGTH)
             {
-               pgagroal_log_warn("Password too long for frontend user '%s' (%zu characters)", username, char_count);
+               pgagroal_log_warn("Password too long for frontend user '%s' (%zu bytes, max %d)", username, strlen(password), MAX_PASSWORD_LENGTH - 1);
             }
             printf("pgagroal: Invalid FRONTEND USER entry\n");
             printf("%s\n", line);
@@ -1964,7 +1965,7 @@ int
 pgagroal_read_admins_configuration(void* shm, char* filename)
 {
    FILE* file;
-   char line[LINE_LENGTH];
+   char line[MAX_USER_LINE_LENGTH];
    int index;
    char* master_key = NULL;
    char* username = NULL;
@@ -2032,22 +2033,18 @@ pgagroal_read_admins_configuration(void* shm, char* filename)
             continue;
          }
 
-         // Check character length
-         size_t char_count = pgagroal_utf8_char_length((const unsigned char*)password, strlen(password));
-
          if (strlen(username) < MAX_USERNAME_LENGTH &&
-             strlen(password) < MAX_PASSWORD_LENGTH &&
-             char_count != (size_t)-1 && char_count <= MAX_PASSWORD_CHARS)
+             strlen(password) < MAX_PASSWORD_LENGTH)
          {
             memcpy(&config->admins[index].username, username, strlen(username));
             memcpy(&config->admins[index].password, password, strlen(password));
          }
          else
          {
-            if (char_count > MAX_PASSWORD_CHARS)
+            if (strlen(password) >= MAX_PASSWORD_LENGTH)
             {
-               pgagroal_log_warn("Password too long for admin user '%s' (%zu characters)",
-                                 username, char_count);
+               pgagroal_log_warn("Password too long for admin user '%s' (%zu bytes, max %d)",
+                                 username, strlen(password), MAX_PASSWORD_LENGTH - 1);
             }
             printf("pgagroal: Invalid ADMIN entry\n");
             printf("%s\n", line);
@@ -2098,7 +2095,7 @@ int
 pgagroal_vault_read_users_configuration(void* shm, char* filename)
 {
    FILE* file;
-   char line[LINE_LENGTH];
+   char line[MAX_USER_LINE_LENGTH];
    int index;
    char* master_key = NULL;
    char* username = NULL;
@@ -2166,22 +2163,18 @@ pgagroal_vault_read_users_configuration(void* shm, char* filename)
             continue;
          }
 
-         // Check character length
-         size_t char_count = pgagroal_utf8_char_length((const unsigned char*)password, strlen(password));
-
          if (strlen(username) < MAX_USERNAME_LENGTH &&
              strlen(password) < MAX_PASSWORD_LENGTH &&
-             char_count != (size_t)-1 && char_count <= MAX_PASSWORD_CHARS &&
              !strcmp(config->vault_server.user.username, username))
          {
             memcpy(&config->vault_server.user.password, password, strlen(password));
          }
          else
          {
-            if (char_count > MAX_PASSWORD_CHARS)
+            if (strlen(password) >= MAX_PASSWORD_LENGTH)
             {
-               pgagroal_log_warn("Password too long for vault user '%s' (%zu characters)",
-                                 username, char_count);
+               pgagroal_log_warn("Password too long for vault user '%s' (%zu bytes, max %d)",
+                                 username, strlen(password), MAX_PASSWORD_LENGTH - 1);
             }
             printf("pgagroal: Invalid VAULT USER entry\n");
             printf("%s\n", line);
@@ -2247,7 +2240,7 @@ int
 pgagroal_read_superuser_configuration(void* shm, char* filename)
 {
    FILE* file;
-   char line[LINE_LENGTH];
+   char line[MAX_USER_LINE_LENGTH];
    int index;
    char* master_key = NULL;
    char* username = NULL;
@@ -2321,20 +2314,17 @@ pgagroal_read_superuser_configuration(void* shm, char* filename)
             continue;
          }
 
-         // Check character length
-         size_t char_count = pgagroal_utf8_char_length((unsigned char*)password, strlen(password));
          if (strlen(username) < MAX_USERNAME_LENGTH &&
-             strlen(password) < MAX_PASSWORD_LENGTH &&
-             char_count != (size_t)-1 && char_count <= MAX_PASSWORD_CHARS)
+             strlen(password) < MAX_PASSWORD_LENGTH)
          {
             memcpy(&config->superuser.username, username, strlen(username));
             memcpy(&config->superuser.password, password, strlen(password));
          }
          else
          {
-            if (char_count > MAX_PASSWORD_CHARS)
+            if (strlen(password) >= MAX_PASSWORD_LENGTH)
             {
-               pgagroal_log_warn("Password too long for superuser '%s' (%zu characters)", username, char_count);
+               pgagroal_log_warn("Password too long for superuser '%s' (%zu bytes, max %d)", username, strlen(password), MAX_PASSWORD_LENGTH - 1);
             }
             printf("pgagroal: Invalid SUPERUSER entry\n");
             printf("%s\n", line);

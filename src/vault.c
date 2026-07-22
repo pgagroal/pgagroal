@@ -528,9 +528,9 @@ connect_pgagroal(struct vault_configuration* config, char* username, char* passw
       *client_socket = -1;
       return 1;
    }
-   if (char_count > MAX_PASSWORD_CHARS)
+   if (strlen(password) >= MAX_PASSWORD_LENGTH)
    {
-      pgagroal_log_debug("pgagroal-vault: Password too long (max %d characters)", MAX_PASSWORD_CHARS);
+      pgagroal_log_debug("pgagroal-vault: Password too long (max %d bytes)", MAX_PASSWORD_LENGTH - 1);
       pgagroal_disconnect(*client_socket);
       *client_socket = -1;
       return 1;

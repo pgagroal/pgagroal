@@ -773,9 +773,9 @@ username:
          warnx("pgagroal-cli: Invalid UTF-8 encoding in password");
          goto done;
       }
-      if (char_count > MAX_PASSWORD_CHARS)
+      if (strlen(password) >= MAX_PASSWORD_LENGTH)
       {
-         warnx("pgagroal-cli: Password too long (max %d characters)", MAX_PASSWORD_CHARS);
+         warnx("pgagroal-cli: Password too long (max %d bytes)", MAX_PASSWORD_LENGTH - 1);
          goto done;
       }
 

@@ -471,9 +471,9 @@ master_key(char* password, bool generate_pwd, int pwd_length, int32_t output_for
                      password = NULL;
                      continue;
                   }
-                  if (char_count > MAX_PASSWORD_CHARS)
+                  if (strlen(password) >= MAX_PASSWORD_LENGTH)
                   {
-                     printf("Master key too long (%zu characters). Maximum allowed: %d characters.\n", char_count, MAX_PASSWORD_CHARS);
+                     printf("Master key too long (%zu bytes). Maximum allowed: %d bytes.\n", strlen(password), MAX_PASSWORD_LENGTH - 1);
                      free(password);
                      password = NULL;
                      continue;
@@ -745,9 +745,9 @@ password:
       password = NULL;
       goto password;
    }
-   if (char_count > MAX_PASSWORD_CHARS)
+   if (strlen(password) >= MAX_PASSWORD_LENGTH)
    {
-      warnx("Password too long (%zu characters). Maximum allowed: %d characters.", char_count, MAX_PASSWORD_CHARS);
+      warnx("Password too long (%zu bytes). Maximum allowed: %d bytes.", strlen(password), MAX_PASSWORD_LENGTH - 1);
       if (do_free)
       {
          free(password);
@@ -796,9 +796,9 @@ password:
          password = NULL;
          goto password;
       }
-      if (verify_char_count > MAX_PASSWORD_CHARS)
+      if (strlen(verify) >= MAX_PASSWORD_LENGTH)
       {
-         warnx("Verification password too long (%zu characters). Maximum allowed: %d characters.", verify_char_count, MAX_PASSWORD_CHARS);
+         warnx("Verification password too long (%zu bytes). Maximum allowed: %d bytes.", strlen(verify), MAX_PASSWORD_LENGTH - 1);
          free(verify);
          verify = NULL;
          if (do_free)
@@ -1060,9 +1060,9 @@ password:
             password = NULL;
             goto password;
          }
-         if (char_count > MAX_PASSWORD_CHARS)
+         if (strlen(password) >= MAX_PASSWORD_LENGTH)
          {
-            warnx("Password too long (%zu characters). Maximum allowed: %d characters.", char_count, MAX_PASSWORD_CHARS);
+            warnx("Password too long (%zu bytes). Maximum allowed: %d bytes.", strlen(password), MAX_PASSWORD_LENGTH - 1);
             if (do_free)
             {
                free(password);
@@ -1108,9 +1108,9 @@ password:
                password = NULL;
                goto password;
             }
-            if (verify_char_count > MAX_PASSWORD_CHARS)
+            if (strlen(verify) >= MAX_PASSWORD_LENGTH)
             {
-               warnx("Verification password too long (%zu characters). Maximum allowed: %d characters.", verify_char_count, MAX_PASSWORD_CHARS);
+               warnx("Verification password too long (%zu bytes). Maximum allowed: %d bytes.", strlen(verify), MAX_PASSWORD_LENGTH - 1);
                free(verify);
                verify = NULL;
                if (do_free)
