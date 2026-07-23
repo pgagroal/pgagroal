@@ -443,6 +443,15 @@ pgagroal_event_accept_init(struct io_watcher* watcher, int listen_fd, io_cb cb)
    watcher->fds.main.listen_fd = listen_fd;
    watcher->fds.main.client_fd = -1;
    watcher->cb = cb;
+
+   /* The listener must be non-blocking. The kqueue handler drains the accept
+    * backlog in a loop and relies on accept() returning EAGAIN/EWOULDBLOCK to
+    * stop; on a blocking listener that final accept() would block the daemon
+    * forever once the backlog empties (#923). A non-blocking listener is also
+    * correct for the epoll path, which already treats EAGAIN as "no more
+    * pending", and is harmless to the io_uring multishot accept. */
+   pgagroal_socket_nonblocking(listen_fd);
+
    return PGAGROAL_EVENT_RC_OK;
 }
 
@@ -1858,17 +1867,26 @@ ev_kqueue_io_handler(struct kevent* kev)
    switch (type)
    {
       case PGAGROAL_EVENT_TYPE_MAIN:
-         watcher->fds.main.client_fd = accept(watcher->fds.main.listen_fd, NULL, NULL);
-         if (watcher->fds.main.client_fd == -1)
+         /* The listener is registered EV_CLEAR (edge-triggered), so kqueue
+          * reports readiness only once per readable transition. Several
+          * connections can be queued on the backlog behind a single
+          * notification (e.g. an oversubscription wave where many clients
+          * connect near-simultaneously). Accepting only one per event would
+          * strand the rest in the backlog until the next new connection
+          * produced a fresh edge, leaving those clients hung with no worker
+          * ever forked (#923). Drain the accept queue until it is empty. */
+         while (true)
          {
-            if (errno != EAGAIN && errno != EWOULDBLOCK)
+            watcher->fds.main.client_fd = accept(watcher->fds.main.listen_fd, NULL, NULL);
+            if (watcher->fds.main.client_fd == -1)
             {
-               pgagroal_log_error("accept error: %s", strerror(errno));
-               rc = PGAGROAL_EVENT_RC_ERROR;
+               if (errno != EAGAIN && errno != EWOULDBLOCK)
+               {
+                  pgagroal_log_error("accept error: %s", strerror(errno));
+                  rc = PGAGROAL_EVENT_RC_ERROR;
+               }
+               break;
             }
-         }
-         else
-         {
             watcher->cb(watcher);
          }
          break;
