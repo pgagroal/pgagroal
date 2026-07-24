@@ -128,10 +128,10 @@ flush_timeout
   If this value is specified without units, it is taken as seconds.
   It supports the following units as suffixes: 'S' for seconds (default), 'M' for minutes, 'H' for hours,
   'D' for days, and 'W' for weeks.
-  Used as the default deadline for graceful ``pgagroal-cli flush`` and ``pgagroal-cli shutdown`` operations
+  Used as the default deadline for graceful ``pgagroal-cli flush``, ``pgagroal-cli shutdown``, and ``pgagroal-cli pause`` operations
   when ``-T, --timeout`` is omitted on the CLI; this timeout exists to bound the wait for long-running
   transactions still holding pooled connections. On expiry a graceful flush escalates to ``flush all`` for the
-  targeted database and a graceful shutdown forces an immediate shutdown.
+  targeted database, a graceful shutdown forces an immediate shutdown, and a graceful pause escalates to ``pause all``.
   (disable = 0) Default is 60
 
 validation

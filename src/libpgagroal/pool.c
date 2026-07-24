@@ -34,6 +34,7 @@
 #include <management.h>
 #include <memory.h>
 #include <message.h>
+#include <pipeline.h>
 #include <pool.h>
 #include <prometheus.h>
 #include <security.h>
@@ -124,10 +125,15 @@ start:
          if (atomic_compare_exchange_strong(&config->states[i], &free, STATE_IN_USE))
          {
             bool can_reuse = false;
+            int conn_srv = config->connections[i].server;
 
+            if (config->all_paused || (conn_srv >= 0 && config->servers[conn_srv].paused))
+            {
+               can_reuse = false;
+            }
             // Check if same rule and username
-            if (best_rule == config->connections[i].limit_rule &&
-                !strcmp((const char*)(&config->connections[i].username), username))
+            else if (best_rule == config->connections[i].limit_rule &&
+                     !strcmp((const char*)(&config->connections[i].username), username))
             {
                real_database = resolve_database_name(database, best_rule);
                // Check exact database match
@@ -242,6 +248,25 @@ start:
                pgagroal_flush(FLUSH_GRACEFULLY, "*");
                exit(0);
             }
+
+            goto error;
+         }
+         while (config->keep_running &&
+                (config->all_paused || (server >= 0 && config->servers[server].paused)))
+         {
+            SLEEP(500000000L);
+         }
+
+         if (!config->keep_running)
+         {
+            if (best_rule >= 0)
+            {
+               /* The backend was reserved but never established; release it. */
+               atomic_fetch_sub(&config->limits[best_rule].backend_connections, 1);
+            }
+            config->connections[*slot].limit_rule = -1;
+            config->connections[*slot].pid = -1;
+            atomic_store(&config->states[*slot], STATE_NOTINIT);
 
             goto error;
          }
@@ -1238,6 +1263,336 @@ pgagroal_request_flush(SSL* ssl __attribute__((unused)), int client_fd, uint8_t 
    {
       pgagroal_flush(mode, "*");
    }
+
+   end_time = time(NULL);
+
+   pgagroal_management_response_ok(NULL, client_fd, start_time, end_time, compression, encryption, payload);
+
+   pgagroal_json_destroy(payload);
+
+   exit(0);
+}
+
+void
+pgagroal_resume(char* server)
+{
+   signed char srv = -1;
+   struct main_configuration* config;
+
+   pgagroal_start_logging();
+   pgagroal_memory_init();
+   config = (struct main_configuration*)shmem;
+
+   if (server != NULL && strcmp(server, "*") != 0)
+   {
+      for (int i = 0; i < config->number_of_servers; i++)
+      {
+         if (!strcmp(config->servers[i].name, server))
+         {
+            srv = i;
+            break;
+         }
+      }
+
+      if (srv == -1)
+      {
+         pgagroal_log_error("pgagroal_resume: Unknown server %s", server);
+         goto done;
+      }
+   }
+
+   /* Clear pause flags */
+   if (srv == -1)
+   {
+      config->all_paused = false;
+      for (int i = 0; i < config->number_of_servers; i++)
+      {
+         config->servers[i].paused = false;
+         config->servers[i].last_resumed = time(NULL);
+         pgagroal_prometheus_server_resume(i);
+      }
+   }
+   else
+   {
+      config->servers[srv].paused = false;
+      config->servers[srv].last_resumed = time(NULL);
+      pgagroal_prometheus_server_resume(srv);
+      config->all_paused = false;
+   }
+
+   pgagroal_log_debug("pgagroal_resume: server %s", server != NULL ? server : "all");
+
+   /* Wake paused workers */
+   for (int i = 0; i < config->max_connections; i++)
+   {
+      if (srv != -1 && config->connections[i].server != srv)
+         continue;
+
+      if (atomic_load(&config->states[i]) != STATE_IN_USE)
+         continue;
+
+      if (config->connections[i].pid <= 0)
+         continue;
+
+      /* worker is alive and owns the fd — just wake it */
+      pgagroal_log_debug("pgagroal_resume: slot %d waking worker (pid %d)",
+                         i, config->connections[i].pid);
+      kill(config->connections[i].pid, SIGUSR2);
+   }
+
+done:
+   pgagroal_pool_status();
+   pgagroal_memory_destroy();
+   pgagroal_stop_logging();
+}
+
+void
+pgagroal_pause(int mode, char* server)
+{
+   signed char srv = -1;
+   time_t now;
+   struct main_configuration* config;
+
+   pgagroal_start_logging();
+   pgagroal_memory_init();
+   config = (struct main_configuration*)shmem;
+
+   if (server != NULL && strcmp(server, "*") != 0)
+   {
+      for (int i = 0; i < config->number_of_servers; i++)
+      {
+         if (!strcmp(config->servers[i].name, server))
+         {
+            srv = i;
+            break;
+         }
+      }
+
+      if (srv == -1)
+      {
+         pgagroal_log_error("pgagroal_pause: Unknown server %s", server);
+         goto done;
+      }
+   }
+
+   now = time(NULL);
+
+   if (srv == -1)
+   {
+      config->all_paused = true;
+      for (int i = 0; i < config->number_of_servers; i++)
+      {
+         if (strlen(config->servers[i].name) > 0)
+         {
+            if (!config->servers[i].paused)
+            {
+               pgagroal_prometheus_server_pause(i);
+            }
+            config->servers[i].paused = true;
+            config->servers[i].last_paused = now;
+         }
+      }
+   }
+   else
+   {
+      if (!config->servers[srv].paused)
+      {
+         pgagroal_prometheus_server_pause(srv);
+      }
+      config->servers[srv].paused = true;
+      config->servers[srv].last_paused = now;
+   }
+
+   pgagroal_log_debug("pgagroal_pause: server %s mode %d",
+                      server != NULL ? server : "all", mode);
+
+   for (int i = 0; i < config->max_connections; i++)
+   {
+      if (srv != -1 && config->connections[i].server != srv)
+      {
+         continue;
+      }
+
+      switch (atomic_load(&config->states[i]))
+      {
+         case STATE_NOTINIT:
+         case STATE_INIT:
+            break;
+
+         case STATE_FREE:
+            atomic_store(&config->states[i], STATE_GRACEFULLY);
+            if (pgagroal_socket_isvalid(config->connections[i].fd))
+            {
+               pgagroal_write_terminate(NULL, config->connections[i].fd);
+            }
+            pgagroal_kill_connection(i, NULL);
+            break;
+
+         case STATE_IN_USE:
+            if (mode == PAUSE_MODE_ALL)
+            {
+               int ret;
+               int socket = -1;
+               struct message* cancel_msg = NULL;
+               int conn_srv = config->connections[i].server;
+
+               pgagroal_create_cancel_request_message(config->connections[i].backend_pid,
+                                                      config->connections[i].backend_secret,
+                                                      &cancel_msg);
+
+               if (config->servers[conn_srv].host[0] == '/')
+               {
+                  char pgsql[MISC_LENGTH];
+                  memset(&pgsql, 0, sizeof(pgsql));
+                  snprintf(&pgsql[0], sizeof(pgsql), ".s.PGSQL.%d", config->servers[conn_srv].port);
+                  ret = pgagroal_connect_unix_socket(config->servers[conn_srv].host, &pgsql[0], &socket);
+               }
+               else
+               {
+                  ret = pgagroal_connect(config->servers[conn_srv].host, config->servers[conn_srv].port,
+                                         &socket, config->keep_alive, config->nodelay);
+               }
+
+               if (ret == 0)
+               {
+                  pgagroal_log_debug("Cancel request for %s/%s using slot %d (pid %d secret %d)",
+                                     config->connections[i].database, config->connections[i].username,
+                                     i, config->connections[i].backend_pid,
+                                     config->connections[i].backend_secret);
+                  pgagroal_write_message(NULL, socket, cancel_msg);
+               }
+               if (config->connections[i].pid > 0)
+               {
+                  pgagroal_log_info("Pause: signalling worker for slot %d (pid %d)",
+                                    i, config->connections[i].pid);
+                  kill(config->connections[i].pid, SIGUSR1);
+               }
+
+               pgagroal_disconnect(socket);
+               pgagroal_free_message(cancel_msg);
+               cancel_msg = NULL;
+            }
+            /* PAUSE_MODE_GRACEFULLY: do nothing, let transaction finish naturally */
+            break;
+
+         case STATE_GRACEFULLY:
+            break;
+
+         default:
+            break;
+      }
+   }
+
+done:
+   pgagroal_pool_status();
+   pgagroal_memory_destroy();
+   pgagroal_stop_logging();
+}
+void
+pgagroal_request_pause(SSL* ssl __attribute__((unused)), int client_fd, uint8_t compression, uint8_t encryption, struct json* payload)
+{
+   time_t start_time;
+   time_t end_time;
+   struct json* req = NULL;
+   int mode = PAUSE_MODE_GRACEFULLY;
+   char* server = NULL;
+
+   start_time = time(NULL);
+
+   req = (struct json*)pgagroal_json_get(payload, MANAGEMENT_CATEGORY_REQUEST);
+   if (pgagroal_json_contains_key(req, MANAGEMENT_ARGUMENT_MODE))
+   {
+      mode = (int)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_MODE);
+   }
+   server = (char*)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_SERVER);
+
+   pgagroal_pause(mode, server);
+
+   struct json* response = NULL;
+   struct json* servers = NULL;
+   struct main_configuration* config = (struct main_configuration*)shmem;
+
+   pgagroal_management_create_response(payload, -1, &response);
+   pgagroal_json_create(&servers);
+
+   for (int i = 0; i < config->number_of_servers; i++)
+   {
+      if (strlen(config->servers[i].name) > 0)
+      {
+         if (server != NULL && strcmp(server, "*") != 0 && strcmp(server, config->servers[i].name) != 0)
+         {
+            continue;
+         }
+
+         struct json* sobj = NULL;
+         char last_paused[MISC_LENGTH];
+         char last_resumed[MISC_LENGTH];
+
+         pgagroal_json_create(&sobj);
+         pgagroal_management_format_timestamp(config->servers[i].last_paused, last_paused, sizeof(last_paused));
+         pgagroal_management_format_timestamp(config->servers[i].last_resumed, last_resumed, sizeof(last_resumed));
+         pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_LAST_PAUSED, (uintptr_t)last_paused, ValueString);
+         pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_LAST_RESUMED, (uintptr_t)last_resumed, ValueString);
+
+         pgagroal_json_put(servers, config->servers[i].name, (uintptr_t)sobj, ValueJSON);
+      }
+   }
+   pgagroal_json_put(response, MANAGEMENT_ARGUMENT_SERVERS, (uintptr_t)servers, ValueJSON);
+
+   end_time = time(NULL);
+
+   pgagroal_management_response_ok(NULL, client_fd, start_time, end_time, compression, encryption, payload);
+
+   pgagroal_json_destroy(payload);
+
+   exit(0);
+}
+
+void
+pgagroal_request_resume(SSL* ssl __attribute__((unused)), int client_fd, uint8_t compression, uint8_t encryption, struct json* payload)
+{
+   time_t start_time;
+   time_t end_time;
+   struct json* req = NULL;
+   char* server = NULL;
+
+   start_time = time(NULL);
+
+   req = (struct json*)pgagroal_json_get(payload, MANAGEMENT_CATEGORY_REQUEST);
+   server = (char*)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_SERVER);
+
+   pgagroal_resume(server);
+
+   struct json* response = NULL;
+   struct json* servers = NULL;
+   struct main_configuration* config = (struct main_configuration*)shmem;
+
+   pgagroal_management_create_response(payload, -1, &response);
+   pgagroal_json_create(&servers);
+
+   for (int i = 0; i < config->number_of_servers; i++)
+   {
+      if (strlen(config->servers[i].name) > 0)
+      {
+         if (server != NULL && strcmp(server, "*") != 0 && strcmp(server, config->servers[i].name) != 0)
+         {
+            continue;
+         }
+
+         struct json* sobj = NULL;
+         char last_paused[MISC_LENGTH];
+         char last_resumed[MISC_LENGTH];
+
+         pgagroal_json_create(&sobj);
+         pgagroal_management_format_timestamp(config->servers[i].last_paused, last_paused, sizeof(last_paused));
+         pgagroal_management_format_timestamp(config->servers[i].last_resumed, last_resumed, sizeof(last_resumed));
+         pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_LAST_PAUSED, (uintptr_t)last_paused, ValueString);
+         pgagroal_json_put(sobj, MANAGEMENT_ARGUMENT_LAST_RESUMED, (uintptr_t)last_resumed, ValueString);
+
+         pgagroal_json_put(servers, config->servers[i].name, (uintptr_t)sobj, ValueJSON);
+      }
+   }
+   pgagroal_json_put(response, MANAGEMENT_ARGUMENT_SERVERS, (uintptr_t)servers, ValueJSON);
 
    end_time = time(NULL);
 

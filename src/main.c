@@ -98,6 +98,9 @@ static void shutdown_timeout_cb(void);
 static void flush_alarm_cb(void);
 static void arm_flush_timeout(int64_t seconds, const char* database);
 static void rearm_flush_alarm(void);
+static void arm_pause_timeout(int64_t seconds, const char* server);
+static void rearm_pause_alarm(void);
+static void pause_alarm_cb(void);
 static void frontend_user_password_startup(struct main_configuration* config);
 static bool accept_fatal(int error);
 static void add_client(pid_t pid);
@@ -144,6 +147,9 @@ static struct periodic_watcher rotate_frontend_password_watcher;
 static struct periodic_watcher shutdown_timeout_watcher;
 static struct periodic_watcher flush_alarm;
 static struct flush_timeout_slot flush_timeouts[NUMBER_OF_LIMITS];
+static struct periodic_watcher pause_alarm;
+static bool pause_alarm_started = false;
+static struct pause_timeout_slot pause_timeouts[NUMBER_OF_SERVERS];
 static bool idle_timeout_started = false;
 static bool max_connection_age_started = false;
 static bool validation_started = false;
@@ -1862,6 +1868,112 @@ accept_mgt_cb(struct io_watcher* watcher)
 
       pgagroal_management_response_ok(NULL, client_fd, start_time, end_time, compression, encryption, payload);
    }
+   else if (id == MANAGEMENT_PAUSE)
+   {
+      struct json* req = NULL;
+      int64_t req_timeout = -1;
+      int32_t req_mode = PAUSE_MODE_GRACEFULLY;
+      char* req_server = NULL;
+
+      pgagroal_log_debug("pgagroal: Management pause");
+      pgagroal_pool_status();
+
+      req = (struct json*)pgagroal_json_get(payload, MANAGEMENT_CATEGORY_REQUEST);
+      if (req != NULL)
+      {
+         if (pgagroal_json_contains_key(req, MANAGEMENT_ARGUMENT_MODE))
+         {
+            req_mode = (int)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_MODE);
+         }
+         if (pgagroal_json_contains_key(req, MANAGEMENT_ARGUMENT_TIMEOUT))
+         {
+            req_timeout = (int64_t)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_TIMEOUT);
+         }
+         req_server = (char*)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_SERVER);
+      }
+
+      pid = fork();
+      if (pid == -1)
+      {
+         pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_PAUSE_NOFORK, compression, encryption, payload);
+         pgagroal_log_error("Pause: No fork (%d)", MANAGEMENT_ERROR_PAUSE_NOFORK);
+         goto error;
+      }
+      else if (pid == 0)
+      {
+         struct json* pyl = NULL;
+
+         shutdown_ports(true);
+
+         pgagroal_json_clone(payload, &pyl);
+
+         pgagroal_set_proc_title(1, ai->argv, "pause", NULL);
+         pgagroal_request_pause(NULL, client_fd, compression, encryption, pyl);
+      }
+      else
+      {
+         if (req_mode == PAUSE_MODE_GRACEFULLY)
+         {
+            int64_t conf_secs = pgagroal_time_is_valid(config->flush_timeout)
+                                   ? pgagroal_time_convert(config->flush_timeout, FORMAT_TIME_S)
+                                   : 0;
+            int64_t secs = (req_timeout >= 0) ? req_timeout : conf_secs;
+            if (secs > 0 && atomic_load(&config->active_connections) > 0)
+            {
+               arm_pause_timeout(secs, req_server);
+            }
+         }
+      }
+   }
+   else if (id == MANAGEMENT_RESUME)
+   {
+      struct json* req = NULL;
+      struct json* pyl = NULL;
+      char* server = NULL;
+      req = (struct json*)pgagroal_json_get(payload, MANAGEMENT_CATEGORY_REQUEST);
+      server = (char*)pgagroal_json_get(req, MANAGEMENT_ARGUMENT_SERVER);
+
+      pid = fork();
+
+      if (pid == -1)
+      {
+         pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_RESUME_NOFORK, compression, encryption, payload);
+         pgagroal_log_error("Resume: No fork (%d)", MANAGEMENT_ERROR_RESUME_NOFORK);
+         goto error;
+      }
+      else if (pid == 0)
+      {
+         shutdown_ports(true);
+
+         pgagroal_json_clone(payload, &pyl);
+         pgagroal_set_proc_title(1, ai->argv, "resume", NULL);
+         pgagroal_request_resume(NULL, client_fd, compression, encryption, pyl);
+      }
+      else
+      {
+         /* Disarm any pending pause timeouts for the resumed server(s) */
+         for (int i = 0; i < NUMBER_OF_SERVERS; i++)
+         {
+            if (!pause_timeouts[i].in_use)
+            {
+               continue;
+            }
+            /* If resuming all ("*" or NULL), clear everything;
+             * otherwise clear the matching server or any global ("*") timeout
+             * to prevent it from forcing a pause on the resumed server later. */
+            if (server == NULL || !strcmp(server, "*") ||
+                !strcmp(pause_timeouts[i].server, server) ||
+                !strcmp(pause_timeouts[i].server, "*"))
+            {
+               pgagroal_log_debug("Resume: disarming pause timeout slot %d (server='%s')",
+                                  i, pause_timeouts[i].server);
+               pause_timeouts[i].in_use = false;
+               memset(pause_timeouts[i].server, 0, sizeof(pause_timeouts[i].server));
+            }
+         }
+         rearm_pause_alarm();
+      }
+   }
    else if (id == MANAGEMENT_GRACEFULLY)
    {
       struct json* req = NULL;
@@ -2908,6 +3020,91 @@ flush_alarm_cb(void)
 }
 
 static void
+pause_alarm_cb(void)
+{
+   struct timespec now;
+   struct main_configuration* config;
+   bool fired = false;
+
+   config = (struct main_configuration*)shmem;
+
+   stop_periodic_watcher(&pause_alarm, &pause_alarm_started);
+
+   clock_gettime(CLOCK_MONOTONIC, &now);
+
+   for (int i = 0; i < NUMBER_OF_SERVERS; i++)
+   {
+      char srv[MISC_LENGTH];
+
+      if (!pause_timeouts[i].in_use)
+      {
+         continue;
+      }
+
+      if (pause_timeouts[i].expires_at.tv_sec > now.tv_sec ||
+          (pause_timeouts[i].expires_at.tv_sec == now.tv_sec &&
+           pause_timeouts[i].expires_at.tv_nsec > now.tv_nsec))
+      {
+         continue;
+      }
+
+      memcpy(srv, pause_timeouts[i].server, sizeof(srv));
+      pause_timeouts[i].in_use = false;
+      memset(pause_timeouts[i].server, 0, sizeof(pause_timeouts[i].server));
+
+      if (srv[0] == '\0' || !strcmp(srv, "*"))
+      {
+         if (!config->all_paused)
+         {
+            pgagroal_log_debug("pause_alarm_cb: all servers already resumed, skipping");
+            continue;
+         }
+      }
+      else
+      {
+         bool still_paused = false;
+         for (int s = 0; s < config->number_of_servers; s++)
+         {
+            if (!strcmp(config->servers[s].name, srv) && config->servers[s].paused)
+            {
+               still_paused = true;
+               break;
+            }
+         }
+         if (!still_paused)
+         {
+            pgagroal_log_debug("pause_alarm_cb: server '%s' already resumed, skipping", srv);
+            continue;
+         }
+      }
+
+      if (atomic_load(&config->active_connections) > 0)
+      {
+         fired = true;
+
+         pgagroal_log_warn("pgagroal: pause timeout expired - forcing PAUSE_MODE_ALL on server '%s'",
+                           srv[0] ? srv : "*");
+         if (!fork())
+         {
+            pgagroal_pause(PAUSE_MODE_ALL, srv[0] ? srv : "*");
+            exit(0);
+         }
+      }
+      else
+      {
+         pgagroal_log_info("pgagroal: pause timeout fired but no active connections remain, skipping");
+      }
+   }
+
+   if (fired)
+   {
+      pgagroal_pool_status();
+   }
+
+   rearm_pause_alarm();
+}
+
+static void
 rotate_frontend_password_cb(void)
 {
    char* pwd;
@@ -3173,6 +3370,105 @@ rearm_flush_alarm(void)
 
    start_periodic_watcher(&flush_alarm, &flush_alarm_started,
                           flush_alarm_cb,
+                          delta_ms,
+                          0);
+}
+
+static void
+arm_pause_timeout(int64_t seconds, const char* server)
+{
+   const char* srv = (server != NULL && server[0] != '\0') ? server : "*";
+   int slot = -1;
+
+   if (seconds <= 0)
+   {
+      return;
+   }
+   for (int i = 0; i < NUMBER_OF_SERVERS; i++)
+   {
+      if (pause_timeouts[i].in_use && !strcmp(pause_timeouts[i].server, srv))
+      {
+         slot = i;
+         break;
+      }
+   }
+   if (slot < 0)
+   {
+      for (int i = 0; i < NUMBER_OF_SERVERS; i++)
+      {
+         if (!pause_timeouts[i].in_use)
+         {
+            slot = i;
+            break;
+         }
+      }
+   }
+   if (slot < 0)
+   {
+      pgagroal_log_warn("pgagroal: pause timeout table full - proceeding unbounded for '%s'", srv);
+      return;
+   }
+
+   pause_timeouts[slot].in_use = true;
+   memset(pause_timeouts[slot].server, 0, sizeof(pause_timeouts[slot].server));
+   strncpy(pause_timeouts[slot].server, srv, sizeof(pause_timeouts[slot].server) - 1);
+   clock_gettime(CLOCK_MONOTONIC, &pause_timeouts[slot].expires_at);
+   pause_timeouts[slot].expires_at.tv_sec += seconds;
+
+   rearm_pause_alarm();
+
+   if (!pause_alarm_started)
+   {
+      pgagroal_log_warn("pgagroal: failed to arm pause alarm watcher");
+      pause_timeouts[slot].in_use = false;
+      memset(pause_timeouts[slot].server, 0, sizeof(pause_timeouts[slot].server));
+      return;
+   }
+
+   pgagroal_log_info("pgagroal: pause timeout armed (%llds, server=%s)",
+                     (long long)seconds, srv);
+}
+
+static void
+rearm_pause_alarm(void)
+{
+   struct timespec now;
+   struct timespec earliest = {0};
+   bool have_earliest = false;
+   int64_t delta_ms;
+
+   for (int i = 0; i < NUMBER_OF_SERVERS; i++)
+   {
+      if (!pause_timeouts[i].in_use)
+      {
+         continue;
+      }
+      if (!have_earliest ||
+          pause_timeouts[i].expires_at.tv_sec < earliest.tv_sec ||
+          (pause_timeouts[i].expires_at.tv_sec == earliest.tv_sec &&
+           pause_timeouts[i].expires_at.tv_nsec < earliest.tv_nsec))
+      {
+         earliest = pause_timeouts[i].expires_at;
+         have_earliest = true;
+      }
+   }
+
+   if (!have_earliest)
+   {
+      stop_periodic_watcher(&pause_alarm, &pause_alarm_started);
+      return;
+   }
+
+   clock_gettime(CLOCK_MONOTONIC, &now);
+   delta_ms = ((int64_t)(earliest.tv_sec - now.tv_sec)) * 1000 + ((int64_t)(earliest.tv_nsec - now.tv_nsec)) / 1000000;
+
+   if (delta_ms <= 0)
+   {
+      delta_ms = 1;
+   }
+
+   start_periodic_watcher(&pause_alarm, &pause_alarm_started,
+                          pause_alarm_cb,
                           delta_ms,
                           0);
 }

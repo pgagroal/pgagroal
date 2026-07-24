@@ -322,6 +322,76 @@ error:
 }
 
 int
+pgagroal_management_request_pause(SSL* ssl, int socket, int32_t mode, char* server, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format)
+{
+   struct json* j = NULL;
+   struct json* request = NULL;
+
+   if (pgagroal_management_create_header(MANAGEMENT_PAUSE, compression, encryption, output_format, &j))
+   {
+      goto error;
+   }
+
+   if (pgagroal_management_create_request(j, &request))
+   {
+      goto error;
+   }
+
+   pgagroal_json_put(request, MANAGEMENT_ARGUMENT_MODE, (uintptr_t)mode, ValueInt32);
+   pgagroal_json_put(request, MANAGEMENT_ARGUMENT_SERVER, (uintptr_t)server, ValueString);
+   pgagroal_json_put(request, MANAGEMENT_ARGUMENT_TIMEOUT, (uintptr_t)timeout, ValueInt64);
+
+   if (pgagroal_management_write_json(ssl, socket, compression, encryption, j))
+   {
+      goto error;
+   }
+
+   pgagroal_json_destroy(j);
+
+   return 0;
+
+error:
+
+   pgagroal_json_destroy(j);
+
+   return 1;
+}
+
+int
+pgagroal_management_request_resume(SSL* ssl, int socket, char* server, uint8_t compression, uint8_t encryption, int32_t output_format)
+{
+   struct json* j = NULL;
+   struct json* request = NULL;
+
+   if (pgagroal_management_create_header(MANAGEMENT_RESUME, compression, encryption, output_format, &j))
+   {
+      goto error;
+   }
+
+   if (pgagroal_management_create_request(j, &request))
+   {
+      goto error;
+   }
+
+   pgagroal_json_put(request, MANAGEMENT_ARGUMENT_SERVER, (uintptr_t)server, ValueString);
+
+   if (pgagroal_management_write_json(ssl, socket, compression, encryption, j))
+   {
+      goto error;
+   }
+
+   pgagroal_json_destroy(j);
+
+   return 0;
+
+error:
+
+   pgagroal_json_destroy(j);
+
+   return 1;
+}
+
+int
 pgagroal_management_request_gracefully(SSL* ssl, int socket, int64_t timeout, uint8_t compression, uint8_t encryption, int32_t output_format)
 {
    struct json* j = NULL;
@@ -746,12 +816,37 @@ error:
    return 1;
 }
 
+void
+pgagroal_management_format_timestamp(time_t t, char* buffer, size_t size)
+{
+   struct tm* time_info;
+
+   if (buffer == NULL || size == 0)
+   {
+      return;
+   }
+
+   if (t == 0)
+   {
+      buffer[0] = '\0';
+      return;
+   }
+
+   time_info = localtime(&t);
+   if (time_info == NULL)
+   {
+      buffer[0] = '\0';
+      return;
+   }
+
+   strftime(buffer, size, "%Y%m%d%H%M%S", time_info);
+}
+
 int
 pgagroal_management_create_header(int32_t command, uint8_t compression, uint8_t encryption, int32_t output_format, struct json** json)
 {
    time_t t;
    char timestamp[128];
-   struct tm* time_info;
    struct json* j = NULL;
    struct json* header = NULL;
 
@@ -768,8 +863,7 @@ pgagroal_management_create_header(int32_t command, uint8_t compression, uint8_t 
    }
 
    time(&t);
-   time_info = localtime(&t);
-   strftime(&timestamp[0], sizeof(timestamp), "%Y%m%d%H%M%S", time_info);
+   pgagroal_management_format_timestamp(t, &timestamp[0], sizeof(timestamp));
 
    pgagroal_json_put(header, MANAGEMENT_ARGUMENT_COMMAND, (uintptr_t)command, ValueInt32);
    pgagroal_json_put(header, MANAGEMENT_ARGUMENT_CLIENT_VERSION, (uintptr_t)PGAGROAL_VERSION, ValueString);
@@ -1482,10 +1576,36 @@ read:
    if (ssl == NULL)
    {
       r = read(socket, buf + offset, needs);
+
+      if (r == 0)
+      {
+         errno = ECONNRESET;
+         goto error;
+      }
    }
    else
    {
       r = SSL_read(ssl, buf + offset, needs);
+
+      if (r <= 0)
+      {
+         int err = SSL_get_error(ssl, (int)r);
+
+         if (err == SSL_ERROR_ZERO_RETURN || r == 0)
+         {
+            errno = ECONNRESET;
+            goto error;
+         }
+
+         if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE)
+         {
+            errno = 0;
+            goto read;
+         }
+
+         ERR_clear_error();
+         goto error;
+      }
    }
 
    if (r == -1)
@@ -1498,7 +1618,7 @@ read:
 
       goto error;
    }
-   else if (r < needs)
+   else if (r < (ssize_t)needs)
    {
       SLEEP(10000000L)
 
