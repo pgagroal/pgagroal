@@ -556,12 +556,28 @@ pgagroal_return_connection(int slot, SSL* ssl, bool transaction_mode)
 
          if (!transaction_mode)
          {
-            /* Session pooling: reset the backend before reuse (empty disables). */
-            if (config->server_reset_query[0] != '\0')
+            /* Session pooling: reset the backend before reuse.
+             * Empty query or a prior ignore-mode failure disables the reset. */
+            if (config->server_reset_query[0] != '\0' && !config->connections[slot].reset_query_failed)
             {
                if (pgagroal_write_reset_query(ssl, config->connections[slot].fd))
                {
-                  goto kill_connection;
+                  switch (config->server_reset_query_behavior_on_failure)
+                  {
+                     case SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_IGNORE:
+                        pgagroal_log_warn("server_reset_query failed for slot %d (fd %d) — "
+                                          "returning connection dirty. Future resets on this "
+                                          "slot are suppressed. Fix server_reset_query and "
+                                          "reload to re-enable.",
+                                          slot, config->connections[slot].fd);
+                        config->connections[slot].reset_query_failed = true;
+                        break;
+
+                     default:
+                        /* SERVER_RESET_QUERY_ON_BEHAVIOR_FAILURE_DISCARD and _TRY both kill the
+                         * connection; any unrecognised future value also falls here safely. */
+                        goto kill_connection;
+                  }
                }
             }
          }
@@ -780,6 +796,7 @@ pgagroal_kill_connection(int slot, SSL* ssl)
    config->connections[slot].new = true;
    config->connections[slot].server = -1;
    config->connections[slot].tx_mode = false;
+   config->connections[slot].reset_query_failed = false;
 
    config->connections[slot].has_security = SECURITY_INVALID;
    for (int i = 0; i < NUMBER_OF_SECURITY_MESSAGES; i++)
@@ -1376,6 +1393,7 @@ pgagroal_pool_init(void)
    {
       config->connections[i].new = true;
       config->connections[i].tx_mode = false;
+      config->connections[i].reset_query_failed = false;
       config->connections[i].server = -1;
       config->connections[i].has_security = SECURITY_INVALID;
       config->connections[i].limit_rule = -1;

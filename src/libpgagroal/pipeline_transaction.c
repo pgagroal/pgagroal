@@ -485,16 +485,36 @@ transaction_server(struct io_watcher* watcher)
              * server_reset_query_always is enabled (PgBouncer parity). A
              * non-empty reset (e.g. DISCARD ALL) subsumes DEALLOCATE ALL. If it
              * fails the backend is discarded rather than returned dirty. */
-            if (config->server_reset_query_always && config->server_reset_query[0] != '\0')
+            if (config->server_reset_query_always && config->server_reset_query[0] != '\0' && !config->connections[slot].reset_query_failed)
             {
                if (pgagroal_write_reset_query(wi->server_ssl, wi->server_fd))
                {
-                  pgagroal_tracking_event_slot(TRACKER_TX_RETURN_CONNECTION, slot);
-                  pgagroal_kill_connection(slot, wi->server_ssl);
-                  slot = -1;
-                  goto return_error;
+                  switch (config->server_reset_query_behavior_on_failure)
+                  {
+                     case SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_IGNORE:
+                        pgagroal_log_warn("server_reset_query failed for slot %d (fd %d) in "
+                                          "transaction pipeline — returning connection dirty. "
+                                          "Future resets on this slot are suppressed. Fix "
+                                          "server_reset_query and reload to re-enable.",
+                                          slot, config->connections[slot].fd);
+                        config->connections[slot].reset_query_failed = true;
+                        deallocate = false; /* don't attempt DEALLOCATE ALL on a dirty connection */
+                        break;
+
+                     default:
+                        /* SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD and _TRY both kill the
+                         * connection; any unrecognised future value also falls here safely. */
+                        pgagroal_tracking_event_slot(TRACKER_TX_RETURN_CONNECTION, slot);
+                        pgagroal_kill_connection(slot, wi->server_ssl);
+                        slot = -1;
+                        goto return_error;
+                  }
                }
-               deallocate = false;
+               else
+               {
+                  /* Reset succeeded, subsumes DEALLOCATE ALL */
+                  deallocate = false;
+               }
             }
 
             if (deallocate)

@@ -288,6 +288,8 @@ config_init(const char* output_path, bool quiet, bool force)
    char flush_timeout[MISC_LENGTH];
    char validation[MISC_LENGTH];
    char ev_backend[MISC_LENGTH];
+   char server_reset_query[MISC_LENGTH];
+   char server_reset_query_behavior_on_failure[MISC_LENGTH];
    struct stat st;
    char tmp_path[MAX_PATH];
    time_t t;
@@ -340,6 +342,8 @@ config_init(const char* output_path, bool quiet, bool force)
       pgagroal_snprintf(flush_timeout, sizeof(flush_timeout), CONFIGURATION_DEFAULT_FLUSH_TIMEOUT);
       pgagroal_snprintf(validation, sizeof(validation), CONFIGURATION_DEFAULT_VALIDATION);
       pgagroal_snprintf(ev_backend, sizeof(ev_backend), CONFIGURATION_DEFAULT_EV_BACKEND);
+      pgagroal_snprintf(server_reset_query, sizeof(server_reset_query), "DISCARD ALL");
+      pgagroal_snprintf(server_reset_query_behavior_on_failure, sizeof(server_reset_query_behavior_on_failure), "discard");
    }
    else
    {
@@ -456,6 +460,31 @@ config_init(const char* output_path, bool quiet, bool force)
          }
       }
 
+      if (prompt_input("Reset query (statement run on connection return, empty to disable)",
+                       "DISCARD ALL", server_reset_query, sizeof(server_reset_query)))
+      {
+         warnx("Invalid input for server_reset_query");
+         goto error;
+      }
+
+      while (1)
+      {
+         if (prompt_input("Reset query behavior on failure (discard, ignore, try)",
+                          "discard", server_reset_query_behavior_on_failure, sizeof(server_reset_query_behavior_on_failure)) == 0)
+         {
+            int on_failure_val;
+            if (pgagroal_as_server_reset_query_behavior_on_failure(server_reset_query_behavior_on_failure, &on_failure_val) == 0)
+            {
+               break;
+            }
+            printf("  Invalid value. Please enter one of: discard, ignore, try.\n");
+         }
+         else
+         {
+            printf("  server_reset_query_behavior_on_failure is required. Please enter a value.\n");
+         }
+      }
+
       while (1)
       {
          if (prompt_input("Metrics port (0 to disable)", CONFIGURATION_DEFAULT_METRICS, metrics, sizeof(metrics)) == 0)
@@ -562,6 +591,9 @@ config_init(const char* output_path, bool quiet, bool force)
    write_key_value(file, CONFIGURATION_ARGUMENT_LOG_PATH, log_path);
    fprintf(file, "\n");
    write_key_value(file, CONFIGURATION_ARGUMENT_UNIX_SOCKET_DIR, unix_socket_dir);
+   fprintf(file, "\n");
+   write_key_value(file, CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY, server_reset_query);
+   write_key_value(file, CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, server_reset_query_behavior_on_failure);
    fprintf(file, "\n");
 
    if (quiet)

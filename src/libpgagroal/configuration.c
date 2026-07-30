@@ -81,6 +81,7 @@ int pgagroal_as_logging_mode(char* str, int* mode);
 
 int pgagroal_as_logging_rotation_size(char* str, unsigned int* size);
 int pgagroal_as_validation(char* str, int* val);
+int pgagroal_as_server_reset_query_behavior_on_failure(char* str, int* val);
 int pgagroal_as_pipeline(char* str, int* pipeline);
 int pgagroal_as_hugepage(char* str, unsigned char* hp);
 int pgagroal_as_startup_validation(char* str, int* sv);
@@ -134,6 +135,7 @@ static int to_pipeline(char* where, int value);
 static int to_log_mode(char* where, int value);
 static int to_log_level(char* where, int value);
 static int to_log_type(char* where, int value);
+int to_server_reset_query_behavior_on_failure(char* where, int value);
 
 static void add_configuration_response(struct json* res);
 static void add_servers_configuration_response(struct json* res);
@@ -201,6 +203,7 @@ pgagroal_init_configuration(void* shm)
    config->track_prepared_statements = false;
    pgagroal_snprintf(config->server_reset_query, MISC_LENGTH, "DISCARD ALL");
    config->server_reset_query_always = false;
+   config->server_reset_query_behavior_on_failure = SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD;
 
    config->ev_backend = PGAGROAL_EVENT_BACKEND_AUTO;
 
@@ -856,6 +859,13 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
          pgagroal_log_fatal("pgagroal: Performance pipeline does not support disconnect_client");
          return 1;
       }
+   }
+
+   if (config->server_reset_query_always &&
+       config->pipeline == PIPELINE_TRANSACTION &&
+       config->server_reset_query_behavior_on_failure == SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_IGNORE)
+   {
+      pgagroal_log_warn("pgagroal: server_reset_query_behavior_on_failure=ignore is UNSAFE in transaction pooling with server_reset_query_always=on. Session state (GUCs, temp tables, etc.) may leak between clients.");
    }
 
    if (config->ev_backend == PGAGROAL_EVENT_BACKEND_INVALID)
@@ -2963,6 +2973,27 @@ pgagroal_as_validation(char* str, int* val)
 }
 
 int
+pgagroal_as_server_reset_query_behavior_on_failure(char* str, int* val)
+{
+   if (!strcasecmp(str, "discard"))
+   {
+      *val = SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD;
+      return 0;
+   }
+   if (!strcasecmp(str, "ignore"))
+   {
+      *val = SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_IGNORE;
+      return 0;
+   }
+   if (!strcasecmp(str, "try"))
+   {
+      *val = SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_TRY;
+      return 0;
+   }
+   return 1;
+}
+
+int
 pgagroal_as_pipeline(char* str, int* pipeline)
 {
    if (!strcasecmp(str, "auto"))
@@ -3790,6 +3821,7 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
    config->track_prepared_statements = reload->track_prepared_statements;
    memcpy(config->server_reset_query, reload->server_reset_query, MISC_LENGTH);
    config->server_reset_query_always = reload->server_reset_query_always;
+   config->server_reset_query_behavior_on_failure = reload->server_reset_query_behavior_on_failure;
    memcpy(config->unix_socket_dir, reload->unix_socket_dir, MISC_LENGTH);
 
    /* Servers */
@@ -4966,6 +4998,10 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       {
          return to_bool(buffer, config->server_reset_query_always);
       }
+      else if (!strncmp(key, "server_reset_query_behavior_on_failure", MISC_LENGTH))
+      {
+         return to_server_reset_query_behavior_on_failure(buffer, config->server_reset_query_behavior_on_failure);
+      }
       else
       {
          goto error;
@@ -5629,6 +5665,28 @@ to_log_type(char* where, int value)
    return 0;
 }
 
+int
+to_server_reset_query_behavior_on_failure(char* where, int value)
+{
+   if (!where || value < 0)
+      return 1;
+   switch (value)
+   {
+      case SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD:
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "discard");
+         break;
+      case SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_IGNORE:
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "ignore");
+         break;
+      case SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_TRY:
+         pgagroal_snprintf(where, MISC_LENGTH, "%s", "try");
+         break;
+      default:
+         return 1;
+   }
+   return 0;
+}
+
 /**
  * Convert a string description into ev_backend_t.
  *
@@ -6268,6 +6326,13 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
          unknown = true;
       }
    }
+   else if (key_in_section("server_reset_query_behavior_on_failure", section, key, true, &unknown))
+   {
+      if (pgagroal_as_server_reset_query_behavior_on_failure(value, &config->server_reset_query_behavior_on_failure))
+      {
+         unknown = true;
+      }
+   }
    else if (key_in_section("update_process_title", section, key, true, &unknown))
    {
       if (pgagroal_as_update_process_title(value, &config->update_process_title, UPDATE_PROCESS_TITLE_VERBOSE))
@@ -6900,6 +6965,7 @@ add_configuration_response(struct json* res)
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TRACK_PREPARED_STATEMENTS, (uintptr_t)config->track_prepared_statements, ValueBool);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY, (uintptr_t)config->server_reset_query, ValueString);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_ALWAYS, (uintptr_t)config->server_reset_query_always, ValueBool);
+   pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, config->server_reset_query_behavior_on_failure, to_server_reset_query_behavior_on_failure);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_PIDFILE, (uintptr_t)config->pidfile, ValueString);
    pgagroal_json_put_enum_value(res, CONFIGURATION_ARGUMENT_UPDATE_PROCESS_TITLE, config->update_process_title, to_update_process_title);
 }

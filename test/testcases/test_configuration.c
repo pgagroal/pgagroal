@@ -33,6 +33,8 @@
 #include <mctf.h>
 #include <utils.h>
 
+extern int pgagroal_as_server_reset_query_behavior_on_failure(char* str, int* val);
+
 MCTF_TEST(test_configuration_accept_time)
 {
    pgagroal_time_t t;
@@ -262,6 +264,125 @@ MCTF_TEST(test_configuration_server_reset_query_default)
 
 cleanup:
    free(config);
+   MCTF_FINISH();
+}
+
+/* #950: server_reset_query_behavior_on_failure accepts 'discard', 'try' or 'ignore' (case-insensitive) */
+MCTF_TEST(test_configuration_accept_server_reset_query_behavior_on_failure)
+{
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "discard");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "ignore");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "try");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "DISCARD");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "Ignore");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "Try");
+   pgagroal_test_assert_conf_set_ok(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "DiScArD");
+   MCTF_FINISH();
+}
+
+/* #950: server_reset_query_behavior_on_failure rejects invalid values */
+MCTF_TEST(test_configuration_reject_invalid_server_reset_query_behavior_on_failure)
+{
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "drop");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "warn");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "continue");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "");
+   pgagroal_test_assert_conf_set_fail(CONFIGURATION_ARGUMENT_SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE, "discard_all");
+   MCTF_FINISH();
+}
+
+/* #950: the default server_reset_query_behavior_on_failure is 'discard' */
+MCTF_TEST(test_configuration_server_reset_query_behavior_on_failure_default)
+{
+   struct main_configuration* config = calloc(1, sizeof(struct main_configuration));
+   MCTF_ASSERT_PTR_NONNULL(config, cleanup, "config allocation failed");
+
+   pgagroal_init_configuration(config);
+
+   MCTF_ASSERT_INT_EQ(config->server_reset_query_behavior_on_failure, SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD, cleanup,
+                      "server_reset_query_behavior_on_failure should default to discard (0)");
+cleanup:
+   free(config);
+   MCTF_FINISH();
+}
+
+/* #950: parser maps each string to the correct integer constant */
+MCTF_TEST(test_configuration_server_reset_query_behavior_on_failure_values)
+{
+   int value;
+
+   value = -1;
+   MCTF_ASSERT_INT_EQ(pgagroal_as_server_reset_query_behavior_on_failure("discard", &value), 0, cleanup,
+                      "pgagroal_as_server_reset_query_behavior_on_failure('discard') should return 0");
+   MCTF_ASSERT_INT_EQ(value, SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD, cleanup,
+                      "'discard' should map to SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD");
+
+   value = -1;
+   MCTF_ASSERT_INT_EQ(pgagroal_as_server_reset_query_behavior_on_failure("try", &value), 0, cleanup,
+                      "pgagroal_as_server_reset_query_behavior_on_failure('try') should return 0");
+   MCTF_ASSERT_INT_EQ(value, SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_TRY, cleanup,
+                      "'try' should map to SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_TRY");
+
+   value = -1;
+   MCTF_ASSERT_INT_EQ(pgagroal_as_server_reset_query_behavior_on_failure("ignore", &value), 0, cleanup,
+                      "pgagroal_as_server_reset_query_behavior_on_failure('ignore') should return 0");
+   MCTF_ASSERT_INT_EQ(value, SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_IGNORE, cleanup,
+                      "'ignore' should map to SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_IGNORE");
+
+   /* invalid input must not modify value */
+   value = SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD;
+   MCTF_ASSERT_INT_EQ(pgagroal_as_server_reset_query_behavior_on_failure("bogus", &value), 1, cleanup,
+                      "unknown value should return 1");
+   MCTF_ASSERT_INT_EQ(value, SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD, cleanup,
+                      "failed parse must not modify the output variable");
+
+cleanup:
+   MCTF_FINISH();
+}
+
+/* #950: reset_query_failed flag starts cleared on a fresh connection slot */
+MCTF_TEST(test_configuration_connection_reset_query_failed_default)
+{
+   struct connection conn;
+
+   memset(&conn, 0, sizeof(struct connection));
+
+   MCTF_ASSERT_INT_EQ((int)conn.reset_query_failed, 0, cleanup,
+                      "reset_query_failed should be false (0) after zero-initialisation");
+
+cleanup:
+   MCTF_FINISH();
+}
+
+/* #950: server_reset_query_behavior_on_failure survives a configuration reload */
+MCTF_TEST(test_configuration_server_reset_query_behavior_on_failure_reload)
+{
+   struct main_configuration* config = calloc(1, sizeof(struct main_configuration));
+   struct main_configuration* reload = calloc(1, sizeof(struct main_configuration));
+
+   MCTF_ASSERT_PTR_NONNULL(config, cleanup, "config allocation failed");
+   MCTF_ASSERT_PTR_NONNULL(reload, cleanup, "reload allocation failed");
+
+   pgagroal_init_configuration(config);
+   pgagroal_init_configuration(reload);
+
+   /* operator changes to 'ignore' and reloads */
+   reload->server_reset_query_behavior_on_failure = SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_IGNORE;
+   config->server_reset_query_behavior_on_failure = reload->server_reset_query_behavior_on_failure;
+
+   MCTF_ASSERT_INT_EQ(config->server_reset_query_behavior_on_failure, SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_IGNORE,
+                      cleanup, "reload should propagate server_reset_query_behavior_on_failure = ignore");
+
+   /* operator reverts to default 'discard' */
+   reload->server_reset_query_behavior_on_failure = SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD;
+   config->server_reset_query_behavior_on_failure = reload->server_reset_query_behavior_on_failure;
+
+   MCTF_ASSERT_INT_EQ(config->server_reset_query_behavior_on_failure, SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD,
+                      cleanup, "reload should propagate server_reset_query_behavior_on_failure = discard");
+
+cleanup:
+   free(config);
+   free(reload);
    MCTF_FINISH();
 }
 

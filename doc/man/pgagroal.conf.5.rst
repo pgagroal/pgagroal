@@ -216,6 +216,13 @@ server_reset_query
 server_reset_query_always
   Run server_reset_query in the transaction pipeline too, not only in session pooling. Off by default, since transaction-pooling clients should not rely on session state. Default is off
 
+server_reset_query_behavior_on_failure
+  Behavior when ``server_reset_query`` fails. Valid options are ``discard``, ``ignore``, and ``try``.
+  ``discard`` (default) invalidates the connection, which is the safest behavior.
+  ``ignore`` logs a warning and reuses the connection anyway, avoiding connection churn but potentially causing session-state leakage (unsafe for transaction pooling).
+  ``try`` kills the connection on failure, but will attempt the reset query again on the next connection, creating visible connection churn if misconfigured.
+  Default is discard.
+
 pidfile
   Path to the PID file. If omitted, automatically set to ``unix_socket_dir/pgagroal.port.pid``
 

@@ -1449,6 +1449,24 @@ home_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "      </tr>\n");
    data = pgagroal_append(data, "    </tbody>\n");
    data = pgagroal_append(data, "  </table>\n");
+   data = pgagroal_append(data, "  <h2>pgagroalserver_reset_query_behavior_on_failure</h2>\n");
+   data = pgagroal_append(data, "  <p>\n");
+   data = pgagroal_append(data, "   The failure behavior of server_reset_query\n");
+   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <table>\n");
+   data = pgagroal_append(data, "    <tbody>\n");
+   data = pgagroal_append(data, "      <tr>\n");
+   data = pgagroal_append(data, "        <td>value</td>\n");
+   data = pgagroal_append(data, "        <td>Behavior\n");
+   data = pgagroal_append(data, "          <ol start=\"0\">\n");
+   data = pgagroal_append(data, "            <li>Discard: kill the connection and open a fresh one</li>\n");
+   data = pgagroal_append(data, "            <li>Ignore: log a warning and return the connection to the pool dirty</li>\n");
+   data = pgagroal_append(data, "            <li>Try: kill the connection but retry on every subsequent return</li>\n");
+   data = pgagroal_append(data, "          </ol>\n");
+   data = pgagroal_append(data, "        </td>\n");
+   data = pgagroal_append(data, "      </tr>\n");
+   data = pgagroal_append(data, "    </tbody>\n");
+   data = pgagroal_append(data, "  </table>\n");
    data = pgagroal_append(data, "  <h2>pgagroal_logging_info</h2>\n");
    data = pgagroal_append(data, "  The number of INFO logging statements\n");
    data = pgagroal_append(data, "  <p>\n");
@@ -2340,6 +2358,15 @@ general_information(prometheus_metrics_container_t* container)
    data = pgagroal_append_int(data, config->pipeline);
    data = pgagroal_append(data, "\n");
    add_metric_to_art(container->general_metrics, "pgagroal_pipeline_mode", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
+   data = pgagroal_append(data, "#HELP pgagroal_server_reset_query_behavior_on_failure The failure behavior of server_reset_query (0=discard, 1=ignore, 2=try)\n");
+   data = pgagroal_append(data, "#TYPE pgagroal_server_reset_query_behavior_on_failure gauge\n");
+   data = pgagroal_append(data, "pgagroal_server_reset_query_behavior_on_failure ");
+   data = pgagroal_append_int(data, config->server_reset_query_behavior_on_failure);
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_server_reset_query_behavior_on_failure", data, NULL, NULL, 0);
    free(data);
    data = NULL;
 

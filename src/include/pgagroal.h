@@ -106,105 +106,109 @@ extern "C" {
 #else
 #define MAX_NUMBER_OF_CONNECTIONS 10000
 #endif
-#define NUMBER_OF_HBAS                 64
-#define NUMBER_OF_LIMITS               64
-#define NUMBER_OF_USERS                64
-#define NUMBER_OF_ADMINS               8
-#define NUMBER_OF_DISABLED             64
+#define NUMBER_OF_HBAS                                 64
+#define NUMBER_OF_LIMITS                               64
+#define NUMBER_OF_USERS                                64
+#define NUMBER_OF_ADMINS                               8
+#define NUMBER_OF_DISABLED                             64
 
-#define NUMBER_OF_SECURITY_MESSAGES    5
+#define NUMBER_OF_SECURITY_MESSAGES                    5
 
-#define TLS_CONTEXT_BUFFER_SIZE        256
+#define TLS_CONTEXT_BUFFER_SIZE                        256
 
-#define STATE_NOTINIT                  -2
-#define STATE_INIT                     -1
-#define STATE_FREE                     0
-#define STATE_IN_USE                   1
-#define STATE_GRACEFULLY               2
-#define STATE_FLUSH                    3
-#define STATE_IDLE_CHECK               4
-#define STATE_MAX_CONNECTION_AGE       5
-#define STATE_VALIDATION               6
-#define STATE_REMOVE                   7
+#define STATE_NOTINIT                                  -2
+#define STATE_INIT                                     -1
+#define STATE_FREE                                     0
+#define STATE_IN_USE                                   1
+#define STATE_GRACEFULLY                               2
+#define STATE_FLUSH                                    3
+#define STATE_IDLE_CHECK                               4
+#define STATE_MAX_CONNECTION_AGE                       5
+#define STATE_VALIDATION                               6
+#define STATE_REMOVE                                   7
 
-#define SECURITY_INVALID               -2
-#define SECURITY_REJECT                -1
-#define SECURITY_TRUST                 0
-#define SECURITY_PASSWORD              3
-#define SECURITY_SCRAM256              10
-#define SECURITY_ALL                   99
+#define SECURITY_INVALID                               -2
+#define SECURITY_REJECT                                -1
+#define SECURITY_TRUST                                 0
+#define SECURITY_PASSWORD                              3
+#define SECURITY_SCRAM256                              10
+#define SECURITY_ALL                                   99
 
-#define AUTH_SUCCESS                   0
-#define AUTH_BAD_PASSWORD              1
-#define AUTH_ERROR                     2
-#define AUTH_TIMEOUT                   3
+#define AUTH_SUCCESS                                   0
+#define AUTH_BAD_PASSWORD                              1
+#define AUTH_ERROR                                     2
+#define AUTH_TIMEOUT                                   3
 
-#define SERVER_NOTINIT                 -2
-#define SERVER_NOTINIT_PRIMARY         -1
-#define SERVER_PRIMARY                 0
-#define SERVER_REPLICA                 1
-#define SERVER_FAILOVER                2
-#define SERVER_FAILED                  3
+#define SERVER_NOTINIT                                 -2
+#define SERVER_NOTINIT_PRIMARY                         -1
+#define SERVER_PRIMARY                                 0
+#define SERVER_REPLICA                                 1
+#define SERVER_FAILOVER                                2
+#define SERVER_FAILED                                  3
 
-#define SERVER_HEALTH_UNKNOWN          0
-#define SERVER_HEALTH_UP               1
-#define SERVER_HEALTH_DOWN             2
+#define SERVER_HEALTH_UNKNOWN                          0
+#define SERVER_HEALTH_UP                               1
+#define SERVER_HEALTH_DOWN                             2
 
-#define SERVER_STREAMING_PRIMARY       -1
-#define SERVER_STREAMING_NO            0
-#define SERVER_STREAMING_YES           1
+#define SERVER_STREAMING_PRIMARY                       -1
+#define SERVER_STREAMING_NO                            0
+#define SERVER_STREAMING_YES                           1
 
-#define HEALTH_CHECK_AUTH_UNKNOWN      0
-#define HEALTH_CHECK_AUTH_TRUST        1
-#define HEALTH_CHECK_AUTH_SCRAM        3
-#define HEALTH_CHECK_AUTH_ERROR        4
+#define SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD 0
+#define SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_IGNORE  1
+#define SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_TRY     2
 
-#define HEALTH_CHECK_MAX_RETRIES       3
-#define HEALTH_CHECK_MIN_INTERVAL      1
+#define HEALTH_CHECK_AUTH_UNKNOWN                      0
+#define HEALTH_CHECK_AUTH_TRUST                        1
+#define HEALTH_CHECK_AUTH_SCRAM                        3
+#define HEALTH_CHECK_AUTH_ERROR                        4
 
-#define FLUSH_IDLE                     0
-#define FLUSH_GRACEFULLY               1
-#define FLUSH_ALL                      2
+#define HEALTH_CHECK_MAX_RETRIES                       3
+#define HEALTH_CHECK_MIN_INTERVAL                      1
 
-#define VALIDATION_OFF                 0
-#define VALIDATION_FOREGROUND          1
-#define VALIDATION_BACKGROUND          2
+#define FLUSH_IDLE                                     0
+#define FLUSH_GRACEFULLY                               1
+#define FLUSH_ALL                                      2
 
-#define HISTOGRAM_BUCKETS              18
+#define VALIDATION_OFF                                 0
+#define VALIDATION_FOREGROUND                          1
+#define VALIDATION_BACKGROUND                          2
 
-#define HUGEPAGE_OFF                   0
-#define HUGEPAGE_TRY                   1
-#define HUGEPAGE_ON                    2
+#define HISTOGRAM_BUCKETS                              18
 
-#define CHANNEL_BINDING_DISABLED       0
-#define CHANNEL_BINDING_PREFER         1
-#define CHANNEL_BINDING_REQUIRE        2
+#define HUGEPAGE_OFF                                   0
+#define HUGEPAGE_TRY                                   1
+#define HUGEPAGE_ON                                    2
 
-#define STARTUP_VALIDATION_OFF         0
-#define STARTUP_VALIDATION_TRY         1
-#define STARTUP_VALIDATION_ON          2
+#define CHANNEL_BINDING_DISABLED                       0
+#define CHANNEL_BINDING_PREFER                         1
+#define CHANNEL_BINDING_REQUIRE                        2
 
-#define TLS_CERT_AUTH_MODE_VERIFY_CA   0
-#define TLS_CERT_AUTH_MODE_VERIFY_FULL 1
+#define STARTUP_VALIDATION_OFF                         0
+#define STARTUP_VALIDATION_TRY                         1
+#define STARTUP_VALIDATION_ON                          2
 
-#define ENCRYPTION_NONE                0
-#define ENCRYPTION_AES_256_GCM         1
-#define ENCRYPTION_AES_192_GCM         2
-#define ENCRYPTION_AES_128_GCM         3
+#define TLS_CERT_AUTH_MODE_VERIFY_CA                   0
+#define TLS_CERT_AUTH_MODE_VERIFY_FULL                 1
 
-#define COMPRESSION_NONE               0
-#define COMPRESSION_CLIENT_GZIP        1
-#define COMPRESSION_CLIENT_ZSTD        2
-#define COMPRESSION_CLIENT_LZ4         3
-#define COMPRESSION_CLIENT_BZIP2       4
-#define COMPRESSION_SERVER_GZIP        5
-#define COMPRESSION_SERVER_ZSTD        6
-#define COMPRESSION_SERVER_LZ4         7
+#define ENCRYPTION_NONE                                0
+#define ENCRYPTION_AES_256_GCM                         1
+#define ENCRYPTION_AES_192_GCM                         2
+#define ENCRYPTION_AES_128_GCM                         3
 
-#define UPDATE_PROCESS_TITLE_NEVER     0
-#define UPDATE_PROCESS_TITLE_STRICT    1
-#define UPDATE_PROCESS_TITLE_MINIMAL   2
-#define UPDATE_PROCESS_TITLE_VERBOSE   3
+#define COMPRESSION_NONE                               0
+#define COMPRESSION_CLIENT_GZIP                        1
+#define COMPRESSION_CLIENT_ZSTD                        2
+#define COMPRESSION_CLIENT_LZ4                         3
+#define COMPRESSION_CLIENT_BZIP2                       4
+#define COMPRESSION_SERVER_GZIP                        5
+#define COMPRESSION_SERVER_ZSTD                        6
+#define COMPRESSION_SERVER_LZ4                         7
+
+#define UPDATE_PROCESS_TITLE_NEVER                     0
+#define UPDATE_PROCESS_TITLE_STRICT                    1
+#define UPDATE_PROCESS_TITLE_MINIMAL                   2
+#define UPDATE_PROCESS_TITLE_VERBOSE                   3
 
 /**
  * Constants used to refer to an HBA entry field.
@@ -448,6 +452,7 @@ struct connection
 
    size_t tls_context_length;                 /**< Length of the parked backend TLS context, 0 if none */
    char tls_context[TLS_CONTEXT_BUFFER_SIZE]; /**< Serialized backend TLS context for pool resumption */
+   bool reset_query_failed;                   /**< Set when reset query failed in ignore mode; skips future attempts */
 } __attribute__((aligned(64)));
 
 /** @struct hba
@@ -759,6 +764,8 @@ struct main_configuration
 
    char server_reset_query[MISC_LENGTH]; /**< Statement run on a backend connection before it is reused (transaction pooling) */
    bool server_reset_query_always;       /**< Also run server_reset_query in session pooling */
+
+   int server_reset_query_behavior_on_failure; /**< Behavior when server_reset_query fails (discard, try or ignore) */
 
    char unix_socket_dir[MISC_LENGTH]; /**< The directory for the Unix Domain Socket */
 
