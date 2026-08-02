@@ -44,7 +44,7 @@ When you first load the console, you see the **home page** with:
 - **View selector** (Simple or Advanced mode)
 - **Server filter** dropdown to choose which PostgreSQL servers to display
 - **Metrics table** showing the selected category
-- **Refresh** button to reload metrics and status
+- **Refresh control** (split button) for manual refresh and auto-refresh interval selection
 - **Theme toggle** button (Dark/Light)
 
 ### 2. Home page—simple view
@@ -99,8 +99,22 @@ The **Search** bar appears above all other filters.
 
 ### 7. Refresh control
 
-Click **Refresh** in the header (next to the **Updated** timestamp) to reload
-all metrics and service status.
+The header includes a split **Refresh** control (next to the **Updated** timestamp):
+
+- Click **Refresh** to reload all metrics and service status immediately.
+- Click the arrow on the right to open the auto-refresh menu.
+- Select `5 min` to enable automatic refresh every 5 minutes.
+- Select `10 min` to enable automatic refresh every 10 minutes.
+- Select `15 min` to enable automatic refresh every 15 minutes.
+- Select `20 min` to enable automatic refresh every 20 minutes.
+- Select **Clear** to disable automatic refresh.
+
+When auto-refresh is enabled and you click **Refresh** manually, the timer is
+reset. The next automatic refresh runs after the full selected interval from
+that manual refresh.
+
+The selected auto-refresh interval is stored in browser local storage and is
+restored when the page is opened again.
 
 ## API endpoints
 
