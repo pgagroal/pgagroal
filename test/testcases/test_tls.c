@@ -64,10 +64,19 @@ tls_test_self_signed(EVP_PKEY** out_key, X509** out_crt)
    X509_gmtime_adj(X509_getm_notAfter(crt), 60L * 60L * 24L * 365L);
    X509_set_pubkey(crt, pkey);
 
-   name = X509_get_subject_name(crt);
-   X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
-                              (const unsigned char*)"localhost", -1, -1, 0);
-   X509_set_issuer_name(crt, name);
+   name = X509_NAME_new();
+   if (name == NULL ||
+       X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
+                                  (const unsigned char*)"localhost", -1, -1, 0) != 1 ||
+       X509_set_subject_name(crt, name) != 1 ||
+       X509_set_issuer_name(crt, name) != 1)
+   {
+      X509_NAME_free(name);
+      X509_free(crt);
+      EVP_PKEY_free(pkey);
+      return 1;
+   }
+   X509_NAME_free(name);
 
    if (X509_sign(crt, pkey, EVP_sha256()) == 0)
    {

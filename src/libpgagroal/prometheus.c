@@ -3561,8 +3561,8 @@ parse_certificate_file(const char* cert_path, struct certificate_info* cert_info
 {
    FILE* fp = NULL;
    X509* cert = NULL;
-   X509_NAME* subject_name = NULL;
-   X509_NAME* issuer_name = NULL;
+   const X509_NAME* subject_name = NULL;
+   const X509_NAME* issuer_name = NULL;
    ASN1_TIME* not_after = NULL;
    ASN1_TIME* not_before_asn1 = NULL;
    ASN1_INTEGER* serial = NULL;
@@ -3754,23 +3754,8 @@ parse_certificate_file(const char* cert_path, struct certificate_info* cert_info
       }
    }
 
-   // Check if this is a CA certificate - compatible with older OpenSSL versions
-   X509_EXTENSION* ext = NULL;
-   BASIC_CONSTRAINTS* bc = NULL;
-   int ca_idx = X509_get_ext_by_NID(cert, NID_basic_constraints, -1);
-   if (ca_idx >= 0)
-   {
-      ext = X509_get_ext(cert, ca_idx);
-      if (ext)
-      {
-         bc = X509V3_EXT_d2i(ext);
-         if (bc)
-         {
-            cert_info->is_ca = (bc->ca == 0xFF); // ASN1_BOOLEAN true is 0xFF
-            BASIC_CONSTRAINTS_free(bc);
-         }
-      }
-   }
+   // Check if this is a CA certificate
+   cert_info->is_ca = X509_check_ca(cert) != 0;
 
    // Success path - clean up and return 0
    if (cert)

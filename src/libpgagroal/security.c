@@ -5560,7 +5560,7 @@ char*
 pgagroal_extract_cert_identity(SSL* ssl)
 {
    X509* cert = NULL;
-   X509_NAME* subject_name = NULL;
+   const X509_NAME* subject_name = NULL;
    GENERAL_NAMES* san_names = NULL;
    char* identity = NULL;
    char cn_buf[256];
