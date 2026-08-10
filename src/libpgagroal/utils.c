@@ -27,6 +27,11 @@
  */
 
 /* pgagroal */
+#ifdef __NetBSD__
+#define _NETBSD_SOURCE
+#define secure_getenv getenv
+#endif
+
 #include <pgagroal.h>
 #include <logging.h>
 #include <utils.h>
@@ -43,6 +48,8 @@
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
+#include <stdbool.h>
+#include<openssl/bio.h>
 #include <openssl/pem.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
@@ -622,11 +629,11 @@ pgagroal_base64_encode(void* raw, size_t raw_length, char** encoded, size_t* enc
    BIO_push(b64_bio, mem_bio);
    BIO_set_flags(b64_bio, BIO_FLAGS_BASE64_NO_NL);
    BIO_write(b64_bio, raw, raw_length);
-   BIO_flush(b64_bio);
+   (void) BIO_flush(b64_bio);
 
    BIO_get_mem_ptr(mem_bio, &mem_bio_mem_ptr);
 
-   BIO_set_close(mem_bio, BIO_NOCLOSE);
+   (void)BIO_set_close(mem_bio, BIO_NOCLOSE);
    BIO_free_all(b64_bio);
 
    BUF_MEM_grow(mem_bio_mem_ptr, (*mem_bio_mem_ptr).length + 1);
@@ -1429,7 +1436,6 @@ pgagroal_escape_string(char* str)
 int
 pgagroal_os_kernel_version(char** os, int* kernel_major, int* kernel_minor, int* kernel_patch)
 {
-   bool bsd = false;
    *os = NULL;
    *kernel_major = 0;
    *kernel_minor = 0;

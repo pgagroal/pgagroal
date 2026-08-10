@@ -404,25 +404,61 @@ retry:
             switch (level)
             {
                case PGAGROAL_LOGGING_LEVEL_DEBUG5:
-                  vsyslog(LOG_DEBUG, fmt, vl);
-                  break;
+                  #ifdef __NetBSD__
+		  vprintf(fmt,vl);
+		  printf("\n");
+		  #else
+		  vsyslog(LOG_DEBUG, fmt, vl);
+		  #endif
+break;
                case PGAGROAL_LOGGING_LEVEL_DEBUG1:
-                  vsyslog(LOG_DEBUG, fmt, vl);
-                  break;
+		  #ifdef __NetBSD__
+		  vprintf(fmt, vl);
+printf("\n");
+#else
+vsyslog(LOG_DEBUG, fmt, vl);
+#endif
+break;
                case PGAGROAL_LOGGING_LEVEL_INFO:
-                  vsyslog(LOG_INFO, fmt, vl);
-                  break;
-               case PGAGROAL_LOGGING_LEVEL_WARN:
-                  vsyslog(LOG_WARNING, fmt, vl);
-                  break;
+          #ifdef __NetBSD__
+vprintf(fmt,vl);
+printf("\n");
+#else
+vsyslog(LOG_DEBUG, fmt, vl);
+#endif
+break;
+                  case PGAGROAL_LOGGING_LEVEL_WARN:
+#ifdef __NetBSD__
+vprintf(fmt,vl);
+printf("\n");
+#else
+vsyslog(LOG_DEBUG, fmt, vl);
+#endif
+break;
                case PGAGROAL_LOGGING_LEVEL_ERROR:
-                  vsyslog(LOG_ERR, fmt, vl);
-                  break;
+		#ifdef __NetBSD__
+vprintf(fmt, vl);
+printf("\n");
+#else
+vyslog(LOG_DEBUG, fmt, vl);
+#endif
+break;
+
                case PGAGROAL_LOGGING_LEVEL_FATAL:
-                  vsyslog(LOG_CRIT, fmt, vl);
-                  break;
+#ifdef __NetBSD__
+vprintf(fmt, vl);
+printf("\n");
+#else
+vsyslog(LOG_DEBUG, fmt, vl);
+#endif
+break;
                default:
-                  vsyslog(LOG_INFO, fmt, vl);
+#ifdef __NetBSD__
+vprintf(fmt, vl);
+printf("\n");
+#else
+vsyslog(LOG_DEBUG, fmt, vl);
+#endif
                   break;
             }
          }
