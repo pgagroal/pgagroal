@@ -4088,8 +4088,9 @@ salted_password(char* password, char* salt, int salt_length, int iterations, uns
 
    for (int i = 2; i <= iterations; i++)
    {
-      /* passing nulls cause function to reuse the same key / password in the context */
-      if (EVP_MAC_init(ctx, NULL, 0, NULL) != 1)
+      /* Re-key with the password each round; a NULL re-init does not reliably
+       * reuse the key across all OpenSSL 3 providers. */
+      if (EVP_MAC_init(ctx, (const unsigned char*)password, password_length, params) != 1)
       {
          goto error;
       }
