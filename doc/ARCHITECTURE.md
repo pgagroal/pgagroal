@@ -297,7 +297,7 @@ The `SIGHUP` signal will trigger a full reload of the configuration. When `SIGHU
 
 The `SIGUSR1` signal is used to refresh the system-level side effects of the configuration without reading from disk, such as performing log file rotation and managing worker or timer processes (for example health checks and periodic maintenance watchers). It applies changes made directly to shared memory (via `conf set`) to the running instance. Use this to ensure log files are correctly handled by external tools like `logrotate` or to trigger dynamic process management.
 
-The child processes support `SIGQUIT` as a mechanism to shutdown. This will not shutdown the pool itself.
+The child processes support `SIGQUIT` as a mechanism to shutdown. This will not shutdown the pool itself. In addition, child processes support `SIGUSR1` to pause traffic and `SIGUSR2` to resume traffic.
 
 It should not be needed to use `SIGKILL` for [**pgagroal**](https://github.com/pgagroal/pgagroal). Please, consider using `SIGABRT` instead, and share the
 core dump and debug logs with the [**pgagroal**](https://github.com/pgagroal/pgagroal) community.

@@ -406,6 +406,8 @@ pgagroal_init_prometheus(size_t* p_size, void** p_shmem)
    for (int i = 0; i < NUMBER_OF_SERVERS; i++)
    {
       atomic_init(&prometheus->server_error[i], 0);
+      atomic_init(&prometheus->server_pause_total[i], 0);
+      atomic_init(&prometheus->server_resume_total[i], 0);
    }
    atomic_init(&prometheus->failed_servers, 0);
 
@@ -1090,6 +1092,8 @@ pgagroal_prometheus_clear(void)
    for (int i = 0; i < NUMBER_OF_SERVERS; i++)
    {
       atomic_store(&prometheus->server_error[i], 0);
+      atomic_store(&prometheus->server_pause_total[i], 0);
+      atomic_store(&prometheus->server_resume_total[i], 0);
    }
 
    for (int i = 0; i < config->max_connections; i++)
@@ -1125,6 +1129,46 @@ pgagroal_prometheus_server_error(int server)
    prometheus = (struct main_prometheus*)prometheus_shmem;
 
    atomic_fetch_add(&prometheus->server_error[server], 1);
+}
+
+void
+pgagroal_prometheus_server_pause(int server)
+{
+   struct main_prometheus* prometheus;
+
+   if (!is_prometheus_enabled())
+   {
+      return;
+   }
+
+   if (server < 0 || server >= NUMBER_OF_SERVERS)
+   {
+      return;
+   }
+
+   prometheus = (struct main_prometheus*)prometheus_shmem;
+
+   atomic_fetch_add(&prometheus->server_pause_total[server], 1);
+}
+
+void
+pgagroal_prometheus_server_resume(int server)
+{
+   struct main_prometheus* prometheus;
+
+   if (!is_prometheus_enabled())
+   {
+      return;
+   }
+
+   if (server < 0 || server >= NUMBER_OF_SERVERS)
+   {
+      return;
+   }
+
+   prometheus = (struct main_prometheus*)prometheus_shmem;
+
+   atomic_fetch_add(&prometheus->server_resume_total[server], 1);
 }
 
 void
@@ -1482,6 +1526,90 @@ home_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "            <li>failed</li>\n");
    data = pgagroal_append(data, "          </ul>\n");
    data = pgagroal_append(data, "        </td>\n");
+   data = pgagroal_append(data, "      </tr>\n");
+   data = pgagroal_append(data, "    </tbody>\n");
+   data = pgagroal_append(data, "  </table>\n");
+   data = pgagroal_append(data, "  <h2>pgagroal_server_pause_total</h2>\n");
+   data = pgagroal_append(data, "  <p>\n");
+   data = pgagroal_append(data, "   Successful pause operations per server\n");
+   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <table>\n");
+   data = pgagroal_append(data, "    <tbody>\n");
+   data = pgagroal_append(data, "      <tr>\n");
+   data = pgagroal_append(data, "        <td>name</td>\n");
+   data = pgagroal_append(data, "        <td>The name of the server</td>\n");
+   data = pgagroal_append(data, "      </tr>\n");
+   data = pgagroal_append(data, "      <tr>\n");
+   data = pgagroal_append(data, "        <td>state</td>\n");
+   data = pgagroal_append(data, "        <td>The server state\n");
+   data = pgagroal_append(data, "          <ul>\n");
+   data = pgagroal_append(data, "            <li>not_init</li>\n");
+   data = pgagroal_append(data, "            <li>primary</li>\n");
+   data = pgagroal_append(data, "            <li>replica</li>\n");
+   data = pgagroal_append(data, "            <li>failover</li>\n");
+   data = pgagroal_append(data, "            <li>failed</li>\n");
+   data = pgagroal_append(data, "          </ul>\n");
+   data = pgagroal_append(data, "        </td>\n");
+   data = pgagroal_append(data, "      </tr>\n");
+   data = pgagroal_append(data, "    </tbody>\n");
+   data = pgagroal_append(data, "  </table>\n");
+   data = pgagroal_append(data, "  <h2>pgagroal_server_resume_total</h2>\n");
+   data = pgagroal_append(data, "  <p>\n");
+   data = pgagroal_append(data, "   Successful resume operations per server\n");
+   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <table>\n");
+   data = pgagroal_append(data, "    <tbody>\n");
+   data = pgagroal_append(data, "      <tr>\n");
+   data = pgagroal_append(data, "        <td>name</td>\n");
+   data = pgagroal_append(data, "        <td>The name of the server</td>\n");
+   data = pgagroal_append(data, "      </tr>\n");
+   data = pgagroal_append(data, "      <tr>\n");
+   data = pgagroal_append(data, "        <td>state</td>\n");
+   data = pgagroal_append(data, "        <td>The server state\n");
+   data = pgagroal_append(data, "          <ul>\n");
+   data = pgagroal_append(data, "            <li>not_init</li>\n");
+   data = pgagroal_append(data, "            <li>primary</li>\n");
+   data = pgagroal_append(data, "            <li>replica</li>\n");
+   data = pgagroal_append(data, "            <li>failover</li>\n");
+   data = pgagroal_append(data, "            <li>failed</li>\n");
+   data = pgagroal_append(data, "          </ul>\n");
+   data = pgagroal_append(data, "        </td>\n");
+   data = pgagroal_append(data, "      </tr>\n");
+   data = pgagroal_append(data, "    </tbody>\n");
+   data = pgagroal_append(data, "  </table>\n");
+   data = pgagroal_append(data, "  <h2>pgagroal_server_pause_state</h2>\n");
+   data = pgagroal_append(data, "  <p>\n");
+   data = pgagroal_append(data, "   The pause state of the server (0 = running, 1 = paused)\n");
+   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <table>\n");
+   data = pgagroal_append(data, "    <tbody>\n");
+   data = pgagroal_append(data, "      <tr>\n");
+   data = pgagroal_append(data, "        <td>name</td>\n");
+   data = pgagroal_append(data, "        <td>The name of the server</td>\n");
+   data = pgagroal_append(data, "      </tr>\n");
+   data = pgagroal_append(data, "    </tbody>\n");
+   data = pgagroal_append(data, "  </table>\n");
+   data = pgagroal_append(data, "  <h2>pgagroal_pause_pending_active_connections</h2>\n");
+   data = pgagroal_append(data, "  <p>\n");
+   data = pgagroal_append(data, "   The number of slots still in use on a paused server (0 when fully drained)\n");
+   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <table>\n");
+   data = pgagroal_append(data, "    <tbody>\n");
+   data = pgagroal_append(data, "      <tr>\n");
+   data = pgagroal_append(data, "        <td>name</td>\n");
+   data = pgagroal_append(data, "        <td>The name of the server</td>\n");
+   data = pgagroal_append(data, "      </tr>\n");
+   data = pgagroal_append(data, "    </tbody>\n");
+   data = pgagroal_append(data, "  </table>\n");
+   data = pgagroal_append(data, "  <h2>pgagroal_server_last_paused_timestamp</h2>\n");
+   data = pgagroal_append(data, "  <p>\n");
+   data = pgagroal_append(data, "   The Unix time when the server was paused (0 if running). Duration is derived as time() minus this value\n");
+   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <table>\n");
+   data = pgagroal_append(data, "    <tbody>\n");
+   data = pgagroal_append(data, "      <tr>\n");
+   data = pgagroal_append(data, "        <td>name</td>\n");
+   data = pgagroal_append(data, "        <td>The name of the server</td>\n");
    data = pgagroal_append(data, "      </tr>\n");
    data = pgagroal_append(data, "    </tbody>\n");
    data = pgagroal_append(data, "  </table>\n");
@@ -2379,6 +2507,102 @@ general_information(prometheus_metrics_container_t* container)
       data = NULL;
    }
 
+   data = pgagroal_append(data, "#HELP pgagroal_server_pause_total The number of successful pause operations per server\n");
+   data = pgagroal_append(data, "#TYPE pgagroal_server_pause_total counter\n");
+   FOREACH_VALID_SERVER
+   {
+      int state = atomic_load(&config->servers[i].state);
+
+      data = pgagroal_append(data, "pgagroal_server_pause_total{");
+
+      data = pgagroal_append(data, "name=\"");
+      data = pgagroal_append(data, config->servers[i].name);
+      data = pgagroal_append(data, "\",");
+
+      data = pgagroal_append(data, "state=\"");
+
+      switch (state)
+      {
+         case SERVER_NOTINIT:
+         case SERVER_NOTINIT_PRIMARY:
+            data = pgagroal_append(data, "not_init");
+            break;
+         case SERVER_PRIMARY:
+            data = pgagroal_append(data, "primary");
+            break;
+         case SERVER_REPLICA:
+            data = pgagroal_append(data, "replica");
+            break;
+         case SERVER_FAILOVER:
+            data = pgagroal_append(data, "failover");
+            break;
+         case SERVER_FAILED:
+            data = pgagroal_append(data, "failed");
+            break;
+         default:
+            break;
+      }
+
+      data = pgagroal_append(data, "\"} ");
+
+      data = pgagroal_append_ulong(data, atomic_load(&prometheus->server_pause_total[i]));
+      data = pgagroal_append(data, "\n");
+   }
+   if (data != NULL)
+   {
+      add_metric_to_art(container->general_metrics, "pgagroal_server_pause_total", data, NULL, NULL, 0);
+      free(data);
+      data = NULL;
+   }
+
+   data = pgagroal_append(data, "#HELP pgagroal_server_resume_total The number of successful resume operations per server\n");
+   data = pgagroal_append(data, "#TYPE pgagroal_server_resume_total counter\n");
+   FOREACH_VALID_SERVER
+   {
+      int state = atomic_load(&config->servers[i].state);
+
+      data = pgagroal_append(data, "pgagroal_server_resume_total{");
+
+      data = pgagroal_append(data, "name=\"");
+      data = pgagroal_append(data, config->servers[i].name);
+      data = pgagroal_append(data, "\",");
+
+      data = pgagroal_append(data, "state=\"");
+
+      switch (state)
+      {
+         case SERVER_NOTINIT:
+         case SERVER_NOTINIT_PRIMARY:
+            data = pgagroal_append(data, "not_init");
+            break;
+         case SERVER_PRIMARY:
+            data = pgagroal_append(data, "primary");
+            break;
+         case SERVER_REPLICA:
+            data = pgagroal_append(data, "replica");
+            break;
+         case SERVER_FAILOVER:
+            data = pgagroal_append(data, "failover");
+            break;
+         case SERVER_FAILED:
+            data = pgagroal_append(data, "failed");
+            break;
+         default:
+            break;
+      }
+
+      data = pgagroal_append(data, "\"} ");
+
+      data = pgagroal_append_ulong(data, atomic_load(&prometheus->server_resume_total[i]));
+      data = pgagroal_append(data, "\n");
+   }
+   if (data != NULL)
+   {
+      add_metric_to_art(container->general_metrics, "pgagroal_server_resume_total", data, NULL, NULL, 0);
+      free(data);
+      data = NULL;
+   }
+
    data = pgagroal_append(data, "#HELP pgagroal_logging_info The number of INFO logging statements\n");
    data = pgagroal_append(data, "#TYPE pgagroal_logging_info gauge\n");
    data = pgagroal_append(data, "pgagroal_logging_info ");
@@ -2483,6 +2707,75 @@ general_information(prometheus_metrics_container_t* container)
       data = pgagroal_append(data, "\n");
    }
    data = pgagroal_append(data, "\n");
+
+   /* Pause metrics are derived from authoritative state:
+    *   - paused  : explicit bool on struct server
+    *   - pending : count of STATE_IN_USE slots on a paused server
+    * A server is fully drained when paused with pending == 0. */
+   {
+      int pending_per_server[NUMBER_OF_SERVERS];
+
+      for (int s = 0; s < config->number_of_servers; s++)
+      {
+         pending_per_server[s] = 0;
+      }
+      for (int i = 0; i < config->max_connections; i++)
+      {
+         int srv = config->connections[i].server;
+         if (srv >= 0 && srv < config->number_of_servers &&
+             config->servers[srv].paused &&
+             atomic_load(&config->states[i]) == STATE_IN_USE)
+         {
+            pending_per_server[srv]++;
+         }
+      }
+
+      data = pgagroal_append(data, "#HELP pgagroal_server_pause_state The pause state of the server (0 = running, 1 = paused)\n");
+      data = pgagroal_append(data, "#TYPE pgagroal_server_pause_state gauge\n");
+      FOREACH_VALID_SERVER
+      {
+         int v = config->servers[i].paused ? 1 : 0;
+         data = pgagroal_append(data, "pgagroal_server_pause_state{name=\"");
+         data = pgagroal_append(data, config->servers[i].name);
+         data = pgagroal_append(data, "\"} ");
+         data = pgagroal_append_int(data, v);
+         data = pgagroal_append(data, "\n");
+      }
+      add_metric_to_art(container->general_metrics, "pgagroal_server_pause_state", data, NULL, NULL, 0);
+      free(data);
+      data = NULL;
+
+      data = pgagroal_append(data, "#HELP pgagroal_pause_pending_active_connections Slots still STATE_IN_USE on a paused server\n");
+      data = pgagroal_append(data, "#TYPE pgagroal_pause_pending_active_connections gauge\n");
+      FOREACH_VALID_SERVER
+      {
+         data = pgagroal_append(data, "pgagroal_pause_pending_active_connections{name=\"");
+         data = pgagroal_append(data, config->servers[i].name);
+         data = pgagroal_append(data, "\"} ");
+         data = pgagroal_append_int(data, pending_per_server[i]);
+         data = pgagroal_append(data, "\n");
+      }
+      add_metric_to_art(container->general_metrics, "pgagroal_pause_pending_active_connections", data, NULL, NULL, 0);
+      free(data);
+      data = NULL;
+
+      /* Unix timestamp of the current pause (0 when the server is running).
+       * Duration is derived in PromQL: time() - pgagroal_server_last_paused_timestamp. */
+      data = pgagroal_append(data, "#HELP pgagroal_server_last_paused_timestamp Unix time when the server was paused (0 if running)\n");
+      data = pgagroal_append(data, "#TYPE pgagroal_server_last_paused_timestamp gauge\n");
+      FOREACH_VALID_SERVER
+      {
+         uint64_t ts = config->servers[i].paused ? (uint64_t)config->servers[i].last_paused : 0;
+         data = pgagroal_append(data, "pgagroal_server_last_paused_timestamp{name=\"");
+         data = pgagroal_append(data, config->servers[i].name);
+         data = pgagroal_append(data, "\"} ");
+         data = pgagroal_append_ulong(data, ts);
+         data = pgagroal_append(data, "\n");
+      }
+      add_metric_to_art(container->general_metrics, "pgagroal_server_last_paused_timestamp", data, NULL, NULL, 0);
+      free(data);
+      data = NULL;
+   }
 
    data = pgagroal_append(data, "#HELP pgagroal_wait_time The waiting time of clients\n");
    data = pgagroal_append(data, "#TYPE pgagroal_wait_time gauge\n");
