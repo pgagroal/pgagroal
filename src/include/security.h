@@ -81,6 +81,16 @@ int
 pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl);
 
 /**
+ * Authenticate a management user of the coordinator
+ * @param client_fd The descriptor
+ * @param address The client address
+ * @param client_ssl The client SSL context
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_coordinator_management_auth(int client_fd, char* address, SSL** client_ssl);
+
+/**
  * Connect using SCRAM-SHA256
  * @param username The user name
  * @param password The password

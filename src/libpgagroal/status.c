@@ -162,6 +162,8 @@ status_details(bool details, struct json* response)
    config = (struct main_configuration*)shmem;
 
    pgagroal_json_put(response, MANAGEMENT_ARGUMENT_STATUS, (uintptr_t)(config->gracefully ? "Graceful shutdown" : "Running"), ValueString);
+   pgagroal_json_put(response, MANAGEMENT_ARGUMENT_PORT, (uintptr_t)config->common.port, ValueInt32);
+   pgagroal_json_put(response, MANAGEMENT_ARGUMENT_MANAGEMENT, (uintptr_t)config->management, ValueInt32);
 
    for (int i = 0; i < config->max_connections; i++)
    {

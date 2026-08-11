@@ -66,6 +66,7 @@ extern "C" {
 #define EXPERIMENTAL_FEATURE_IOVECS                 0
 #define PGAGROAL_CONTEXT_MAIN                       0
 #define PGAGROAL_CONTEXT_VAULT                      1
+#define PGAGROAL_CONTEXT_COORDINATOR                2
 
 #define ALIGNMENT                                   sysconf(_SC_PAGESIZE)
 #define MAX_EVENTS                                  32
@@ -442,7 +443,7 @@ pgagroal_wait_recv(void);
 
 /**
  * Set the execution context for event loop initialization
- * @param context PGAGROAL_CONTEXT_MAIN or PGAGROAL_CONTEXT_VAULT
+ * @param context PGAGROAL_CONTEXT_MAIN, PGAGROAL_CONTEXT_VAULT or PGAGROAL_CONTEXT_COORDINATOR
  */
 void pgagroal_event_set_context(int context);
 

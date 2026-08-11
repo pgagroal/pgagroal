@@ -46,6 +46,11 @@ extern "C" {
  * configuration file.
  */
 #define PGAGROAL_VAULT_INI_SECTION "pgagroal-vault"
+/*
+ * The main section that must be present in the `pgagroal-coordinator.conf`
+ * configuration file.
+ */
+#define PGAGROAL_COORDINATOR_INI_SECTION "pgagroal-coordinator"
 
 /*
  * The following constants are used to clearly identify
@@ -226,6 +231,14 @@ int
 pgagroal_vault_init_configuration(void* shmem);
 
 /**
+ * Initialize the coordinator configuration structure
+ * @param shmem The shared memory segment
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_coordinator_init_configuration(void* shmem);
+
+/**
  * Read the configuration from a file
  * @param shmem The shared memory segment
  * @param filename The file name
@@ -274,6 +287,30 @@ pgagroal_vault_read_configuration(void* shmem, char* filename, bool emit_warning
  */
 int
 pgagroal_vault_validate_configuration(void* shmem);
+
+/**
+ * Read the configuration of coordinator from a file
+ * @param shmem The shared memory segment
+ * @param filename The file name
+ * @param emit_warnings true if unknown parameters have to
+ *        reported on stderr
+ * @return 0 (i.e, PGAGROAL_CONFIGURATION_STATUS_OK) upon success, otherwise
+ *         - PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND if the file does not exists
+ *         - PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG  if the file contains too many sections
+ *         - a positive value to indicate how many errors (with regard to sections) have been found
+ *         - PGAGROAL_CONFIGURATION_STATUS_KO if the file has generic errors, most notably it lacks
+ *           a [pgagroal-coordinator] section
+ */
+int
+pgagroal_coordinator_read_configuration(void* shmem, char* filename, bool emit_warnings);
+
+/**
+ * Validate the configuration of coordinator
+ * @param shmem The shared memory segment
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_coordinator_validate_configuration(void* shmem);
 
 /**
  * Read the HBA configuration from a file
@@ -395,6 +432,34 @@ pgagroal_read_admins_configuration(void* shmem, char* filename);
  */
 int
 pgagroal_vault_read_users_configuration(void* shmem, char* filename);
+
+/**
+ * Read the USERS configuration of coordinator from a file
+ * @param shmem The shared memory segment
+ * @param filename The file name
+ * @return 0 (i.e, PGAGROAL_CONFIGURATION_STATUS_OK) upon success, otherwise
+ *         - PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND if the file does not exists
+ *         - PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG  if the file contains too many users
+ *           (i.e., more users than the number defined in the limits)
+ *         - PGAGROAL_CONFIGURATION_STATUS_KO if the file has some problem (e.g., cannot be decrypted)
+ *         - PGAGROAL_CONFIGURATION_STATUS_CANNOT_DECRYPT to indicate a problem reading the content of the file
+ */
+int
+pgagroal_coordinator_read_users_configuration(void* shmem, char* filename);
+
+/**
+ * Read the ADMINS configuration of coordinator from a file
+ * @param shmem The shared memory segment
+ * @param filename The file name
+ * @return 0 (i.e, PGAGROAL_CONFIGURATION_STATUS_OK) upon success, otherwise
+ *         - PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND if the file does not exists
+ *         - PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG  if the file contains too many users
+ *           (i.e., more users than the number defined in the limits)
+ *         - PGAGROAL_CONFIGURATION_STATUS_KO if the file has some problem (e.g., cannot be decrypted)
+ *         - PGAGROAL_CONFIGURATION_STATUS_CANNOT_DECRYPT to indicate a problem reading the content of the file
+ */
+int
+pgagroal_coordinator_read_admins_configuration(void* shmem, char* filename);
 
 /**
  * Validate the ADMINS configuration from a file
@@ -550,6 +615,29 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
                                    char* section,
                                    char* key,
                                    char* value);
+
+/**
+ * Function to apply a single configuration parameter.
+ *
+ * This is the backbone function used when parsing the coordinator configuration
+ * file and is used to set any of the allowed parameters.
+ *
+ * @param config the configuration to apply values onto
+ * @param node the node to which the configuration parameter refers to, if needed
+ * @param section the section of the file, main or node
+ * @param key the parameter name of the configuration
+ * @param value the value of the configuration
+ * @return 0 on success, 1 if the key is unknown within the section
+ *
+ * Examples of usage:
+ *   pgagroal_apply_coordinator_configuration( config, NULL, PGAGROAL_COORDINATOR_INI_SECTION, "log_level", "info" );
+ */
+int
+pgagroal_apply_coordinator_configuration(struct coordinator_configuration* config,
+                                         struct coordinator_node* node,
+                                         char* section,
+                                         char* key,
+                                         char* value);
 
 /**
  * Apply a single configuration change

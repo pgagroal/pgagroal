@@ -573,6 +573,19 @@ target_link_libraries(pgagroal-vault-bin pgagroal)
 install(TARGETS pgagroal-vault-bin DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 #
+# Build pgagroal-coordinator
+#
+add_executable(pgagroal-coordinator-bin coordinator.c ${RESOURCE_OBJECT})
+if (CMAKE_C_LINK_PIE_SUPPORTED)
+  set_target_properties(pgagroal-coordinator-bin PROPERTIES LINKER_LANGUAGE C POSITION_INDEPENDENT_CODE TRUE OUTPUT_NAME pgagroal-coordinator)
+else()
+  set_target_properties(pgagroal-coordinator-bin PROPERTIES LINKER_LANGUAGE C POSITION_INDEPENDENT_CODE FALSE OUTPUT_NAME pgagroal-coordinator)
+endif()
+target_link_libraries(pgagroal-coordinator-bin pgagroal)
+
+install(TARGETS pgagroal-coordinator-bin DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+#
 # Build pgagroal-config
 #
 add_executable(pgagroal-config-bin config.c ${RESOURCE_OBJECT})
