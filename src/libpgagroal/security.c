@@ -102,7 +102,9 @@ static bool is_disabled(char* database);
 static int get_hba_method(int index);
 
 static char* get_frontend_password(char* username);
-static char* get_admin_password(char* username);
+static char* get_admin_password(struct user* admins, int number_of_admins, char* username);
+static int management_auth(int client_fd, char* address, SSL** client_ssl, bool use_hba,
+                           struct user* admins, int number_of_admins);
 
 char* pgagroal_get_user_password(char* username);
 
@@ -647,9 +649,32 @@ error:
 int
 pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
 {
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
+
+   return management_auth(client_fd, address, client_ssl, true,
+                          &config->admins[0], config->number_of_admins);
+}
+
+int
+pgagroal_coordinator_management_auth(int client_fd, char* address, SSL** client_ssl)
+{
+   struct coordinator_configuration* config;
+
+   config = (struct coordinator_configuration*)shmem;
+
+   return management_auth(client_fd, address, client_ssl, false,
+                          &config->admins[0], config->number_of_admins);
+}
+
+static int
+management_auth(int client_fd, char* address, SSL** client_ssl, bool use_hba,
+                struct user* admins, int number_of_admins)
+{
    int status = MESSAGE_STATUS_ERROR;
    int hba_method;
-   struct main_configuration* config;
+   struct configuration* config;
    struct message* msg = NULL;
    struct message* request_msg = NULL;
    int32_t request;
@@ -659,14 +684,14 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
    char* password = NULL;
    SSL* c_ssl = NULL;
 
-   config = (struct main_configuration*)shmem;
+   config = (struct configuration*)shmem;
 
    *client_ssl = NULL;
 
    pgagroal_memory_init();
 
    /* Receive client calls - at any point if client exits return AUTH_ERROR */
-   status = pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
+   status = pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->authentication_timeout, FORMAT_TIME_S), &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
@@ -679,7 +704,7 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
    {
       pgagroal_log_debug("SSL request from client: %d", client_fd);
 
-      if (config->common.tls)
+      if (config->tls)
       {
          SSL_CTX* ctx = NULL;
 
@@ -689,7 +714,7 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
             goto error;
          }
 
-         if (pgagroal_create_ssl_server(ctx, config->common.tls_key_file, config->common.tls_cert_file, config->common.tls_ca_file, client_fd, &c_ssl))
+         if (pgagroal_create_ssl_server(ctx, config->tls_key_file, config->tls_cert_file, config->tls_ca_file, client_fd, &c_ssl))
          {
             goto error;
          }
@@ -714,7 +739,7 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
             goto error;
          }
 
-         status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
+         status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->authentication_timeout, FORMAT_TIME_S), &msg);
          if (status != MESSAGE_STATUS_OK)
          {
             goto error;
@@ -730,7 +755,7 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
          }
          pgagroal_clear_message(msg);
 
-         status = pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
+         status = pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->authentication_timeout, FORMAT_TIME_S), &msg);
          if (status != MESSAGE_STATUS_OK)
          {
             goto error;
@@ -755,6 +780,12 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
          pgagroal_write_connection_refused(c_ssl, client_fd);
          pgagroal_write_empty(c_ssl, client_fd);
          goto bad_password;
+      }
+
+      /* The coordinator has no HBA file */
+      if (!use_hba)
+      {
+         goto skip_hba;
       }
 
       /* TLS scenario */
@@ -785,7 +816,9 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
          goto bad_password;
       }
 
-      password = get_admin_password(username);
+skip_hba:
+
+      password = get_admin_password(admins, number_of_admins, username);
       if (password == NULL)
       {
          pgagroal_log_debug("remote_management_auth: password: %s / admin / %s", username, address);
@@ -1954,14 +1987,14 @@ client_scram256(SSL* c_ssl, int client_fd, char* username __attribute__((unused)
    size_t server_signature_calc_length = 0;
    char* base64_server_signature_calc = NULL;
    size_t base64_server_signature_calc_length;
-   struct main_configuration* config;
+   struct configuration* config;
    struct message* msg = NULL;
    struct message* sasl_continue = NULL;
    struct message* sasl_final = NULL;
 
    pgagroal_log_debug("client_scram256 %d %d", client_fd, slot);
 
-   config = (struct main_configuration*)shmem;
+   config = (struct configuration*)shmem;
 
    status = pgagroal_write_auth_scram256(c_ssl, client_fd);
    if (status != MESSAGE_STATUS_OK)
@@ -1976,7 +2009,7 @@ retry:
    status = pgagroal_read_timeout_message(c_ssl, client_fd, 1, &msg);
    if (status != MESSAGE_STATUS_OK)
    {
-      if (difftime(time(NULL), start_time) < pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S))
+      if (difftime(time(NULL), start_time) < pgagroal_time_convert(config->authentication_timeout, FORMAT_TIME_S))
       {
          if (pgagroal_socket_isvalid(client_fd))
          /* Sleep for 100ms */
@@ -2033,7 +2066,7 @@ retry:
       goto error;
    }
 
-   status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
+   status = pgagroal_read_timeout_message(c_ssl, client_fd, pgagroal_time_convert(config->authentication_timeout, FORMAT_TIME_S), &msg);
    if (status != MESSAGE_STATUS_OK)
    {
       goto error;
@@ -3214,17 +3247,13 @@ get_frontend_password(char* username)
 }
 
 static char*
-get_admin_password(char* username)
+get_admin_password(struct user* admins, int number_of_admins, char* username)
 {
-   struct main_configuration* config;
-
-   config = (struct main_configuration*)shmem;
-
-   for (int i = 0; i < config->number_of_admins; i++)
+   for (int i = 0; i < number_of_admins; i++)
    {
-      if (!strcmp(&config->admins[i].username[0], username))
+      if (!strcmp(&admins[i].username[0], username))
       {
-         return &config->admins[i].password[0];
+         return &admins[i].password[0];
       }
    }
 

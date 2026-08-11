@@ -65,6 +65,9 @@ extern "C" {
 #define PGAGROAL_DEFAULT_SUPERUSER_FILE          PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_superuser.conf"
 #define PGAGROAL_DEFAULT_VAULT_CONF_FILE         PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_vault.conf"
 #define PGAGROAL_DEFAULT_VAULT_USERS_FILE        PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_vault_users.conf"
+#define PGAGROAL_DEFAULT_COORDINATOR_CONF_FILE   PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal-coordinator.conf"
+#define PGAGROAL_DEFAULT_COORDINATOR_USERS_FILE  PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal-coordinator-users.conf"
+#define PGAGROAL_DEFAULT_COORDINATOR_ADMINS_FILE PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal-coordinator-admins.conf"
 
 #define MAX_PROCESS_TITLE_LENGTH                 256
 
@@ -101,6 +104,8 @@ extern "C" {
 #define MAX_PATH                                 1024
 #define MISC_LENGTH                              128
 #define NUMBER_OF_SERVERS                        64
+#define NUMBER_OF_NODES                          8
+#define NUMBER_OF_COORDINATOR_CLIENTS            512
 #ifdef DEBUG
 #define MAX_NUMBER_OF_CONNECTIONS 8
 #else
@@ -683,6 +688,60 @@ struct vault_configuration
    int ev_backend;                   /**< Selected ev backend */
    int tls_cert_auth_mode;           /**< TLS certificate authentication mode: verify-ca (0) or verify-full (1) */
    struct vault_server vault_server; /**< The vault servers */
+} __attribute__((aligned(64)));
+
+/** @struct coordinator_node
+ * Defines a pgagroal instance fronted by the coordinator.
+ *
+ * name, host, management and user are read from the configuration. port and
+ * role are discovered through the management protocol, and are undefined
+ * until discovery has run.
+ */
+struct coordinator_node
+{
+   char name[MISC_LENGTH];         /**< The name of the node */
+   char host[MISC_LENGTH];         /**< The host of the node */
+   char user[MAX_USERNAME_LENGTH]; /**< The users file entry used to authenticate to this node */
+   int management;                 /**< The management port of the node */
+   atomic_int port;                /**< The data-plane port of the node (discovered) */
+   atomic_schar role;              /**< The role of the node (SERVER_PRIMARY / SERVER_REPLICA) */
+   atomic_schar reachable;         /**< The reachability of the node (SERVER_HEALTH_*) */
+   bool valid;                     /**< Is the node valid */
+   int lineno;                     /**< The line number within the configuration file */
+   int user_index;                 /**< The resolved index into coordinator_configuration.users, or -1 */
+} __attribute__((aligned(64)));
+
+/** @struct coordinator_client
+ * Defines a proxy child servicing a client connection
+ */
+struct coordinator_client
+{
+   atomic_int pid;  /**< 0 if free, -1 if reserved, otherwise the process id */
+   atomic_int node; /**< The node the child proxies to */
+} __attribute__((aligned(64)));
+
+/** @struct coordinator_configuration
+ * Defines the configuration of pgagroal-coordinator
+ */
+struct coordinator_configuration
+{
+   struct configuration common;                                      /**< Common configurations */
+   char users_path[MAX_PATH];                                        /**< The users path */
+   char admins_path[MAX_PATH];                                       /**< The admins path */
+   char user[MAX_USERNAME_LENGTH];                                   /**< The default users file entry of the nodes */
+   int management;                                                   /**< The management port */
+   int ev_backend;                                                   /**< Selected ev backend */
+   int backlog;                                                      /**< The backlog for listen */
+   bool keep_running;                                                /**< Is the coordinator still running */
+   bool gracefully;                                                  /**< Is the coordinator in gracefully mode */
+   int number_of_nodes;                                              /**< The number of nodes */
+   int number_of_users;                                              /**< The number of users */
+   int number_of_admins;                                             /**< The number of admins */
+   atomic_int current_primary;                                       /**< The current primary node, or -1 if none */
+   struct coordinator_node nodes[NUMBER_OF_NODES];                   /**< The nodes */
+   struct user users[NUMBER_OF_NODES];                               /**< The outbound credentials */
+   struct user admins[NUMBER_OF_ADMINS];                             /**< The inbound credentials */
+   struct coordinator_client clients[NUMBER_OF_COORDINATOR_CLIENTS]; /**< The proxy children */
 } __attribute__((aligned(64)));
 
 /** @struct main_configuration

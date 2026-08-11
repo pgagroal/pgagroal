@@ -111,6 +111,7 @@ static bool is_same_tls(struct server* s1, struct server* s2);
 static bool is_valid_config_key(const char* config_key, struct config_key_info* key_info);
 
 static bool key_in_section(char* wanted, char* section, char* key, bool global, bool* unknown);
+static bool key_in_node_section(char* wanted, char* section, char* key, bool* unknown);
 static bool is_comment_line(char* line);
 static bool section_line(char* line, char* section);
 
@@ -1234,6 +1235,452 @@ fallback:
  *
  */
 int
+pgagroal_coordinator_init_configuration(void* shm)
+{
+   struct coordinator_configuration* config;
+
+   config = (struct coordinator_configuration*)shm;
+
+   config->common.port = 0;
+   config->common.tls = false;
+   config->common.authentication_timeout = PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT);
+   config->common.hugepage = HUGEPAGE_TRY;
+   config->common.log_type = PGAGROAL_LOGGING_TYPE_CONSOLE;
+   config->common.log_level = PGAGROAL_LOGGING_LEVEL_INFO;
+   config->common.log_connections = false;
+   config->common.log_disconnections = false;
+   config->common.log_mode = PGAGROAL_LOGGING_MODE_APPEND;
+   atomic_init(&config->common.log_lock, STATE_FREE);
+   memcpy(config->common.default_log_path, "pgagroal-coordinator.log", strlen("pgagroal-coordinator.log"));
+
+   config->management = 0;
+   config->ev_backend = PGAGROAL_EVENT_BACKEND_AUTO;
+   config->backlog = -1;
+   config->keep_running = true;
+   config->number_of_nodes = 0;
+   config->number_of_users = 0;
+   config->number_of_admins = 0;
+
+   atomic_init(&config->current_primary, -1);
+
+   for (int i = 0; i < NUMBER_OF_NODES; i++)
+   {
+      atomic_init(&config->nodes[i].port, 0);
+      atomic_init(&config->nodes[i].role, SERVER_NOTINIT);
+      atomic_init(&config->nodes[i].reachable, SERVER_HEALTH_UNKNOWN);
+      config->nodes[i].management = 0;
+      config->nodes[i].valid = false;
+      config->nodes[i].lineno = 0;
+      config->nodes[i].user_index = -1;
+   }
+
+   for (int i = 0; i < NUMBER_OF_COORDINATOR_CLIENTS; i++)
+   {
+      atomic_init(&config->clients[i].pid, 0);
+      atomic_init(&config->clients[i].node, -1);
+   }
+
+   return 0;
+}
+
+/**
+ *
+ */
+int
+pgagroal_coordinator_read_configuration(void* shm, char* filename, bool emit_warnings)
+{
+   FILE* file;
+   char section[LINE_LENGTH];
+   char line[LINE_LENGTH];
+   char* key = NULL;
+   char* value = NULL;
+   struct coordinator_configuration* config;
+   int idx_node = 0;
+   struct coordinator_node node;
+   bool has_coordinator_section = false;
+
+   // the max number of sections allowed in the configuration
+   // file is done by the max number of nodes plus the main
+   // `pgagroal-coordinator` configuration section
+   struct config_section sections[NUMBER_OF_NODES + 1];
+   int idx_sections = 0;
+   int lineno = 0;
+   int return_value = 0;
+
+   file = fopen(filename, "r");
+
+   if (!file)
+   {
+      return PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND;
+   }
+
+   memset(&section, 0, LINE_LENGTH);
+   memset(&sections, 0, sizeof(struct config_section) * (NUMBER_OF_NODES + 1));
+
+   memset(&node, 0, sizeof(struct coordinator_node));
+   atomic_init(&node.port, 0);
+   atomic_init(&node.role, SERVER_NOTINIT);
+   atomic_init(&node.reachable, SERVER_HEALTH_UNKNOWN);
+   node.user_index = -1;
+
+   config = (struct coordinator_configuration*)shm;
+
+   while (fgets(line, sizeof(line), file))
+   {
+      lineno++;
+      if (!is_empty_string(line) && !is_comment_line(line))
+      {
+         if (section_line(line, section))
+         {
+            // check we don't overflow the number of available sections
+            if (idx_sections >= NUMBER_OF_NODES + 1)
+            {
+               warnx("Max number of sections (%d) in configuration file <%s> reached!",
+                     NUMBER_OF_NODES + 1, filename);
+               fclose(file);
+               return PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG;
+            }
+
+            // initialize the section structure
+            memset(sections[idx_sections].name, 0, LINE_LENGTH);
+            memcpy(sections[idx_sections].name, section, strlen(section));
+            sections[idx_sections].lineno = lineno;
+            sections[idx_sections].main = !strncmp(section, PGAGROAL_COORDINATOR_INI_SECTION, LINE_LENGTH);
+            if (sections[idx_sections].main)
+            {
+               has_coordinator_section = true;
+            }
+
+            idx_sections++;
+
+            if (strcmp(section, PGAGROAL_COORDINATOR_INI_SECTION))
+            {
+               if (idx_node > 0 && idx_node <= NUMBER_OF_NODES)
+               {
+                  memcpy(&(config->nodes[idx_node - 1]), &node, sizeof(struct coordinator_node));
+               }
+               else if (idx_node > NUMBER_OF_NODES)
+               {
+                  warnx("Maximum number of nodes (%d) exceeded in file <%s>", NUMBER_OF_NODES, filename);
+               }
+
+               memset(&node, 0, sizeof(struct coordinator_node));
+               atomic_init(&node.port, 0);
+               atomic_init(&node.role, SERVER_NOTINIT);
+               atomic_init(&node.reachable, SERVER_HEALTH_UNKNOWN);
+               memcpy(&node.name, section, MIN(strlen(section), MISC_LENGTH - 1));
+               node.lineno = lineno;
+               node.valid = true;
+               node.user_index = -1;
+               idx_node++;
+            }
+         }
+         else
+         {
+            if (pgagroal_starts_with(line, "log_path") || pgagroal_starts_with(line, "tls_cert_file") || pgagroal_starts_with(line, "tls_key_file") || pgagroal_starts_with(line, "tls_ca_file"))
+            {
+               extract_syskey_value(line, &key, &value);
+            }
+            else
+            {
+               extract_key_value(line, &key, &value);
+            }
+
+            if (key && value)
+            {
+               bool unknown = false;
+
+               // apply the configuration setting
+               if (pgagroal_apply_coordinator_configuration(config, &node, section, key, value))
+               {
+                  unknown = true;
+               }
+
+               if (unknown && emit_warnings)
+               {
+                  // we cannot use logging here...
+                  // if we have a section, the key is not known,
+                  // otherwise it is outside of a section at all
+                  if (strlen(section) > 0)
+                  {
+                     warnx("Unknown key <%s> with value <%s> in section [%s] (line %d of file <%s>)",
+                           key,
+                           value,
+                           section,
+                           lineno,
+                           filename);
+                  }
+                  else
+                  {
+                     warnx("Key <%s> with value <%s> out of any section (line %d of file <%s>)",
+                           key,
+                           value,
+                           lineno,
+                           filename);
+                  }
+               }
+
+               free(key);
+               free(value);
+               key = NULL;
+               value = NULL;
+            }
+            else
+            {
+               free(key);
+               free(value);
+               key = NULL;
+               value = NULL;
+            }
+         }
+      }
+   }
+
+   if (strlen(node.name) > 0 && idx_node > 0 && idx_node <= NUMBER_OF_NODES)
+   {
+      memcpy(&(config->nodes[idx_node - 1]), &node, sizeof(struct coordinator_node));
+   }
+
+   config->number_of_nodes = MIN(idx_node, NUMBER_OF_NODES);
+
+   fclose(file);
+
+   // check there is at least one main section
+   if (!has_coordinator_section)
+   {
+      warnx("No coordinator configuration section [%s] found in file <%s>",
+            PGAGROAL_COORDINATOR_INI_SECTION, filename);
+      return PGAGROAL_CONFIGURATION_STATUS_KO;
+   }
+
+   // check for duplicated sections
+   for (int i = 0; i < NUMBER_OF_NODES + 1; i++)
+   {
+      for (int j = i + 1; j < NUMBER_OF_NODES + 1; j++)
+      {
+         if (!strlen(sections[i].name) || !strlen(sections[j].name))
+         {
+            continue;
+         }
+
+         if (!strncmp(sections[i].name, sections[j].name, LINE_LENGTH))
+         {
+            warnx("%s section [%s] duplicated at lines %d and %d of file <%s>",
+                  sections[i].main ? "Coordinator" : "Node",
+                  sections[i].name,
+                  sections[i].lineno,
+                  sections[j].lineno,
+                  filename);
+            return_value++; // this is an error condition!
+         }
+      }
+   }
+
+   return return_value;
+}
+
+/**
+ *
+ */
+int
+pgagroal_coordinator_validate_configuration(void* shm)
+{
+   struct coordinator_configuration* config;
+
+   config = (struct coordinator_configuration*)shm;
+
+   if (strlen(config->common.host) == 0)
+   {
+      pgagroal_log_fatal("pgagroal-coordinator: No host defined");
+      return 1;
+   }
+
+   if (config->common.port <= 0)
+   {
+      pgagroal_log_fatal("pgagroal-coordinator: No port defined");
+      return 1;
+   }
+
+   if (config->management <= 0)
+   {
+      pgagroal_log_fatal("pgagroal-coordinator: No management port defined");
+      return 1;
+   }
+
+   if (config->management == config->common.port)
+   {
+      pgagroal_log_fatal("pgagroal-coordinator: port and management must be different (%d)",
+                         config->common.port);
+      return 1;
+   }
+
+   if (config->common.authentication_timeout.s == 0)
+   {
+      config->common.authentication_timeout = PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT);
+   }
+
+   if (config->backlog <= 0)
+   {
+      config->backlog = 16;
+   }
+
+   if (config->number_of_nodes == 0)
+   {
+      pgagroal_log_fatal("pgagroal-coordinator: No nodes defined");
+      return 1;
+   }
+
+   for (int i = 0; i < config->number_of_nodes; i++)
+   {
+      if (!config->nodes[i].valid)
+      {
+         continue;
+      }
+
+      if (strlen(config->nodes[i].host) == 0)
+      {
+         pgagroal_log_fatal("pgagroal-coordinator: No host defined for node [%s] (%s:%d)",
+                            config->nodes[i].name,
+                            config->common.configuration_path,
+                            config->nodes[i].lineno);
+         return 1;
+      }
+
+      if (config->nodes[i].management <= 0)
+      {
+         pgagroal_log_fatal("pgagroal-coordinator: No management port defined for node [%s] (%s:%d)",
+                            config->nodes[i].name,
+                            config->common.configuration_path,
+                            config->nodes[i].lineno);
+         return 1;
+      }
+
+      if (strlen(config->nodes[i].user) == 0)
+      {
+         if (strlen(config->user) == 0)
+         {
+            pgagroal_log_fatal("pgagroal-coordinator: No user defined for node [%s] (%s:%d)",
+                               config->nodes[i].name,
+                               config->common.configuration_path,
+                               config->nodes[i].lineno);
+            return 1;
+         }
+
+         memcpy(&config->nodes[i].user, config->user, strlen(config->user));
+      }
+
+      config->nodes[i].user_index = -1;
+      for (int j = 0; j < config->number_of_users; j++)
+      {
+         if (!strcmp(config->users[j].username, config->nodes[i].user))
+         {
+            config->nodes[i].user_index = j;
+            break;
+         }
+      }
+
+      if (config->nodes[i].user_index == -1)
+      {
+         pgagroal_log_fatal("pgagroal-coordinator: User <%s> for node [%s] not found in the users file <%s>",
+                            config->nodes[i].user,
+                            config->nodes[i].name,
+                            config->users_path);
+         return 1;
+      }
+
+      for (int j = 0; j < i; j++)
+      {
+         if (!config->nodes[j].valid)
+         {
+            continue;
+         }
+
+         if (!strcmp(config->nodes[j].host, config->nodes[i].host) &&
+             config->nodes[j].management == config->nodes[i].management)
+         {
+            pgagroal_log_fatal("pgagroal-coordinator: Node [%s] duplicates node [%s] (%s:%d)",
+                               config->nodes[i].name,
+                               config->nodes[j].name,
+                               config->common.configuration_path,
+                               config->nodes[i].lineno);
+            return 1;
+         }
+      }
+   }
+
+   if (config->number_of_admins == 0)
+   {
+      pgagroal_log_warn("pgagroal-coordinator: Remote management enabled, but no admins are defined");
+   }
+
+   // Validate event backend (following main pattern)
+   if (config->ev_backend == PGAGROAL_EVENT_BACKEND_INVALID)
+   {
+      pgagroal_log_warn("pgagroal-coordinator: Configured event backend is invalid. Default to 'auto'");
+      config->ev_backend = PGAGROAL_EVENT_BACKEND_AUTO;
+   }
+
+   if (config->ev_backend == PGAGROAL_EVENT_BACKEND_EMPTY)
+   {
+      pgagroal_log_warn("pgagroal-coordinator: ev_backend configuration is empty. Default to 'auto'");
+      config->ev_backend = PGAGROAL_EVENT_BACKEND_AUTO;
+   }
+
+   if (config->ev_backend == PGAGROAL_EVENT_BACKEND_AUTO || !is_supported_backend(config->ev_backend))
+   {
+      config->ev_backend = DEFAULT_EVENT_BACKEND;
+   }
+
+#if HAVE_LINUX && HAVE_IO_URING
+   if (config->ev_backend == PGAGROAL_EVENT_BACKEND_IO_URING)
+   {
+      int fd;
+      char rval;
+
+      /* check if io_uring is enabled or works for supported configuration, else fallback to next backend */
+      fd = open("/proc/sys/kernel/io_uring_disabled", O_RDONLY);
+      if (fd < 0)
+      {
+         pgagroal_log_debug("pgagroal-coordinator: Failed to open file /proc/sys/kernel/io_uring_disabled: %s", strerror(errno));
+         goto fallback;
+      }
+      if (read(fd, &rval, 1) <= 0)
+      {
+         pgagroal_log_fatal("pgagroal-coordinator: Failed to read file /proc/sys/kernel/io_uring_disabled");
+         return 1;
+      }
+      if (close(fd) < 0)
+      {
+         pgagroal_log_fatal("pgagroal-coordinator: Failed to close file descriptor for /proc/sys/kernel/io_uring_disabled: %s", strerror(errno));
+         return 1;
+      }
+
+      /* see doc: https://docs.kernel.org/admin-guide/sysctl/kernel.html#io-uring-disabled */
+      if (config->common.tls || (rval == '1') || (rval == '2'))
+      {
+         if (config->common.tls)
+         {
+            pgagroal_log_warn("pgagroal-coordinator: io_uring not supported with tls on");
+         }
+         else
+         {
+            pgagroal_log_warn("pgagroal-coordinator: io_uring supported but not enabled. Enable io_uring by setting /proc/sys/kernel/io_uring_disabled to '0'");
+         }
+fallback:
+         config->ev_backend = PGAGROAL_EVENT_BACKEND_EPOLL;
+      }
+   }
+#endif /* HAVE_LINUX && HAVE_IO_URING */
+
+   pgagroal_log_debug("pgagroal-coordinator: Selected backend '%s'", to_backend_str(config->ev_backend));
+
+   return 0;
+}
+
+/**
+ *
+ */
+int
 pgagroal_read_hba_configuration(void* shm, char* filename)
 {
    FILE* file;
@@ -2199,6 +2646,266 @@ pgagroal_vault_read_users_configuration(void* shm, char* filename)
       status = PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG;
       goto error;
    }
+
+   free(master_key);
+
+   fclose(file);
+
+   return PGAGROAL_CONFIGURATION_STATUS_OK;
+
+error:
+
+   free(master_key);
+   free(password);
+   free(decoded);
+
+   if (file)
+   {
+      fclose(file);
+   }
+
+   return status;
+}
+
+/**
+ *
+ */
+int
+pgagroal_coordinator_read_users_configuration(void* shm, char* filename)
+{
+   FILE* file;
+   char line[MAX_USER_LINE_LENGTH];
+   int index;
+   char* master_key = NULL;
+   char* username = NULL;
+   char* password = NULL;
+   char* decoded = NULL;
+   size_t decoded_length = 0;
+   char* ptr = NULL;
+   struct coordinator_configuration* config;
+   int status = PGAGROAL_CONFIGURATION_STATUS_OK;
+
+   file = fopen(filename, "r");
+
+   if (!file)
+   {
+      status = PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND;
+      goto error;
+   }
+
+   if (pgagroal_get_master_key(&master_key))
+   {
+      status = PGAGROAL_CONFIGURATION_STATUS_KO;
+      goto error;
+   }
+
+   index = 0;
+   config = (struct coordinator_configuration*)shm;
+
+   while (fgets(line, sizeof(line), file))
+   {
+      if (!is_empty_string(line) && !is_comment_line(line))
+      {
+         if (index >= NUMBER_OF_NODES)
+         {
+            status = PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG;
+            goto error;
+         }
+
+         ptr = strtok(line, ":");
+
+         username = ptr;
+
+         ptr = strtok(NULL, ":");
+
+         if (ptr == NULL)
+         {
+            status = PGAGROAL_CONFIGURATION_STATUS_CANNOT_DECRYPT;
+            goto error;
+         }
+
+         if (pgagroal_base64_decode(ptr, strlen(ptr), (void**)&decoded, &decoded_length))
+         {
+            status = PGAGROAL_CONFIGURATION_STATUS_CANNOT_DECRYPT;
+            goto error;
+         }
+
+         if (pgagroal_decrypt(decoded, decoded_length, master_key, &password, ENCRYPTION_AES_256_GCM))
+         {
+            status = PGAGROAL_CONFIGURATION_STATUS_CANNOT_DECRYPT;
+            goto error;
+         }
+
+         // Strict UTF-8 validation after decryption
+         if (!pgagroal_utf8_valid((const unsigned char*)password, strlen(password)))
+         {
+            printf("pgagroal: Invalid COORDINATOR USER entry: invalid UTF-8 password for user '%s'\n", username);
+            printf("%s\n", line);
+            free(password);
+            free(decoded);
+            password = NULL;
+            decoded = NULL;
+            continue;
+         }
+
+         if (strlen(username) < MAX_USERNAME_LENGTH &&
+             strlen(password) < MAX_PASSWORD_LENGTH)
+         {
+            memcpy(&config->users[index].username, username, strlen(username));
+            memcpy(&config->users[index].password, password, strlen(password));
+         }
+         else
+         {
+            if (strlen(password) >= MAX_PASSWORD_LENGTH)
+            {
+               pgagroal_log_warn("Password too long for coordinator user '%s' (%zu bytes, max %d)",
+                                 username, strlen(password), MAX_PASSWORD_LENGTH - 1);
+            }
+            printf("pgagroal: Invalid COORDINATOR USER entry\n");
+            printf("%s\n", line);
+         }
+
+         free(password);
+         free(decoded);
+
+         password = NULL;
+         decoded = NULL;
+
+         index++;
+      }
+   }
+
+   config->number_of_users = index;
+
+   free(master_key);
+
+   fclose(file);
+
+   return PGAGROAL_CONFIGURATION_STATUS_OK;
+
+error:
+
+   free(master_key);
+   free(password);
+   free(decoded);
+
+   if (file)
+   {
+      fclose(file);
+   }
+
+   return status;
+}
+
+/**
+ *
+ */
+int
+pgagroal_coordinator_read_admins_configuration(void* shm, char* filename)
+{
+   FILE* file;
+   char line[MAX_USER_LINE_LENGTH];
+   int index;
+   char* master_key = NULL;
+   char* username = NULL;
+   char* password = NULL;
+   char* decoded = NULL;
+   size_t decoded_length = 0;
+   char* ptr = NULL;
+   struct coordinator_configuration* config;
+   int status = PGAGROAL_CONFIGURATION_STATUS_OK;
+
+   file = fopen(filename, "r");
+
+   if (!file)
+   {
+      status = PGAGROAL_CONFIGURATION_STATUS_FILE_NOT_FOUND;
+      goto error;
+   }
+
+   if (pgagroal_get_master_key(&master_key))
+   {
+      status = PGAGROAL_CONFIGURATION_STATUS_KO;
+      goto error;
+   }
+
+   index = 0;
+   config = (struct coordinator_configuration*)shm;
+
+   while (fgets(line, sizeof(line), file))
+   {
+      if (!is_empty_string(line) && !is_comment_line(line))
+      {
+         if (index >= NUMBER_OF_ADMINS)
+         {
+            status = PGAGROAL_CONFIGURATION_STATUS_FILE_TOO_BIG;
+            goto error;
+         }
+
+         ptr = strtok(line, ":");
+
+         username = ptr;
+
+         ptr = strtok(NULL, ":");
+
+         if (ptr == NULL)
+         {
+            status = PGAGROAL_CONFIGURATION_STATUS_CANNOT_DECRYPT;
+            goto error;
+         }
+
+         if (pgagroal_base64_decode(ptr, strlen(ptr), (void**)&decoded, &decoded_length))
+         {
+            status = PGAGROAL_CONFIGURATION_STATUS_CANNOT_DECRYPT;
+            goto error;
+         }
+
+         if (pgagroal_decrypt(decoded, decoded_length, master_key, &password, ENCRYPTION_AES_256_GCM))
+         {
+            status = PGAGROAL_CONFIGURATION_STATUS_CANNOT_DECRYPT;
+            goto error;
+         }
+
+         // Strict UTF-8 validation after decryption
+         if (!pgagroal_utf8_valid((const unsigned char*)password, strlen(password)))
+         {
+            printf("pgagroal: Invalid COORDINATOR ADMIN entry: invalid UTF-8 password for user '%s'\n", username);
+            printf("%s\n", line);
+            free(password);
+            free(decoded);
+            password = NULL;
+            decoded = NULL;
+            continue;
+         }
+
+         if (strlen(username) < MAX_USERNAME_LENGTH &&
+             strlen(password) < MAX_PASSWORD_LENGTH)
+         {
+            memcpy(&config->admins[index].username, username, strlen(username));
+            memcpy(&config->admins[index].password, password, strlen(password));
+         }
+         else
+         {
+            if (strlen(password) >= MAX_PASSWORD_LENGTH)
+            {
+               pgagroal_log_warn("Password too long for coordinator admin user '%s' (%zu bytes, max %d)",
+                                 username, strlen(password), MAX_PASSWORD_LENGTH - 1);
+            }
+            printf("pgagroal: Invalid COORDINATOR ADMIN entry\n");
+            printf("%s\n", line);
+         }
+
+         free(password);
+         free(decoded);
+
+         password = NULL;
+         decoded = NULL;
+
+         index++;
+      }
+   }
+
+   config->number_of_admins = index;
 
    free(master_key);
 
@@ -4345,6 +5052,7 @@ key_in_section(char* wanted, char* section, char* key, bool global, bool* unknow
    // appropriate
    if (global && (!strncmp(section, PGAGROAL_MAIN_INI_SECTION, MISC_LENGTH) ||
                   !strncmp(section, PGAGROAL_VAULT_INI_SECTION, MISC_LENGTH) ||
+                  !strncmp(section, PGAGROAL_COORDINATOR_INI_SECTION, MISC_LENGTH) ||
                   !strncmp(section, "health_check", MISC_LENGTH) ||
                   !strncmp(section, "prometheus", MISC_LENGTH)))
    {
@@ -4363,6 +5071,47 @@ key_in_section(char* wanted, char* section, char* key, bool global, bool* unknow
 
       return false;
    }
+}
+
+/**
+ * Function to see if the specified key belongs to a node section of the
+ * coordinator configuration file.
+ *
+ * @param wanted the key we want to match against
+ * @param section the section in which the key has been found
+ * @param key the key read from the configuration file
+ * @param unknown set to true if the key does match but the section does not.
+ *        This parameter can be omitted.
+ *
+ * @returns true if the key matches and the section is a node section.
+ *
+ * Example:
+ *  key_in_node_section("management", section, key, &unknown); // search for [node1] -> management
+ */
+static bool
+key_in_node_section(char* wanted, char* section, char* key, bool* unknown)
+{
+   // first of all, look for a key match
+   if (strncmp(wanted, key, MISC_LENGTH))
+   {
+      // no match at all
+      return false;
+   }
+
+   // if here there is a match on the key, ensure the section is
+   // a node one and not the main section
+   if (strlen(section) > 0 &&
+       strncmp(section, PGAGROAL_COORDINATOR_INI_SECTION, MISC_LENGTH))
+   {
+      return true;
+   }
+
+   if (unknown)
+   {
+      *unknown = true;
+   }
+
+   return false;
 }
 
 /**
@@ -6474,6 +7223,235 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
       }
    }
    return 0;
+}
+
+int
+pgagroal_apply_coordinator_configuration(struct coordinator_configuration* config,
+                                         struct coordinator_node* node,
+                                         char* section,
+                                         char* key,
+                                         char* value)
+{
+   size_t max = 0;
+   bool unknown = false;
+
+   if (key_in_section("host", section, key, true, NULL))
+   {
+      memset(config->common.host, 0, MISC_LENGTH);
+      max = strlen(value);
+      if (max > MISC_LENGTH - 1)
+      {
+         max = MISC_LENGTH - 1;
+      }
+      memcpy(config->common.host, value, max);
+   }
+   else if (key_in_node_section("host", section, key, &unknown))
+   {
+      memset(&node->name, 0, MISC_LENGTH);
+      max = strlen(section);
+      if (max > MISC_LENGTH - 1)
+      {
+         max = MISC_LENGTH - 1;
+      }
+      memcpy(&node->name, section, max);
+
+      memset(&node->host, 0, MISC_LENGTH);
+      max = strlen(value);
+      if (max > MISC_LENGTH - 1)
+      {
+         max = MISC_LENGTH - 1;
+      }
+      memcpy(&node->host, value, max);
+   }
+   else if (key_in_section("port", section, key, true, &unknown))
+   {
+      if (pgagroal_as_int(value, &config->common.port))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("management", section, key, true, NULL))
+   {
+      if (pgagroal_as_int(value, &config->management))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_node_section("management", section, key, &unknown))
+   {
+      memset(&node->name, 0, MISC_LENGTH);
+      max = strlen(section);
+      if (max > MISC_LENGTH - 1)
+      {
+         max = MISC_LENGTH - 1;
+      }
+      memcpy(&node->name, section, max);
+
+      if (pgagroal_as_int(value, &node->management))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("user", section, key, true, NULL))
+   {
+      memset(config->user, 0, MAX_USERNAME_LENGTH);
+      max = strlen(value);
+      if (max > MAX_USERNAME_LENGTH - 1)
+      {
+         max = MAX_USERNAME_LENGTH - 1;
+      }
+      memcpy(config->user, value, max);
+   }
+   else if (key_in_node_section("user", section, key, &unknown))
+   {
+      memset(&node->user, 0, MAX_USERNAME_LENGTH);
+      max = strlen(value);
+      if (max > MAX_USERNAME_LENGTH - 1)
+      {
+         max = MAX_USERNAME_LENGTH - 1;
+      }
+      memcpy(&node->user, value, max);
+   }
+   else if (key_in_section("ev_backend", section, key, true, &unknown))
+   {
+      config->ev_backend = pgagroal_to_backend_type(value);
+   }
+   else if (key_in_section("backlog", section, key, true, &unknown))
+   {
+      if (pgagroal_as_int(value, &config->backlog))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("tls", section, key, true, &unknown))
+   {
+      if (pgagroal_as_bool(value, &config->common.tls))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("tls_ca_file", section, key, true, &unknown))
+   {
+      memset(config->common.tls_ca_file, 0, MAX_PATH);
+      max = strlen(value);
+      if (max > MAX_PATH - 1)
+      {
+         max = MAX_PATH - 1;
+      }
+      memcpy(config->common.tls_ca_file, value, max);
+   }
+   else if (key_in_section("tls_cert_file", section, key, true, &unknown))
+   {
+      memset(config->common.tls_cert_file, 0, MAX_PATH);
+      max = strlen(value);
+      if (max > MAX_PATH - 1)
+      {
+         max = MAX_PATH - 1;
+      }
+      memcpy(config->common.tls_cert_file, value, max);
+   }
+   else if (key_in_section("tls_key_file", section, key, true, &unknown))
+   {
+      memset(config->common.tls_key_file, 0, MAX_PATH);
+      max = strlen(value);
+      if (max > MAX_PATH - 1)
+      {
+         max = MAX_PATH - 1;
+      }
+      memcpy(config->common.tls_key_file, value, max);
+   }
+   else if (key_in_section("authentication_timeout", section, key, true, &unknown))
+   {
+      if (pgagroal_as_seconds(value, &config->common.authentication_timeout, PGAGROAL_TIME_SEC(DEFAULT_AUTHENTICATION_TIMEOUT)))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("log_type", section, key, true, &unknown))
+   {
+      if (pgagroal_as_logging_type(value, &config->common.log_type))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("log_level", section, key, true, &unknown))
+   {
+      config->common.log_level = pgagroal_as_logging_level(value);
+   }
+   else if (key_in_section("log_path", section, key, true, &unknown))
+   {
+      max = strlen(value);
+      if (max > MISC_LENGTH - 1)
+      {
+         max = MISC_LENGTH - 1;
+      }
+      memcpy(config->common.log_path, value, max);
+   }
+   else if (key_in_section("log_rotation_size", section, key, true, &unknown))
+   {
+      if (pgagroal_as_logging_rotation_size(value, &config->common.log_rotation_size))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("log_rotation_age", section, key, true, &unknown))
+   {
+      if (pgagroal_as_seconds(value, &config->common.log_rotation_age, PGAGROAL_TIME_DISABLED))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("log_line_prefix", section, key, true, &unknown))
+   {
+      max = strlen(value);
+      if (max > MISC_LENGTH - 1)
+      {
+         max = MISC_LENGTH - 1;
+      }
+
+      memcpy(config->common.log_line_prefix, value, max);
+   }
+   else if (key_in_section("log_connections", section, key, true, &unknown))
+   {
+      if (pgagroal_as_bool(value, &config->common.log_connections))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("log_disconnections", section, key, true, &unknown))
+   {
+      if (pgagroal_as_bool(value, &config->common.log_disconnections))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("log_mode", section, key, true, &unknown))
+   {
+      if (pgagroal_as_logging_mode(value, &config->common.log_mode))
+      {
+         unknown = true;
+      }
+   }
+   else if (key_in_section("hugepage", section, key, true, &unknown))
+   {
+      if (pgagroal_as_hugepage(value, &config->common.hugepage))
+      {
+         unknown = true;
+      }
+   }
+   else
+   {
+      unknown = true;
+   }
+
+   if (unknown)
+   {
+      return 1;
+   }
+   else
+   {
+      return 0;
+   }
 }
 
 int

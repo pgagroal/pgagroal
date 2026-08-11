@@ -199,6 +199,14 @@ setup_ops(void)
          backend_type = vault_config->ev_backend;
       }
    }
+   else if (execution_context == PGAGROAL_CONTEXT_COORDINATOR)
+   {
+      struct coordinator_configuration* coordinator_config = (struct coordinator_configuration*)shmem;
+      if (coordinator_config)
+      {
+         backend_type = coordinator_config->ev_backend;
+      }
+   }
    else
    {
       struct main_configuration* main_config = (struct main_configuration*)shmem;
