@@ -410,23 +410,12 @@ master_key(char* password, bool generate_pwd, int pwd_length, int32_t output_for
       }
    }
 
-   memset(temp_path, 0, sizeof(temp_path));
-   pgagroal_snprintf(temp_path, sizeof(temp_path), "%s.XXXXXX", &buf[0]);
-   int fd = mkstemp(temp_path);
-   if (fd == -1)
+   if (pgagroal_mktemp(&buf[0], "w", temp_path, sizeof(temp_path), &file))
    {
-      warnx("Could not create temp master key file <%s>", temp_path);
+      warnx("Could not create temp master key file for <%s>", &buf[0]);
       goto error;
    }
    using_temp = true;
-
-   file = fdopen(fd, "w");
-   if (file == NULL)
-   {
-      warnx("Could not open temp master key file <%s>", temp_path);
-      close(fd);
-      goto error;
-   }
 
 #if defined(HAVE_OSX)
 #define PGAGROAL_GETENV(name) getenv(name)
@@ -648,8 +637,7 @@ add_user(char* users_path, char* username, char* password, bool generate_pwd, in
       do_free = false;
    }
 
-   users_file = fopen(users_path, "a+");
-   if (users_file == NULL)
+   if (pgagroal_fopen_secure(users_path, "a+", &users_file))
    {
       warnx("Could not append to users file <%s>", users_path);
       goto error;
@@ -947,7 +935,7 @@ update_user(char* users_path, char* username, char* password, bool generate_pwd,
 {
    FILE* users_file = NULL;
    FILE* users_file_tmp = NULL;
-   char tmpfilename[MISC_LENGTH];
+   char tmpfilename[MAX_PATH];
    char line[MISC_LENGTH];
    char line_copy[MISC_LENGTH];
    char* master_key = NULL;
@@ -989,18 +977,15 @@ update_user(char* users_path, char* username, char* password, bool generate_pwd,
       do_free = false;
    }
 
-   users_file = fopen(users_path, "r");
-   if (!users_file)
+   if (pgagroal_fopen_secure(users_path, "r", &users_file))
    {
       warnx("File <%s> not found", users_path);
       goto error;
    }
 
-   pgagroal_snprintf(tmpfilename, sizeof(tmpfilename), "%s.tmp", users_path);
-   users_file_tmp = fopen(tmpfilename, "w+");
-   if (users_file_tmp == NULL)
+   if (pgagroal_mktemp(users_path, "w+", tmpfilename, sizeof(tmpfilename), &users_file_tmp))
    {
-      warnx("Could not write to temporary user file <%s>", tmpfilename);
+      warnx("Could not create temporary user file for <%s>", users_path);
       goto error;
    }
 
@@ -1300,7 +1285,7 @@ remove_user(char* users_path, char* username, int32_t output_format)
 {
    FILE* users_file = NULL;
    FILE* users_file_tmp = NULL;
-   char tmpfilename[MISC_LENGTH];
+   char tmpfilename[MAX_PATH];
    char line[MISC_LENGTH];
    char line_copy[MISC_LENGTH];
    char* ptr = NULL;
@@ -1319,19 +1304,16 @@ remove_user(char* users_path, char* username, int32_t output_format)
       goto error;
    }
 
-   users_file = fopen(users_path, "r");
-   if (!users_file)
+   if (pgagroal_fopen_secure(users_path, "r", &users_file))
    {
       warnx("File <%s> not found", users_path);
       goto error;
    }
 
    memset(&tmpfilename, 0, sizeof(tmpfilename));
-   pgagroal_snprintf(tmpfilename, sizeof(tmpfilename), "%s.tmp", users_path);
-   users_file_tmp = fopen(tmpfilename, "w+");
-   if (users_file_tmp == NULL)
+   if (pgagroal_mktemp(users_path, "w+", tmpfilename, sizeof(tmpfilename), &users_file_tmp))
    {
-      warnx("Could not write to temporary user file <%s>", tmpfilename);
+      warnx("Could not create temporary user file for <%s>", users_path);
       goto error;
    }
 
@@ -1471,8 +1453,7 @@ list_users(char* users_path, int32_t output_format)
       goto error;
    }
 
-   users_file = fopen(users_path, "r");
-   if (!users_file)
+   if (pgagroal_fopen_secure(users_path, "r", &users_file))
    {
       goto error;
    }
@@ -1551,8 +1532,7 @@ create_response(char* users_path, struct json* json, struct json** response)
       goto error;
    }
 
-   users_file = fopen(users_path, "r");
-   if (!users_file)
+   if (pgagroal_fopen_secure(users_path, "r", &users_file))
    {
       goto error;
    }
