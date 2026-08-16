@@ -314,6 +314,39 @@ bool
 pgagroal_exists(const char* f);
 
 /**
+ * Open a file in a secure way
+ *
+ * Every mode that can write, including "r+", adds O_NOFOLLOW, so the last path
+ * component cannot be redirected through a symlink; O_CLOEXEC is always added.
+ * A created file is set to rw------- through the descriptor.
+ *
+ * @param path The path
+ * @param mode The mode, like "w", "wb", "r" or "r+", where an 'x' means exclusive creation
+ * @param file The resulting file
+ * @return 0 upon success, 1 if the file exists and the mode is exclusive, otherwise 2
+ */
+int
+pgagroal_fopen_secure(const char* path, const char* mode, FILE** file);
+
+/**
+ * Create a temporary file in a secure way
+ *
+ * The file is created with mkstemp() from a "<path>.XXXXXX" template, so the
+ * name is unpredictable and the file is created exclusively with 0600. Upon
+ * failure, including a template that does not fit in the result, no file is
+ * left behind and the result is empty.
+ *
+ * @param path The base path used to build the template
+ * @param mode The mode passed to fdopen(), like "w+"
+ * @param result The buffer receiving the generated file name
+ * @param result_size The size of the result buffer
+ * @param file The resulting file
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_mktemp(const char* path, const char* mode, char* result, size_t result_size, FILE** file);
+
+/**
  * Path is a regular file
  * @param f The path
  * @return The result
