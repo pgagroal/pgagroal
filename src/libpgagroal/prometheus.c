@@ -3585,7 +3585,7 @@ parse_certificate_file(const char* cert_path, struct certificate_info* cert_info
    current_time = cert_info->last_checked;
 
    // Try to open the certificate file
-   fp = fopen(cert_path, "r");
+   pgagroal_fopen_secure(cert_path, "r", &fp);
    if (!fp)
    {
       pgagroal_log_debug("Certificate file not accessible: %s (%s)", cert_path, strerror(errno));
