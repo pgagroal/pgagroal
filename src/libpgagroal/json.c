@@ -719,7 +719,7 @@ pgagroal_json_read_file(char* path, struct json** obj)
       goto error;
    }
 
-   file = fopen(path, "r");
+   pgagroal_fopen_secure(path, "r", &file);
 
    if (file == NULL)
    {
@@ -773,7 +773,7 @@ pgagroal_json_write_file(char* path, struct json* obj)
       goto error;
    }
 
-   file = fopen(path, "wb");
+   pgagroal_fopen_secure(path, "wb", &file);
    if (file == NULL)
    {
       pgagroal_log_error("Failed to create json file %s", path);

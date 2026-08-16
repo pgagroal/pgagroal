@@ -559,7 +559,7 @@ config_init(const char* output_path, bool quiet, bool force)
       }
    }
 
-   file = fopen(tmp_path, "w");
+   pgagroal_fopen_secure(tmp_path, "w", &file);
    if (file == NULL)
    {
       warn("Could not open temp file '%s'", tmp_path);
@@ -718,7 +718,7 @@ config_get(const char* file_path, const char* section, const char* key)
    bool in_section = false;
    char section_header[MISC_LENGTH];
 
-   file = fopen(file_path, "r");
+   pgagroal_fopen_secure(file_path, "r", &file);
    if (file == NULL)
    {
       warnx("Could not open file: %s", file_path);
@@ -844,7 +844,7 @@ config_set(const char* file_path, const char* section, const char* key, const ch
    pgagroal_snprintf(section_header, sizeof(section_header), "[%s]", section);
 
    /* Read all lines */
-   file = fopen(file_path, "r");
+   pgagroal_fopen_secure(file_path, "r", &file);
    if (file != NULL)
    {
       while (fgets(line_buf, sizeof(line_buf), file) != NULL && line_count < MAX_LINES)
@@ -1028,7 +1028,7 @@ config_set(const char* file_path, const char* section, const char* key, const ch
    pgagroal_snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", file_path);
 
    /* Write all lines back */
-   file = fopen(tmp_path, "w");
+   pgagroal_fopen_secure(tmp_path, "w", &file);
    if (file == NULL)
    {
       warn("Could not open file for writing: %s", tmp_path);
@@ -1109,7 +1109,7 @@ config_del(const char* file_path, const char* section, const char* key)
    memset(lines, 0, sizeof(lines));
    pgagroal_snprintf(section_header, sizeof(section_header), "[%s]", section);
 
-   file = fopen(file_path, "r");
+   pgagroal_fopen_secure(file_path, "r", &file);
    if (file == NULL)
    {
       warnx("Could not open file: %s", file_path);
@@ -1186,7 +1186,7 @@ config_del(const char* file_path, const char* section, const char* key)
    }
 
    pgagroal_snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", file_path);
-   file = fopen(tmp_path, "w");
+   pgagroal_fopen_secure(tmp_path, "w", &file);
    if (file == NULL)
    {
       warn("Could not open temp file for writing: %s", tmp_path);
@@ -1257,7 +1257,7 @@ config_ls(const char* file_path, const char* section)
    bool in_section = false;
    char section_header[MISC_LENGTH] = {0};
 
-   file = fopen(file_path, "r");
+   pgagroal_fopen_secure(file_path, "r", &file);
    if (file == NULL)
    {
       warnx("Could not open file: %s", file_path);
