@@ -88,7 +88,7 @@ apt-get install build-essential cmake libev-dev libssl-dev libsystemd-dev python
 For macOS using Homebrew:
 
 ```sh
-brew install cmake libev openssl@3 docutils zlib zstd lz4 bzip2
+brew install cmake openssl@3 docutils zlib zstd lz4 bzip2
 ```
 
 Note: On macOS, you may need to set additional environment variables for OpenSSL:
