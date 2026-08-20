@@ -1522,7 +1522,7 @@ error:
 int
 pgagroal_resolve_path(char* orig_path, char** new_path)
 {
-#if defined(HAVE_DARWIN) || defined(HAVE_OSX)
+#if defined(HAVE_OSX)
 #define GET_ENV(name) getenv(name)
 #else
 #define GET_ENV(name) secure_getenv(name)
