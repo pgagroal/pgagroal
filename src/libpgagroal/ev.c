@@ -141,8 +141,8 @@ static void init_watcher_message(struct io_watcher* watcher);
 /* context globals */
 
 static struct event_loop* loop = NULL;
-static _Atomic(struct signal_watcher*) signal_watchers[PGAGROAL_NSIG] = {0};
-static _Atomic(signal_cb) signal_callbacks[PGAGROAL_NSIG] = {0};
+static _Atomic(struct signal_watcher*) signal_watchers[PGAGROAL_NSIG];
+static _Atomic(signal_cb) signal_callbacks[PGAGROAL_NSIG];
 
 #if HAVE_LINUX
 
@@ -2050,5 +2050,15 @@ init_watcher_message(struct io_watcher* watcher)
       }
       watcher->msg->length = 0;
       watcher->msg->kind = 0;
+   }
+}
+
+static void __attribute__((constructor))
+pgagroal_ev_init(void)
+{
+   for (int i = 0; i < PGAGROAL_NSIG; i++)
+   {
+      atomic_store_explicit(&signal_watchers[i], NULL, memory_order_relaxed);
+      atomic_store_explicit(&signal_callbacks[i], NULL, memory_order_relaxed);
    }
 }
