@@ -59,6 +59,7 @@ Luca Ferrari <fluca1978@gmail.com>
 Haoran Zhang <andrewzhr9911@gmail.com>
 Bassam Adnan <mailbassam@gmail.com>
 Tejas Tyagi <tejastyagi.tt@gmail.com>
+R Sai Pranav <rajasaipranav0@gmail.com>
 ```
 
 ## Contributing
