@@ -60,8 +60,8 @@ static void session_destroy(void*, size_t);
 static void session_periodic(void);
 
 static bool in_tx;
-static int next_client_message;
-static int next_server_message;
+static struct postgresql_message_state client_message_state;
+static struct postgresql_message_state server_message_state;
 static bool saw_x = false;
 
 #define CLIENT_INIT   0
@@ -140,8 +140,8 @@ session_start(struct event_loop* loop __attribute__((unused)), struct worker_io*
    config = (struct main_configuration*)shmem;
 
    in_tx = false;
-   next_client_message = 0;
-   next_server_message = 0;
+   memset(&client_message_state, 0, sizeof(client_message_state));
+   memset(&server_message_state, 0, sizeof(server_message_state));
 
    for (int i = 0; i < config->max_connections; i++)
    {
@@ -283,6 +283,40 @@ session_periodic(void)
 }
 
 static void
+session_client_message(char kind, char* msg, int msglen __attribute__((unused)), void* arg)
+{
+   struct worker_io* wi = (struct worker_io*)arg;
+
+   /* The Q and E message tell us the execute of the simple query and the prepared statement */
+   if (kind == 'Q' || kind == 'E')
+   {
+      pgagroal_prometheus_query_count_add();
+      if (wi != NULL)
+         pgagroal_prometheus_query_count_specified_add(wi->slot);
+   }
+}
+
+static void
+session_server_message(char kind, char* msg, int msglen __attribute__((unused)), void* arg __attribute__((unused)))
+{
+   /*
+   * 'Z' needs the first payload byte to get the
+   * transaction status
+   */
+   if (kind == 'Z')
+   {
+      char tx_state = pgagroal_read_byte(msg + 5);
+
+      if (tx_state != 'I' && !in_tx)
+      {
+         pgagroal_prometheus_tx_count_add();
+      }
+
+      in_tx = tx_state != 'I';
+   }
+}
+
+static void
 session_client(struct io_watcher* watcher)
 {
    int status = MESSAGE_STATUS_ERROR;
@@ -303,40 +337,11 @@ session_client(struct io_watcher* watcher)
 
       if (likely(msg->kind != 'X'))
       {
-         int offset = 0;
-
-         while (offset < msg->length)
-         {
-            if (next_client_message == 0)
-            {
-               char kind = pgagroal_read_byte(msg->data + offset);
-               int length = pgagroal_read_int32(msg->data + offset + 1);
-
-               /* The Q and E message tell us the execute of the simple query and the prepared statement */
-               if (kind == 'Q' || kind == 'E')
-               {
-                  pgagroal_prometheus_query_count_add();
-                  pgagroal_prometheus_query_count_specified_add(wi->slot);
-               }
-
-               /* Calculate the offset to the next message */
-               if (offset + length + 1 <= msg->length)
-               {
-                  next_client_message = 0;
-                  offset += length + 1;
-               }
-               else
-               {
-                  next_client_message = length + 1 - (msg->length - offset);
-                  offset = msg->length;
-               }
-            }
-            else
-            {
-               offset = MIN(next_client_message, msg->length);
-               next_client_message -= offset;
-            }
-         }
+         pgagroal_parse_message(&client_message_state,
+                                msg->data,
+                                msg->length,
+                                session_client_message,
+                                wi);
 
          status = pgagroal_send_message(watcher, msg);
 
@@ -452,46 +457,11 @@ session_server(struct io_watcher* watcher)
    {
       pgagroal_prometheus_network_received_add(msg->length);
 
-      int offset = 0;
-
-      while (offset < msg->length)
-      {
-         if (next_server_message == 0)
-         {
-            char kind = pgagroal_read_byte(msg->data + offset);
-            int length = pgagroal_read_int32(msg->data + offset + 1);
-
-            /* The Z message tell us the transaction state */
-            if (kind == 'Z')
-            {
-               char tx_state = pgagroal_read_byte(msg->data + offset + 5);
-
-               if (tx_state != 'I' && !in_tx)
-               {
-                  pgagroal_prometheus_tx_count_add();
-               }
-
-               in_tx = tx_state != 'I';
-            }
-
-            /* Calculate the offset to the next message */
-            if (offset + length + 1 <= msg->length)
-            {
-               next_server_message = 0;
-               offset += length + 1;
-            }
-            else
-            {
-               next_server_message = length + 1 - (msg->length - offset);
-               offset = msg->length;
-            }
-         }
-         else
-         {
-            offset = MIN(next_server_message, msg->length);
-            next_server_message -= offset;
-         }
-      }
+      pgagroal_parse_message(&server_message_state,
+                             msg->data,
+                             msg->length,
+                             session_server_message,
+                             NULL);
 
       status = pgagroal_send_message(watcher, msg);
 
