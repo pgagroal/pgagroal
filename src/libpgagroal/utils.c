@@ -53,6 +53,7 @@
 #include <execinfo.h>
 #endif
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 
 extern char** environ;
@@ -580,6 +581,142 @@ pgagroal_exists(const char* f)
    }
 
    return false;
+}
+
+int
+pgagroal_fopen_secure(const char* path, const char* mode, FILE** file)
+{
+   int fd = -1;
+   int flags = 0;
+   int saved_errno = 0;
+   bool create = false;
+   bool read = false;
+   bool write = false;
+   bool append = false;
+   bool plus = false;
+   bool exclusive = false;
+   char fdmode[8];
+   size_t j = 0;
+   const char* p = mode;
+
+   if (file == NULL)
+   {
+      return 2;
+   }
+
+   *file = NULL;
+
+   if (path == NULL || mode == NULL)
+   {
+      return 2;
+   }
+
+   if (strchr(mode, 'r'))
+   {
+      read = true;
+   }
+   if (strchr(mode, 'w'))
+   {
+      write = true;
+      create = true;
+   }
+   if (strchr(mode, 'a'))
+   {
+      append = true;
+      create = true;
+   }
+   if (strchr(mode, '+'))
+   {
+      plus = true;
+   }
+   if (strchr(mode, 'x'))
+   {
+      exclusive = true;
+   }
+
+   if (plus)
+   {
+      flags |= O_RDWR;
+   }
+   else if (read)
+   {
+      flags |= O_RDONLY;
+   }
+   else
+   {
+      flags |= O_WRONLY;
+   }
+
+   if (create)
+   {
+      flags |= O_CREAT;
+      if (write)
+      {
+         flags |= O_TRUNC;
+      }
+      if (exclusive)
+      {
+         flags |= O_EXCL;
+      }
+   }
+
+   if (append)
+   {
+      flags |= O_APPEND;
+   }
+
+   if (create || write || append)
+   {
+      flags |= O_NOFOLLOW;
+   }
+   flags |= O_CLOEXEC;
+
+   if (create)
+   {
+      fd = open(path, flags, S_IRUSR | S_IWUSR);
+   }
+   else
+   {
+      fd = open(path, flags);
+   }
+
+   if (fd == -1)
+   {
+      return errno == EEXIST ? 1 : 2;
+   }
+
+   if (create)
+   {
+      if (fchmod(fd, S_IRUSR | S_IWUSR))
+      {
+         saved_errno = errno;
+         close(fd);
+         errno = saved_errno;
+         return 2;
+      }
+   }
+
+   /* fdopen() only accepts the access part of the mode, 'x' is already O_EXCL */
+   while (*p != '\0' && j < sizeof(fdmode) - 1)
+   {
+      if (*p == 'r' || *p == 'w' || *p == 'a' || *p == 'b' || *p == '+')
+      {
+         fdmode[j++] = *p;
+      }
+      p++;
+   }
+   fdmode[j] = '\0';
+
+   *file = fdopen(fd, fdmode);
+   if (*file == NULL)
+   {
+      saved_errno = errno;
+      close(fd);
+      errno = saved_errno;
+      return 2;
+   }
+
+   return 0;
 }
 
 bool

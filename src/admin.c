@@ -637,8 +637,7 @@ add_user(char* users_path, char* username, char* password, bool generate_pwd, in
       do_free = false;
    }
 
-   users_file = fopen(users_path, "a+");
-   if (users_file == NULL)
+   if (pgagroal_fopen_secure(users_path, "a+", &users_file))
    {
       warnx("Could not append to users file <%s>", users_path);
       goto error;
@@ -957,18 +956,24 @@ update_user(char* users_path, char* username, char* password, bool generate_pwd,
       do_free = false;
    }
 
-   users_file = fopen(users_path, "r");
-   if (!users_file)
+   if (pgagroal_fopen_secure(users_path, "r", &users_file))
    {
       warnx("File <%s> not found", users_path);
       goto error;
    }
 
-   pgagroal_snprintf(tmpfilename, sizeof(tmpfilename), "%s.tmp", users_path);
-   users_file_tmp = fopen(tmpfilename, "w+");
+   pgagroal_snprintf(tmpfilename, sizeof(tmpfilename), "%s.XXXXXX", users_path);
+   int tmp_fd = mkstemp(tmpfilename);
+   if (tmp_fd == -1)
+   {
+      warnx("Could not create temporary user file <%s>", tmpfilename);
+      goto error;
+   }
+   users_file_tmp = fdopen(tmp_fd, "w+");
    if (users_file_tmp == NULL)
    {
-      warnx("Could not write to temporary user file <%s>", tmpfilename);
+      warnx("Could not open temporary user file <%s>", tmpfilename);
+      close(tmp_fd);
       goto error;
    }
 
@@ -1275,19 +1280,25 @@ remove_user(char* users_path, char* username, int32_t output_format)
       goto error;
    }
 
-   users_file = fopen(users_path, "r");
-   if (!users_file)
+   if (pgagroal_fopen_secure(users_path, "r", &users_file))
    {
       warnx("File <%s> not found", users_path);
       goto error;
    }
 
    memset(&tmpfilename, 0, sizeof(tmpfilename));
-   pgagroal_snprintf(tmpfilename, sizeof(tmpfilename), "%s.tmp", users_path);
-   users_file_tmp = fopen(tmpfilename, "w+");
+   pgagroal_snprintf(tmpfilename, sizeof(tmpfilename), "%s.XXXXXX", users_path);
+   int tmp_fd = mkstemp(tmpfilename);
+   if (tmp_fd == -1)
+   {
+      warnx("Could not create temporary user file <%s>", tmpfilename);
+      goto error;
+   }
+   users_file_tmp = fdopen(tmp_fd, "w+");
    if (users_file_tmp == NULL)
    {
-      warnx("Could not write to temporary user file <%s>", tmpfilename);
+      warnx("Could not open temporary user file <%s>", tmpfilename);
+      close(tmp_fd);
       goto error;
    }
 
@@ -1420,8 +1431,7 @@ list_users(char* users_path, int32_t output_format)
       goto error;
    }
 
-   users_file = fopen(users_path, "r");
-   if (!users_file)
+   if (pgagroal_fopen_secure(users_path, "r", &users_file))
    {
       goto error;
    }
@@ -1500,8 +1510,7 @@ create_response(char* users_path, struct json* json, struct json** response)
       goto error;
    }
 
-   users_file = fopen(users_path, "r");
-   if (!users_file)
+   if (pgagroal_fopen_secure(users_path, "r", &users_file))
    {
       goto error;
    }
