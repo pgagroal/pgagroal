@@ -5225,6 +5225,12 @@ auth_query_get_password(int socket, SSL* server_ssl, char* username, char* datab
 
    size = 53 + strlen(username);
    aq = calloc(1, size);
+   if (aq == NULL)
+   {
+      /* Nothing is allocated yet and the error label dereferences tmsg,
+       * which is still NULL here. */
+      return 1;
+   }
 
    memset(&qmsg, 0, sizeof(struct message));
 
