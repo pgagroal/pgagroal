@@ -60,8 +60,34 @@ pgagroal_queries_replication_lag_bytes(void);
  * SQL for replica status (multiple columns).
  * @return Static query string (do not free)
  */
-const char*
+char*
 pgagroal_queries_wal_receiver_status(void);
+
+/*
+ * SQL for replication slots status (multiple columns, multiple rows).
+ * Note: Executing this query requires the database user to have at least 
+ * the 'pg_monitor' privilege, as it reads from 
+ * the pg_stat_replication view.
+ * @return Static query string (do not free)
+*/
+
+char*
+pgagroal_queries_replication_slots_status(void);
+
+/**
+ * Read PostgreSQL wire-protocol messages from fd until ReadyForQuery, and fill values multiple columns
+ *
+ * @param fd Open server connection after a query was sent
+ * @param expected_cols The exact number of columns expected in the result
+ * @param max_rows The maximum number of rows to read
+ * @param values Array of pointers to output buffers
+ * @param value_sizes Array containing the maximum size for each output buffer
+ * @param num_rows Pointer to an integer that will be set to the number of rows read
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_read_query_multiple_rows_text(int fd, int expected_cols, int max_rows,
+                                       char** values, size_t* value_sizes, int* num_rows);
 
 /**
  * Read PostgreSQL wire-protocol messages from fd until ReadyForQuery, and fill values
