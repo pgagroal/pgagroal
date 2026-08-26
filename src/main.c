@@ -1075,6 +1075,30 @@ read_superuser_path:
    shmem = tmp_shmem;
    config = (struct main_configuration*)shmem;
 
+   /* Allocate wait queue shared memory */
+   size_t wq_size = sizeof(struct wait_queue) + (size_t)config->max_connections * sizeof(struct wait_queue_entry);
+   if (pgagroal_create_shared_memory(wq_size, config->common.hugepage, &wait_queue_shmem))
+   {
+      pgagroal_log_fatal("Failed to allocate wait queue shared memory");
+      exit(1);
+   }
+
+   struct wait_queue* wq = (struct wait_queue*)wait_queue_shmem;
+   atomic_init(&wq->lock, 0);
+   wq->capacity = config->max_connections;
+   wq->head = WAIT_QUEUE_NULL_INDEX;
+   wq->tail = WAIT_QUEUE_NULL_INDEX;
+   atomic_init(&wq->count, 0);
+   atomic_init(&wq->free_hint, 0);
+   for (int i = 0; i < wq->capacity; i++)
+   {
+      atomic_init(&wq->entries[i].state, WAIT_QUEUE_ENTRY_FREE);
+      wq->entries[i].pid = 0;
+      wq->entries[i].prev = WAIT_QUEUE_NULL_INDEX;
+      wq->entries[i].next = WAIT_QUEUE_NULL_INDEX;
+      wq->entries[i].slot = -1;
+   }
+
    pgagroal_memory_init();
 
    if (getrlimit(RLIMIT_NOFILE, &flimit) == -1)
@@ -1146,6 +1170,21 @@ read_superuser_path:
    create_pidfile_or_exit();
 
    pgagroal_pool_init();
+
+   /* The wait queue in the workers signals wake-ups with SIGUSR2. Main never
+    * waits in the queue, but a wake-up kill whose target pid was reused could
+    * land here; SIGUSR2 has no other user in main, so make it a no-op instead
+    * of the terminating default. (SIGALRM is left alone: main uses it for the
+    * shutdown timeout.) */
+   {
+      struct sigaction sa;
+
+      memset(&sa, 0, sizeof(sa));
+      sa.sa_handler = SIG_IGN;
+      sigemptyset(&sa.sa_mask);
+      sa.sa_flags = 0;
+      sigaction(SIGUSR2, &sa, NULL);
+   }
 
    pgagroal_set_proc_title(argc, argv, "main", NULL);
 
@@ -1501,6 +1540,7 @@ read_superuser_path:
    pgagroal_destroy_shared_memory(prometheus_shmem, prometheus_shmem_size);
    pgagroal_destroy_shared_memory(prometheus_cache_shmem, prometheus_cache_shmem_size);
    pgagroal_destroy_shared_memory(shmem, shmem_size);
+   pgagroal_destroy_shared_memory(wait_queue_shmem, wq_size);
 
    pgagroal_memory_destroy();
 

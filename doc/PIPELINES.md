@@ -114,9 +114,13 @@ it.
   `validation = foreground` or `validation = background`.
 * `idle_timeout` does not terminate transaction-mode connections from the
   periodic reaper. It is only applied via the validation path.
-* `blocking_timeout` applies to the transaction pipeline. If the pool is
-  exhausted, active clients may time out during their workload. Set
-  `blocking_timeout = 0` for the transaction pipeline.
+* `blocking_timeout` sets the deadline for waiting clients; if
+  `wait_queue_timeout` is set, it takes precedence. When a deadline is
+  configured, waiting clients are parked in a FIFO queue and woken when a
+  connection is returned, instead of polling the pool. Set
+  `wait_queue_timeout` (or `blocking_timeout`) to the maximum acceptable
+  wait for your workload; setting both to 0 disables the queue and falls
+  back to the legacy retry loop.
 * `DISCARD ALL` is not issued when a connection is returned to the pool in
   transaction mode. Session state such as `SET`, temporary tables and
   cursors is not reset between clients sharing the same backend
