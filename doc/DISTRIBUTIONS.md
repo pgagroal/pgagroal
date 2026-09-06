@@ -61,3 +61,21 @@ pkg install cmake          	\
             texlive-formats \
             binutils
 ```
+
+## Compiling on Ubuntu / Debian
+
+All the dependencies can be installed via `apt(8)` as follows:
+
+```sh
+apt install git gcc cmake make \
+            libssl-dev liburing-dev \
+            systemd libsystemd-dev \
+            python3-docutils \
+            libatomic1 \
+            zlib1g-dev \
+            libzstd-dev \
+            liblz4-dev \
+            libbz2-dev \
+            binutils \
+            clang clang-tools
+```
