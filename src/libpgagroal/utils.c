@@ -919,17 +919,30 @@ char*
 pgagroal_format_and_append(char* buf, char* format, ...)
 {
    va_list args;
-   va_start(args, format);
+   int len;
+   char* formatted_str = NULL;
 
    // Determine the required buffer size
-   int size_needed = vsnprintf(NULL, 0, format, args) + 1;
+   va_start(args, format);
+   len = vsnprintf(NULL, 0, format, args);
    va_end(args);
 
+   // Leave buf as it is on failure, like pgagroal_append() does
+   if (len < 0)
+   {
+      return buf;
+   }
+
    // Allocate buffer to hold the formatted string
-   char* formatted_str = malloc(size_needed);
+   formatted_str = malloc((size_t)len + 1);
+
+   if (formatted_str == NULL)
+   {
+      return buf;
+   }
 
    va_start(args, format);
-   vsnprintf(formatted_str, size_needed, format, args);
+   vsnprintf(formatted_str, (size_t)len + 1, format, args);
    va_end(args);
 
    buf = pgagroal_append(buf, formatted_str);
@@ -942,37 +955,19 @@ pgagroal_format_and_append(char* buf, char* format, ...)
 char*
 pgagroal_append_int(char* orig, int i)
 {
-   char number[12];
-
-   memset(&number[0], 0, sizeof(number));
-   pgagroal_snprintf(&number[0], 11, "%d", i);
-   orig = pgagroal_append(orig, number);
-
-   return orig;
+   return pgagroal_format_and_append(orig, "%d", i);
 }
 
 char*
 pgagroal_append_ulong(char* orig, unsigned long l)
 {
-   char number[21];
-
-   memset(&number[0], 0, sizeof(number));
-   pgagroal_snprintf(&number[0], 20, "%lu", l);
-   orig = pgagroal_append(orig, number);
-
-   return orig;
+   return pgagroal_format_and_append(orig, "%lu", l);
 }
 
 char*
 pgagroal_append_ullong(char* orig, unsigned long long l)
 {
-   char number[21];
-
-   memset(&number[0], 0, sizeof(number));
-   pgagroal_snprintf(&number[0], 20, "%llu", l);
-   orig = pgagroal_append(orig, number);
-
-   return orig;
+   return pgagroal_format_and_append(orig, "%llu", l);
 }
 
 __attribute__((unused)) static bool
