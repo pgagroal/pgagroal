@@ -392,6 +392,154 @@ pgagroal_free_message(struct message* msg)
    }
 }
 
+void
+pgagroal_parse_message(struct postgresql_message_state* state,
+                       char* data,
+                       int length,
+                       pgagroal_postgresql_message_callback callback,
+                       void* arg)
+{
+   int offset = 0;
+
+   while (offset < length)
+   {
+      /*
+       * Something arrived, so we need to check `state` to understand
+       * where we were.
+       */
+
+      if (state->header_len == 5)
+      {
+         /*
+           * a full header is now present, since it has the length of 5 (kind + length)
+           * therefore get the first byte after the header (e.g., a `I` after a `Z` kind)
+           */
+         state->first_payload_byte = data[offset];
+         offset += 1;
+         state->payload_remaining -= 1;
+         state->header_len = 0; // header read
+
+         if (callback != NULL)
+         {
+            char kind = pgagroal_read_byte(state->header);
+            int msglen = pgagroal_read_int32(state->header + 1) + 1;
+
+            /*
+               * pass the whole thing to the callback, so the kind + length + first byte
+               */
+            char msg[6];
+            memcpy(msg, state->header, 5);
+            msg[5] = state->first_payload_byte;
+            callback(kind, msg, msglen, arg);
+         }
+
+         continue;
+      }
+
+      /*
+       * move forward to consume every other stuff
+       * within the payload
+       */
+      if (state->payload_remaining > 0)
+      {
+         int to_consume = MIN(state->payload_remaining, length - offset);
+         offset += to_consume;
+         state->payload_remaining -= to_consume;
+         continue;
+      }
+
+      /*
+       * here the header has fully arrived and there is nothing
+       * more (no payload)
+       */
+      if (state->header_len == 0 && offset + 5 <= length)
+      {
+         char kind = pgagroal_read_byte(data + offset);
+         int msglen = pgagroal_read_int32(data + offset + 1) + 1;
+
+         if (msglen == 5 || offset + 6 <= length)
+         {
+            /*
+               * payload is present, or the message has none, so the
+               * callback may read past the header (e.g. the Z state byte).
+               */
+            if (callback != NULL)
+            {
+               callback(kind, data + offset, msglen, arg);
+            }
+
+            offset += 5;
+            state->payload_remaining = msglen - 5;
+         }
+         else
+         {
+            /*
+               * header arrived, wait to handle the first payload byte (if any)
+               */
+            memcpy(state->header, data + offset, 5);
+            state->header_len = 5;
+            state->payload_remaining = msglen - 5;
+            offset = length;
+            continue;
+         }
+      }
+      else
+      {
+         /* Buffer a message header split across reads until it is complete */
+         int n = MIN(5 - state->header_len, length - offset);
+         memcpy(state->header + state->header_len, data + offset, n);
+         state->header_len += n;
+         offset += n;
+
+         if (state->header_len < 5)
+         {
+            /* Buffer exhausted mid-header; continue on the next call */
+            continue;
+         }
+
+         char kind = pgagroal_read_byte(state->header);
+         int msglen = pgagroal_read_int32(state->header + 1) + 1;
+
+         state->payload_remaining = msglen - 5;
+
+         if (msglen == 5 || offset < length)
+         {
+            /* The payload is present, or the message has none */
+            state->first_payload_byte = (msglen > 5) ? data[offset] : 0;
+            state->header_len = 0;
+
+            if (callback != NULL)
+            {
+               /* Build a contiguous view so the callback may read msg+5
+                   * (e.g. the state byte of a Z message). */
+               char msg[8];
+               memcpy(msg, state->header, 5);
+               msg[5] = state->first_payload_byte;
+               msg[6] = 0;
+               msg[7] = 0;
+               callback(kind, msg, msglen, arg);
+            }
+         }
+         else
+         {
+            /* Await the first payload byte in a later call */
+            state->header_len = 5;
+            continue;
+         }
+      }
+
+      /*
+       * consume any remaining payload
+       */
+      if (state->payload_remaining > 0)
+      {
+         int to_consume = MIN(state->payload_remaining, length - offset);
+         offset += to_consume;
+         state->payload_remaining -= to_consume;
+      }
+   }
+}
+
 int
 pgagroal_write_empty(SSL* ssl, int socket)
 {
@@ -766,7 +914,7 @@ pgagroal_write_reset_query(SSL* ssl, int socket)
    }
 
    /* XXX: someone is destroying the memory before reaching here in the worker.
-    * Allocate another buffer for now, but this needs fixing. */
+   * Allocate another buffer for now, but this needs fixing. */
    pgagroal_memory_init();
 
    if (ssl == NULL)
@@ -987,8 +1135,8 @@ pgagroal_write_auth_scram256(SSL* ssl, int socket, bool channel_binding)
    offset = 9;
 
    /* Offer channel binding first so a capable client prefers it; it is only
-    * meaningful once the frontend link is TLS. The NUL after each mechanism and
-    * the empty string terminating the list come from the zeroed buffer. */
+   * meaningful once the frontend link is TLS. The NUL after each mechanism and
+   * the empty string terminating the list come from the zeroed buffer. */
    if (channel_binding && ssl != NULL)
    {
       pgagroal_write_string(&(scram[offset]), "SCRAM-SHA-256-PLUS");

@@ -46,8 +46,8 @@ extern "C" {
 #define MESSAGE_STATUS_ERROR 2
 
 /** @struct message
- * Defines a message
- */
+   * Defines a message
+   */
 struct message
 {
    signed char kind; /**< The kind of the message */
@@ -56,401 +56,450 @@ struct message
 } __attribute__((aligned(64)));
 
 /**
- * Read a message in blocking mode
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @param msg The resulting message
- * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
- */
+   * Read a message in blocking mode
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @param msg The resulting message
+   * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
+   */
 int
 pgagroal_read_block_message(SSL* ssl, int socket, struct message** msg);
 
 /**
- * Read a complete typed message in blocking mode. The message must carry the
- * standard header (1 byte kind + 4 byte length); the read continues until the
- * number of bytes declared in the header has arrived, so a message split
- * across multiple network segments is never returned partially. A message
- * whose declared length is malformed (less than 4 bytes or larger than the
- * parse buffer) is an error.
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @param msg The resulting message
- * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
- */
+   * Read a complete typed message in blocking mode. The message must carry the
+   * standard header (1 byte kind + 4 byte length); the read continues until the
+   * number of bytes declared in the header has arrived, so a message split
+   * across multiple network segments is never returned partially. A message
+   * whose declared length is malformed (less than 4 bytes or larger than the
+   * parse buffer) is an error.
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @param msg The resulting message
+   * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
+   */
 int
 pgagroal_read_complete_message(SSL* ssl, int socket, struct message** msg);
 
 /**
- * Read a message with a timeout
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @param timeout The timeout in seconds
- * @param msg The resulting message
- * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
- */
+   * Read a message with a timeout
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @param timeout The timeout in seconds
+   * @param msg The resulting message
+   * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
+   */
 int
 pgagroal_read_timeout_message(SSL* ssl, int socket, int timeout, struct message** msg);
 
 /**
- * Write a message using a socket
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @param msg The message
- * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
- */
+   * Write a message using a socket
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @param msg The message
+   * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
+   */
 int
 pgagroal_write_message(SSL* ssl, int socket, struct message* msg);
 
 /**
- * Create a message
- * @param data A pointer to the data
- * @param length The length of the message
- * @param msg The resulting message
- * @return 0 upon success, otherwise 1
- */
+   * Create a message
+   * @param data A pointer to the data
+   * @param length The length of the message
+   * @param msg The resulting message
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_create_message(void* data, ssize_t length, struct message** msg);
 
 /**
- * Clear a message
- * @param msg The resulting message
- */
+   * Clear a message
+   * @param msg The resulting message
+   */
 void
 pgagroal_clear_message(struct message* msg);
 
 /**
- * Copy a message
- * @param msg The resulting message
- * @return The copy
- */
+   * Copy a message
+   * @param msg The resulting message
+   * @return The copy
+   */
 struct message*
 pgagroal_copy_message(struct message* msg);
 
 /**
- * Free a message
- * @param msg The resulting message
- */
+   * Free a message
+   * @param msg The resulting message
+   */
 void
 pgagroal_free_message(struct message* msg);
 
 /**
- * Write an empty message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * A callback declaration to use whenere a chunk of a message is
+   * ready for parsing. This is used by pgagroal_parse_message.
+   *
+   *
+   * \param kind the message kind (first byte of the message)
+   * \param msg is a  pointer to the message start (ATTENTION: kind byte included)
+   * \param msglen the declared total length of the message (kind byte + payload)
+   * \param arg any caller supplied argument (e.g., io related structs)
+   */
+typedef void (*pgagroal_postgresql_message_callback)(char kind, char* msg, int msglen, void* arg);
+
+/**
+   * A struct that stores the current state of a PostgreSQL message parsing.
+   * It is used by pgagroal_parse_message across all the chunks.
+   */
+struct postgresql_message_state
+{
+   char header[5];          /**< buffer to assemble a message header split across reads (kind + length) */
+   char first_payload_byte; /**< first byte of the payload (e.g. Z state byte) */
+   int header_len;          /**< how many bytes of a split header have arrived (if 5, full header is present) */
+   int payload_remaining;   /**< bytes of a message payload still to be received */
+};
+
+/**
+   * Read a buffer holding one or more concatenated PostgreSQL protocol messages
+   * that may be split across multiple reads. The caller keeps the parser state
+   * in `state` (zero it before the first call); it is updated so a subsequent
+   * call can continue exactly where this one stopped.
+   *
+   * The callback is invoked once per message. For a message without a payload
+   * it fires as soon as the header (kind byte + length field) is complete; for
+   * a message with a payload it fires when the header and the first payload
+   * byte are present, so the callback can read past the header (e.g. the
+   * transaction state byte of a Z message). A header split across reads is
+   * buffered in the state until it can be parsed, so a split never
+   * desynchronizes the parser.
+   * @param state Parser state, zero-initialized before the first call
+   * @param data The buffer holding the received bytes
+   * @param length The number of received bytes
+   * @param callback The callback to invoke per message
+   * @param arg An argument passed through to the callback
+   */
+void
+pgagroal_parse_message(struct postgresql_message_state* state,
+                       char* data,
+                       int length,
+                       pgagroal_postgresql_message_callback callback, void* arg);
+
+/**
+   * Write an empty message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_empty(SSL* ssl, int socket);
 
 /**
- * Write a notice message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write a notice message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_notice(SSL* ssl, int socket);
 
 /**
- * Write a pool is full message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write a pool is full message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_pool_full(SSL* ssl, int socket);
 
 /**
- * Write a connection refused message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write a connection refused message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_connection_refused(SSL* ssl, int socket);
 
 /**
- * Write a connection refused message (protocol 1 or 2)
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write a connection refused message (protocol 1 or 2)
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_connection_refused_old(SSL* ssl, int socket);
 
 /**
- * Write a bad password message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @param username The user name
- * @return 0 upon success, otherwise 1
- */
+   * Write a bad password message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @param username The user name
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_bad_password(SSL* ssl, int socket, char* username);
 
 /**
- * Write an unsupported security model message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @param username The user name
- * @return 0 upon success, otherwise 1
- */
+   * Write an unsupported security model message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @param username The user name
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_unsupported_security_model(SSL* ssl, int socket, char* username);
 
 /**
- * Write a no HBA entry message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @param username The user name
- * @param database The database
- * @param address The client address
- * @return 0 upon success, otherwise 1
- */
+   * Write a no HBA entry message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @param username The user name
+   * @param database The database
+   * @param address The client address
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_no_hba_entry(SSL* ssl, int socket, char* username, char* database, char* address);
 
 /**
- * Write a deallocate all message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write a deallocate all message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_deallocate_all(SSL* ssl, int socket);
 
 /**
- * Write the configured connection reset query (server_reset_query) as a simple query
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write the configured connection reset query (server_reset_query) as a simple query
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_reset_query(SSL* ssl, int socket);
 
 /**
- * Write TLS response
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write TLS response
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_tls(SSL* ssl, int socket);
 
 /**
- * Write a terminate message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write a terminate message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_terminate(SSL* ssl, int socket);
 
 /**
- * Write a failover message to the client
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write a failover message to the client
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_client_failover(SSL* ssl, int socket);
 
 /**
- * Write an auth password message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write an auth password message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_auth_password(SSL* ssl, int socket);
 
 /**
- * Write a rollback message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write a rollback message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_rollback(SSL* ssl, int socket);
 
 /**
- * Create an auth password response message
- * @param password The password
- * @param msg The resulting message
- * @return 0 upon success, otherwise 1
- */
+   * Create an auth password response message
+   * @param password The password
+   * @param msg The resulting message
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_create_auth_password_response(char* password, struct message** msg);
 
 /**
- * Write an auth SCRAM-SHA-256 message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @param channel_binding Advertise SCRAM-SHA-256-PLUS as well (requires a TLS frontend)
- * @return 0 upon success, otherwise 1
- */
+   * Write an auth SCRAM-SHA-256 message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @param channel_binding Advertise SCRAM-SHA-256-PLUS as well (requires a TLS frontend)
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_auth_scram256(SSL* ssl, int socket, bool channel_binding);
 
 /**
- * Create an auth SCRAM-SHA-256 response message
- * @param nounce The nounce
- * @param msg The resulting message
- * @return 0 upon success, otherwise 1
- */
+   * Create an auth SCRAM-SHA-256 response message
+   * @param nounce The nounce
+   * @param msg The resulting message
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_create_auth_scram256_response(char* nounce, struct message** msg);
 
 /**
- * Create an auth SCRAM-SHA-256-PLUS response message (tls-server-end-point channel binding)
- * @param nounce The nounce
- * @param msg The resulting message
- * @return 0 upon success, otherwise 1
- */
+   * Create an auth SCRAM-SHA-256-PLUS response message (tls-server-end-point channel binding)
+   * @param nounce The nounce
+   * @param msg The resulting message
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_create_auth_scram256_plus_response(char* nounce, struct message** msg);
 
 /**
- * Create an auth SCRAM-SHA-256/Continue message
- * @param cn The client nounce
- * @param sn The server nounce
- * @param salt The salt
- * @param msg The resulting message
- * @return 0 upon success, otherwise 1
- */
+   * Create an auth SCRAM-SHA-256/Continue message
+   * @param cn The client nounce
+   * @param sn The server nounce
+   * @param salt The salt
+   * @param msg The resulting message
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_create_auth_scram256_continue(char* cn, char* sn, char* salt, struct message** msg);
 
 /**
- * Create an auth SCRAM-SHA-256/Continue response message
- * @param wp The without proff
- * @param p The proff
- * @param msg The resulting message
- * @return 0 upon success, otherwise 1
- */
+   * Create an auth SCRAM-SHA-256/Continue response message
+   * @param wp The without proff
+   * @param p The proff
+   * @param msg The resulting message
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_create_auth_scram256_continue_response(char* wp, char* p, struct message** msg);
 
 /**
- * Create an auth SCRAM-SHA-256/Final message
- * @param ss The server signature (BASE64)
- * @param msg The resulting message
- * @return 0 upon success, otherwise 1
- */
+   * Create an auth SCRAM-SHA-256/Final message
+   * @param ss The server signature (BASE64)
+   * @param msg The resulting message
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_create_auth_scram256_final(char* ss, struct message** msg);
 
 /**
- * Write an auth success message
- * @param ssl The SSL struct
- * @param socket The socket descriptor
- * @return 0 upon success, otherwise 1
- */
+   * Write an auth success message
+   * @param ssl The SSL struct
+   * @param socket The socket descriptor
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_write_auth_success(SSL* ssl, int socket);
 
 /**
- * Create a SSL message
- * @param msg The resulting message
- * @return 0 upon success, otherwise 1
- */
+   * Create a SSL message
+   * @param msg The resulting message
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_create_ssl_message(struct message** msg);
 
 /**
- * Create a startup message
- * @param username The user name
- * @param database The database
- * @param msg The resulting message
- * @return 0 upon success, otherwise 1
- */
+   * Create a startup message
+   * @param username The user name
+   * @param database The database
+   * @param msg The resulting message
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_create_startup_message(char* username, char* database, struct message** msg);
 
 /**
- * Create a cancel request message
- * @param pid The pid
- * @param secret The secret
- * @param msg The resulting message
- * @return 0 upon success, otherwise 1
- */
+   * Create a cancel request message
+   * @param pid The pid
+   * @param secret The secret
+   * @param msg The resulting message
+   * @return 0 upon success, otherwise 1
+   */
 int
 pgagroal_create_cancel_request_message(int pid, int secret, struct message** msg);
 
 /**
- * Is the connection valid
- * @param socket The socket descriptor
- * @return true upon success, otherwise false
- */
+   * Is the connection valid
+   * @param socket The socket descriptor
+   * @return true upon success, otherwise false
+   */
 bool
 pgagroal_connection_isvalid(int socket);
 
 /**
- * Log a message
- * @param msg The message
- */
+   * Log a message
+   * @param msg The message
+   */
 void
 pgagroal_log_message(struct message* msg);
 
 /**
- * Read a message from a buffer (io_uring backend)
- * @param watcher The io_wacher used to recv
- * @param msg The message received
- * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
- */
+   * Read a message from a buffer (io_uring backend)
+   * @param watcher The io_wacher used to recv
+   * @param msg The message received
+   * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
+   */
 int
 pgagroal_recv_message(struct io_watcher* watcher, struct message** msg);
 
 /**
- * Get the message buffer for a watcher
- * @param watcher The watcher
- * @return The message buffer
- */
+   * Get the message buffer for a watcher
+   * @param watcher The watcher
+   * @return The message buffer
+   */
 struct message*
 pgagroal_get_watcher_message(struct io_watcher* watcher);
 
 /**
- * Write a message to a buffer (io_uring backend)
- * @param watcher The io_wacher used to send
- * @param msg The message to send
- * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
- */
+   * Write a message to a buffer (io_uring backend)
+   * @param watcher The io_wacher used to send
+   * @param msg The message to send
+   * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
+   */
 int
 pgagroal_send_message(struct io_watcher* watcher, struct message* msg);
 
 /**
- * Read a message using a socket
- * @param socket The socket descriptor
- * @param msg The resulting message
- * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
- */
+   * Read a message using a socket
+   * @param socket The socket descriptor
+   * @param msg The resulting message
+   * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
+   */
 int
 pgagroal_read_socket_message(int socket, struct message** msg);
 
 /**
- * Write a message using a socket
- * @param socket The socket descriptor
- * @param msg The message
- * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
- */
+   * Write a message using a socket
+   * @param socket The socket descriptor
+   * @param msg The message
+   * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
+   */
 int
 pgagroal_write_socket_message(int socket, struct message* msg);
 
 /**
- * Read a message using SSL
- * @param ssl The SSL descriptor
- * @param msg The resulting message
- * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
- */
+   * Read a message using SSL
+   * @param ssl The SSL descriptor
+   * @param msg The resulting message
+   * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
+   */
 int
 pgagroal_read_ssl_message(SSL* ssl, struct message** msg);
 
 /**
- * Write a message using SSL
- * @param ssl The SSL descriptor
- * @param msg The message
- * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
- */
+   * Write a message using SSL
+   * @param ssl The SSL descriptor
+   * @param msg The message
+   * @return One of MESSAGE_STATUS_ZERO, MESSAGE_STATUS_OK or MESSAGE_STATUS_ERROR
+   */
 int
 pgagroal_write_ssl_message(SSL* ssl, struct message* msg);
 
