@@ -51,6 +51,7 @@ Mohammad El-Shennawy <mohamedwork216@gmail.com>
 Finn Rayk Gartner <finn.gartner@canonical.com>
 R Sai Pranav <rajasaipranav0@gmail.com>
 Esraa Yehia <yehiae996@gmail.com>
+Yousuf Mahmoud <yusufmahmoud.dev@gmail.com>
 ```
 
 ## Committers

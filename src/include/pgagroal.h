@@ -56,56 +56,52 @@ extern "C" {
 #define PGAGROAL_DEFAULT_CONFIGURATION_PATH "/etc/pgagroal/"
 #endif
 
-#define PGAGROAL_DEFAULT_CONF_FILE               PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal.conf"
-#define PGAGROAL_DEFAULT_HBA_FILE                PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_hba.conf"
-#define PGAGROAL_DEFAULT_LIMIT_FILE              PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_databases.conf"
-#define PGAGROAL_DEFAULT_USERS_FILE              PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_users.conf"
-#define PGAGROAL_DEFAULT_FRONTEND_USERS_FILE     PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_frontend_users.conf"
-#define PGAGROAL_DEFAULT_ADMINS_FILE             PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_admins.conf"
-#define PGAGROAL_DEFAULT_SUPERUSER_FILE          PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_superuser.conf"
-#define PGAGROAL_DEFAULT_VAULT_CONF_FILE         PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_vault.conf"
-#define PGAGROAL_DEFAULT_VAULT_USERS_FILE        PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_vault_users.conf"
+#define PGAGROAL_DEFAULT_CONF_FILE                     PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal.conf"
+#define PGAGROAL_DEFAULT_HBA_FILE                      PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_hba.conf"
+#define PGAGROAL_DEFAULT_LIMIT_FILE                    PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_databases.conf"
+#define PGAGROAL_DEFAULT_USERS_FILE                    PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_users.conf"
+#define PGAGROAL_DEFAULT_FRONTEND_USERS_FILE           PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_frontend_users.conf"
+#define PGAGROAL_DEFAULT_ADMINS_FILE                   PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_admins.conf"
+#define PGAGROAL_DEFAULT_SUPERUSER_FILE                PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_superuser.conf"
+#define PGAGROAL_DEFAULT_VAULT_CONF_FILE               PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_vault.conf"
+#define PGAGROAL_DEFAULT_VAULT_USERS_FILE              PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_vault_users.conf"
 
-#define MAX_PROCESS_TITLE_LENGTH                 256
+#define MAX_PROCESS_TITLE_LENGTH                       256
 
-#define DEFAULT_BUFFER_SIZE                      131072
-#define RECV_BUFFER_HEADROOM                     8
-#define MESSAGE_PARSE_BUFFER_SIZE                (DEFAULT_BUFFER_SIZE - RECV_BUFFER_HEADROOM)
-#define SECURITY_BUFFER_SIZE                     16384 /* Must hold a PasswordMessage carrying a MAX_PASSWORD_LENGTH credential (cloud IAM tokens) */
-#define HTTP_BUFFER_SIZE                         1024
+#define DEFAULT_BUFFER_SIZE                            131072
+#define RECV_BUFFER_HEADROOM                           8
+#define MESSAGE_PARSE_BUFFER_SIZE                      (DEFAULT_BUFFER_SIZE - RECV_BUFFER_HEADROOM)
+#define SECURITY_BUFFER_SIZE                           16384 /* Must hold a PasswordMessage carrying a MAX_PASSWORD_LENGTH credential (cloud IAM tokens) */
+#define HTTP_BUFFER_SIZE                               1024
 
-#define DEFAULT_BLOCKING_TIMEOUT                 30
-#define DEFAULT_CONNECTION_RETRY_DELAY           250 /* milliseconds: back-off cap on the blocking acquisition path */
-#define MIN_CONNECTION_RETRY_DELAY               1   /* milliseconds */
-#define MAX_CONNECTION_RETRY_DELAY               999 /* milliseconds: SLEEP() is sub-second only (nanosleep tv_nsec < 1e9) */
-#define DEFAULT_IDLE_TIMEOUT                     0
-#define DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT 0
-#define DEFAULT_MAX_CONNECTION_AGE               0
-#define DEFAULT_FLUSH_TIMEOUT                    60
-#define DEFAULT_BACKGROUND_INTERVAL              300
-#define DEFAULT_HEALTH_CHECK_PERIOD              30
-#define DEFAULT_HEALTH_CHECK_TIMEOUT             5
-#define DEFAULT_AUTHENTICATION_TIMEOUT           5
+#define DEFAULT_BLOCKING_TIMEOUT                       30
+#define DEFAULT_CONNECTION_RETRY_DELAY                 250 /* milliseconds: back-off cap on the blocking acquisition path */
+#define MIN_CONNECTION_RETRY_DELAY                     1   /* milliseconds */
+#define MAX_CONNECTION_RETRY_DELAY                     999 /* milliseconds: SLEEP() is sub-second only (nanosleep tv_nsec < 1e9) */
+#define DEFAULT_IDLE_TIMEOUT                           0
+#define DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT       0
+#define DEFAULT_MAX_CONNECTION_AGE                     0
+#define DEFAULT_FLUSH_TIMEOUT                          60
+#define DEFAULT_BACKGROUND_INTERVAL                    300
+#define DEFAULT_HEALTH_CHECK_PERIOD                    30
+#define DEFAULT_HEALTH_CHECK_TIMEOUT                   5
+#define DEFAULT_AUTHENTICATION_TIMEOUT                 5
 
-#define MAX_USERNAME_LENGTH                      128
-#define MAX_DATABASE_LENGTH                      256
-#define MAX_TYPE_LENGTH                          16
-#define MAX_ADDRESS_LENGTH                       64
-#define DEFAULT_PASSWORD_LENGTH                  64
-#define MIN_PASSWORD_LENGTH                      8
-#define MAX_PASSWORD_LENGTH                      8192 /* Bytes; the single password-length limit, sized for cloud IAM DB-auth tokens (AWS RDS/Aurora, Azure AD, GCP) */
-#define MAX_APPLICATION_NAME                     64
-#define MAX_ALIASES                              8
-#define MAX_CERTIFICATES                         70
+#define MAX_USERNAME_LENGTH                            128
+#define MAX_DATABASE_LENGTH                            256
+#define MAX_TYPE_LENGTH                                16
+#define MAX_ADDRESS_LENGTH                             64
+#define DEFAULT_PASSWORD_LENGTH                        64
+#define MIN_PASSWORD_LENGTH                            8
+#define MAX_PASSWORD_LENGTH                            8192 /* Bytes; the single password-length limit, sized for cloud IAM DB-auth tokens (AWS RDS/Aurora, Azure AD, GCP) */
+#define MAX_APPLICATION_NAME                           64
+#define MAX_ALIASES                                    8
+#define MAX_CERTIFICATES                               70
 
-#define MAX_PATH                                 1024
-#define MISC_LENGTH                              128
-#define NUMBER_OF_SERVERS                        64
-#ifdef DEBUG
-#define MAX_NUMBER_OF_CONNECTIONS 8
-#else
-#define MAX_NUMBER_OF_CONNECTIONS 10000
-#endif
+#define MAX_PATH                                       1024
+#define MISC_LENGTH                                    128
+#define NUMBER_OF_SERVERS                              64
+#define MAX_NUMBER_OF_CONNECTIONS                      10000
 #define NUMBER_OF_HBAS                                 64
 #define NUMBER_OF_LIMITS                               64
 #define NUMBER_OF_USERS                                64

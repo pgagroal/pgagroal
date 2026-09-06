@@ -216,7 +216,12 @@ pgagroal_init_configuration(void* shm)
 
    memcpy(config->common.default_log_path, "pgagroal.log", strlen("pgagroal.log"));
 
+#ifdef DEBUG
+   config->max_connections = 8;
+#else
    config->max_connections = 100;
+#endif
+
    config->allow_unknown_users = true;
 
    atomic_init(&config->su_connection, STATE_FREE);
