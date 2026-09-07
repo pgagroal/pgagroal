@@ -765,10 +765,6 @@ pgagroal_write_reset_query(SSL* ssl, int socket)
       goto error;
    }
 
-   /* XXX: someone is destroying the memory before reaching here in the worker.
-    * Allocate another buffer for now, but this needs fixing. */
-   pgagroal_memory_init();
-
    if (ssl == NULL)
    {
       status = read_message(socket, true, 0, &reply);
