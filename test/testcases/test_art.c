@@ -308,32 +308,32 @@ MCTF_TEST(test_art_iterator_read)
    int cnt = 0;
    while (pgagroal_art_iterator_next(iter))
    {
-      if (pgagroal_compare_string(iter->key, "key_str"))
+      if (pgagroal_strcmp(iter->key, "key_str"))
       {
          MCTF_ASSERT_STR_EQ((char*)pgagroal_value_data(iter->value), "value1", cleanup, "key_str value should be value1");
       }
-      else if (pgagroal_compare_string(iter->key, "key_int"))
+      else if (pgagroal_strcmp(iter->key, "key_int"))
       {
          MCTF_ASSERT_INT_EQ((int)pgagroal_value_data(iter->value), 1, cleanup, "key_int value should be 1");
       }
-      else if (pgagroal_compare_string(iter->key, "key_bool"))
+      else if (pgagroal_strcmp(iter->key, "key_bool"))
       {
          MCTF_ASSERT((bool)pgagroal_value_data(iter->value), cleanup, "key_bool value should be true");
       }
-      else if (pgagroal_compare_string(iter->key, "key_float"))
+      else if (pgagroal_strcmp(iter->key, "key_float"))
       {
          MCTF_ASSERT_FLOAT_EQ(pgagroal_value_to_float(pgagroal_value_data(iter->value)), 2.5, cleanup, "key_float value should be 2.5");
       }
-      else if (pgagroal_compare_string(iter->key, "key_double"))
+      else if (pgagroal_strcmp(iter->key, "key_double"))
       {
          MCTF_ASSERT_DOUBLE_EQ(pgagroal_value_to_double(pgagroal_value_data(iter->value)), 2.5, cleanup, "key_double value should be 2.5");
       }
-      else if (pgagroal_compare_string(iter->key, "key_mem"))
+      else if (pgagroal_strcmp(iter->key, "key_mem"))
       {
          // as long as it exists...
          MCTF_ASSERT(true, cleanup, "key_mem should exist");
       }
-      else if (pgagroal_compare_string(iter->key, "key_obj"))
+      else if (pgagroal_strcmp(iter->key, "key_obj"))
       {
          MCTF_ASSERT_INT_EQ(((struct art_test_obj*)pgagroal_value_data(iter->value))->idx, 1, cleanup, "key_obj idx should be 1");
          MCTF_ASSERT_STR_EQ(((struct art_test_obj*)pgagroal_value_data(iter->value))->str, "obj1", cleanup, "key_obj str should be obj1");
@@ -384,42 +384,42 @@ MCTF_TEST(test_art_iterator_remove)
    while (pgagroal_art_iterator_next(iter))
    {
       cnt++;
-      if (pgagroal_compare_string(iter->key, "key_str"))
+      if (pgagroal_strcmp(iter->key, "key_str"))
       {
          MCTF_ASSERT_STR_EQ((char*)pgagroal_value_data(iter->value), "value1", cleanup, "key_str value should be value1");
          pgagroal_art_iterator_remove(iter);
          MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_str"), cleanup, "key_str should not be contained");
       }
-      else if (pgagroal_compare_string(iter->key, "key_int"))
+      else if (pgagroal_strcmp(iter->key, "key_int"))
       {
          MCTF_ASSERT_INT_EQ((int)pgagroal_value_data(iter->value), 1, cleanup, "key_int value should be 1");
          pgagroal_art_iterator_remove(iter);
          MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_int"), cleanup, "key_int should not be contained");
       }
-      else if (pgagroal_compare_string(iter->key, "key_bool"))
+      else if (pgagroal_strcmp(iter->key, "key_bool"))
       {
          MCTF_ASSERT((bool)pgagroal_value_data(iter->value), cleanup, "key_bool value should be true");
          pgagroal_art_iterator_remove(iter);
          MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_bool"), cleanup, "key_bool should not be contained");
       }
-      else if (pgagroal_compare_string(iter->key, "key_float"))
+      else if (pgagroal_strcmp(iter->key, "key_float"))
       {
          MCTF_ASSERT_FLOAT_EQ(pgagroal_value_to_float(pgagroal_value_data(iter->value)), 2.5, cleanup, "key_float value should be 2.5");
          pgagroal_art_iterator_remove(iter);
          MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_float"), cleanup, "key_float should not be contained");
       }
-      else if (pgagroal_compare_string(iter->key, "key_double"))
+      else if (pgagroal_strcmp(iter->key, "key_double"))
       {
          MCTF_ASSERT_DOUBLE_EQ(pgagroal_value_to_double(pgagroal_value_data(iter->value)), 2.5, cleanup, "key_double value should be 2.5");
          pgagroal_art_iterator_remove(iter);
          MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_double"), cleanup, "key_double should not be contained");
       }
-      else if (pgagroal_compare_string(iter->key, "key_mem"))
+      else if (pgagroal_strcmp(iter->key, "key_mem"))
       {
          pgagroal_art_iterator_remove(iter);
          MCTF_ASSERT(!pgagroal_art_contains_key(t, "key_mem"), cleanup, "key_mem should not be contained");
       }
-      else if (pgagroal_compare_string(iter->key, "key_obj"))
+      else if (pgagroal_strcmp(iter->key, "key_obj"))
       {
          MCTF_ASSERT_INT_EQ(((struct art_test_obj*)pgagroal_value_data(iter->value))->idx, 1, cleanup, "key_obj idx should be 1");
          MCTF_ASSERT_STR_EQ(((struct art_test_obj*)pgagroal_value_data(iter->value))->str, "obj1", cleanup, "key_obj str should be obj1");

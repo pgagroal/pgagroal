@@ -219,7 +219,7 @@ health_check_loop(void)
                                                                      slot_name, sizeof(slot_name),
                                                                      sender_host, sizeof(sender_host),
                                                                      sender_port, sizeof(sender_port));
-            bool is_streaming = pgagroal_compare_string(rep_status, "streaming");
+            bool is_streaming = pgagroal_strcmp(rep_status, "streaming");
 
             if (wal_result == 0)
             {

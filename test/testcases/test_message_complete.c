@@ -251,7 +251,7 @@ MCTF_TEST(test_scram256_plus_client_first)
    MCTF_ASSERT(data[0] == 'p', cleanup, "first byte must be 'p'");
    MCTF_ASSERT_INT_EQ(pgagroal_read_int32(data + 1), (int)(msg->length - 1), cleanup,
                       "declared length excludes the tag byte");
-   MCTF_ASSERT(strcmp(data + 5, "SCRAM-SHA-256-PLUS") == 0, cleanup,
+   MCTF_ASSERT(pgagroal_strcmp(data + 5, "SCRAM-SHA-256-PLUS"), cleanup,
                "mechanism must be SCRAM-SHA-256-PLUS");
    MCTF_ASSERT_INT_EQ(pgagroal_read_int32(data + 24), (int)(strlen(initial) + strlen(nounce)), cleanup,
                       "initial-response length must cover gs2 header + bare");

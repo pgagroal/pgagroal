@@ -689,7 +689,7 @@ username:
    while (fgets(line, sizeof(line), users_file))
    {
       ptr = strtok(line, ":");
-      if (!strcmp(username, ptr))
+      if (pgagroal_strcmp(username, ptr))
       {
          warnx("Existing user: %s", username);
          goto error;
@@ -1038,7 +1038,7 @@ username:
       memcpy(&line_copy, &line, strlen(line));
 
       ptr = strtok(line, ":");
-      if (!strcmp(username, ptr))
+      if (pgagroal_strcmp(username, ptr))
       {
          /* Password */
          if (password == NULL)
@@ -1369,7 +1369,7 @@ username:
       memcpy(&line_copy, &line, strlen(line));
 
       ptr = strtok(line, ":");
-      if (!strcmp(username, ptr))
+      if (pgagroal_strcmp(username, ptr))
       {
          found = true;
       }

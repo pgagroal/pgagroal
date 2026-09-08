@@ -91,15 +91,32 @@ cleanup:
 
 MCTF_TEST(test_utils_compare_string)
 {
-   MCTF_ASSERT(pgagroal_compare_string(NULL, NULL), cleanup,
+   MCTF_ASSERT(pgagroal_strcmp(NULL, NULL), cleanup,
                "two NULLs should compare equal");
-   MCTF_ASSERT(!pgagroal_compare_string("a", NULL), cleanup,
+   MCTF_ASSERT(!pgagroal_strcmp("a", NULL), cleanup,
                "non-NULL vs NULL should differ");
-   MCTF_ASSERT(!pgagroal_compare_string(NULL, "a"), cleanup,
+   MCTF_ASSERT(!pgagroal_strcmp(NULL, "a"), cleanup,
                "NULL vs non-NULL should differ");
-   MCTF_ASSERT(pgagroal_compare_string("same", "same"), cleanup,
+   MCTF_ASSERT(pgagroal_strcmp("same", "same"), cleanup,
                "identical strings should compare equal");
-   MCTF_ASSERT(!pgagroal_compare_string("a", "b"), cleanup,
+   MCTF_ASSERT(!pgagroal_strcmp("a", "b"), cleanup,
+               "different strings should not compare equal");
+
+cleanup:
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_utils_insensitive_compare_string)
+{
+   MCTF_ASSERT(pgagroal_strcasecmp(NULL, NULL), cleanup,
+               "two NULLs should compare equal");
+   MCTF_ASSERT(!pgagroal_strcasecmp("a", NULL), cleanup,
+               "non-NULL vs NULL should differ");
+   MCTF_ASSERT(!pgagroal_strcasecmp(NULL, "a"), cleanup,
+               "NULL vs non-NULL should differ");
+   MCTF_ASSERT(pgagroal_strcasecmp("Same", "same"), cleanup,
+               "same strings with different case should compare equal");
+   MCTF_ASSERT(!pgagroal_strcasecmp("a", "b"), cleanup,
                "different strings should not compare equal");
 
 cleanup:

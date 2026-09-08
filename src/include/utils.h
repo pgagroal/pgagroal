@@ -547,7 +547,16 @@ pgagroal_indent(char* str, char* tag, int indent);
  * @return true if the strings are the same, otherwise false
  */
 bool
-pgagroal_compare_string(const char* str1, const char* str2);
+pgagroal_strcmp(const char* str1, const char* str2);
+
+/**
+ * Compare two strings case-insensitively
+ * @param str1 The first string
+ * @param str2 The second string
+ * @return true if the strings are the same, otherwise false
+ */
+bool
+pgagroal_strcasecmp(const char* str1, const char* str2);
 
 /**
  * Escape a string

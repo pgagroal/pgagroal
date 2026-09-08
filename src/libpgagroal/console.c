@@ -198,11 +198,11 @@ resolve_page(struct message* msg)
 
    pgagroal_write_byte(msg->data + index, '\0');
 
-   if (strcmp(from, "/") == 0 || strcmp(from, "/index.html") == 0)
+   if (pgagroal_strcmp(from, "/") || pgagroal_strcmp(from, "/index.html"))
    {
       return PAGE_HOME;
    }
-   else if (strcmp(from, "/api") == 0 || strcmp(from, "/api/") == 0)
+   else if (pgagroal_strcmp(from, "/api") || pgagroal_strcmp(from, "/api/"))
    {
       return PAGE_API;
    }
@@ -435,9 +435,9 @@ console_refresh_metrics(int endpoint, struct console_page* console)
          }
 
          effective_endpoint = 0;
-         resolved_host = (strlen(config->common.host) == 0 || strcmp(config->common.host, "*") == 0 || strcmp(config->common.host, "0.0.0.0") == 0) ? "127.0.0.1" : config->common.host;
+         resolved_host = (strlen(config->common.host) == 0 || pgagroal_strcmp(config->common.host, "*") || pgagroal_strcmp(config->common.host, "0.0.0.0")) ? "127.0.0.1" : config->common.host;
 
-         if (strcmp(resolved_host, config->common.host) != 0)
+         if (!pgagroal_strcmp(resolved_host, config->common.host))
          {
             memset(original_host, 0, sizeof(original_host));
             pgagroal_snprintf(original_host, sizeof(original_host), "%s", config->common.host);
@@ -611,7 +611,7 @@ console_refresh_status(struct console_page* console)
          {
             struct json* server = (struct json*)(iter->value->data);
             char* state = (char*)pgagroal_json_get(server, MANAGEMENT_ARGUMENT_STATE);
-            bool active = state != NULL && (!strcmp(state, "Primary") || !strcmp(state, "Replica"));
+            bool active = state != NULL && (pgagroal_strcmp(state, "Primary") || pgagroal_strcmp(state, "Replica"));
             char* server_name = (char*)pgagroal_json_get(server, MANAGEMENT_ARGUMENT_SERVER);
 
             if (console->status->servers != NULL)
@@ -1296,7 +1296,7 @@ find_or_create_category(struct console_page* console, char* category_name)
    /* Try to find existing */
    for (int i = 0; i < console->category_count; i++)
    {
-      if (strcmp(console->categories[i].name, category_name) == 0)
+      if (pgagroal_strcmp(console->categories[i].name, category_name))
       {
          return &console->categories[i];
       }
@@ -1448,7 +1448,7 @@ extract_labels_from_prometheus_attrs(struct prometheus_attributes* attrs, struct
          continue;
       }
 
-      if (strcmp(attr->key, "server") == 0 || strcmp(attr->key, "name") == 0)
+      if (pgagroal_strcmp(attr->key, "server") || pgagroal_strcmp(attr->key, "name"))
       {
          free(metric->server);
          metric->server = strdup(attr->value);
@@ -1498,7 +1498,7 @@ add_or_increment_prefix(struct prefix_count** counts, int* size, int* capacity, 
    /* Find existing prefix */
    for (int j = 0; j < *size; j++)
    {
-      if (strcmp((*counts)[j].prefix, prefix) == 0)
+      if (pgagroal_strcmp((*counts)[j].prefix, prefix))
       {
          found = j;
          break;
@@ -1920,14 +1920,14 @@ collect_simple_label_columns(struct console_category* category, char*** label_ke
             continue;
          }
 
-         if (strcmp(key, "endpoint") == 0)
+         if (pgagroal_strcmp(key, "endpoint"))
          {
             continue;
          }
 
          for (int i = 0; i < count; i++)
          {
-            if (strcmp(keys[i], key) == 0)
+            if (pgagroal_strcmp(keys[i], key))
             {
                exists = true;
                break;
@@ -1987,7 +1987,7 @@ find_metric_label_value(struct console_metric* metric, const char* key)
          continue;
       }
 
-      if (strcmp(metric->labels[i].key, key) == 0)
+      if (pgagroal_strcmp(metric->labels[i].key, key))
       {
          return metric->labels[i].value;
       }

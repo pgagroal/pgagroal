@@ -309,7 +309,7 @@ pgagroal_read_configuration(void* shm, char* filename, bool emit_warnings)
 
             idx_sections++;
 
-            if (strcmp(section, PGAGROAL_MAIN_INI_SECTION) && strcmp(section, "health_check") && strcmp(section, "prometheus"))
+            if (!pgagroal_strcmp(section, PGAGROAL_MAIN_INI_SECTION) && !pgagroal_strcmp(section, "health_check") && !pgagroal_strcmp(section, "prometheus"))
             {
                if (idx_server > 0 && idx_server <= NUMBER_OF_SERVERS)
                {
@@ -634,7 +634,7 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
          return 1;
       }
 
-      if (strcmp(config->failover_script, config->failover_notify_script) == 0)
+      if (pgagroal_strcmp(config->failover_script, config->failover_notify_script))
       {
          pgagroal_log_fatal("pgagroal: failover_notify_script cannot be the same as failover_script");
          return 1;
@@ -1032,7 +1032,7 @@ pgagroal_vault_read_configuration(void* shm, char* filename, bool emit_warnings)
 
             idx_sections++;
 
-            if (strcmp(section, PGAGROAL_VAULT_INI_SECTION))
+            if (!pgagroal_strcmp(section, PGAGROAL_VAULT_INI_SECTION))
             {
                if (idx_server > 0 && idx_server <= 2)
                {
@@ -1372,8 +1372,8 @@ pgagroal_validate_hba_configuration(void* shm)
 
    for (int i = 0; i < config->number_of_hbas; i++)
    {
-      if (!strcasecmp("host", config->hbas[i].type) ||
-          !strcasecmp("hostssl", config->hbas[i].type))
+      if (pgagroal_strcasecmp("host", config->hbas[i].type) ||
+          pgagroal_strcasecmp("hostssl", config->hbas[i].type))
       {
          /* Ok */
       }
@@ -1383,11 +1383,11 @@ pgagroal_validate_hba_configuration(void* shm)
          return 1;
       }
 
-      if (!strcasecmp("trust", config->hbas[i].method) ||
-          !strcasecmp("reject", config->hbas[i].method) ||
-          !strcasecmp("password", config->hbas[i].method) ||
-          !strcasecmp("scram-sha-256", config->hbas[i].method) ||
-          !strcasecmp("all", config->hbas[i].method))
+      if (pgagroal_strcasecmp("trust", config->hbas[i].method) ||
+          pgagroal_strcasecmp("reject", config->hbas[i].method) ||
+          pgagroal_strcasecmp("password", config->hbas[i].method) ||
+          pgagroal_strcasecmp("scram-sha-256", config->hbas[i].method) ||
+          pgagroal_strcasecmp("all", config->hbas[i].method))
       {
          /* Ok */
       }
@@ -1564,7 +1564,7 @@ pgagroal_validate_limit_configuration(void* shm)
          // Check for duplicate aliases within the same limit entry
          for (int k = j + 1; k < config->limits[i].aliases_count; k++)
          {
-            if (!strcmp(config->limits[i].aliases[j], config->limits[i].aliases[k]))
+            if (pgagroal_strcmp(config->limits[i].aliases[j], config->limits[i].aliases[k]))
             {
                pgagroal_log_fatal("Duplicate alias '%s' found within limit entry %d (%s:%d)",
                                   config->limits[i].aliases[j], i + 1, config->limit_path, config->limits[i].lineno);
@@ -1575,7 +1575,7 @@ pgagroal_validate_limit_configuration(void* shm)
          // Check if alias conflicts with any main database name
          for (int k = 0; k < config->number_of_limits; k++)
          {
-            if (!strcmp(config->limits[i].aliases[j], config->limits[k].database))
+            if (pgagroal_strcmp(config->limits[i].aliases[j], config->limits[k].database))
             {
                pgagroal_log_fatal("Alias '%s' in entry %d conflicts with database name in entry %d (%s:%d vs %s:%d)",
                                   config->limits[i].aliases[j], i + 1, k + 1,
@@ -1594,7 +1594,7 @@ pgagroal_validate_limit_configuration(void* shm)
             }
             for (int l = 0; l < config->limits[k].aliases_count; l++)
             {
-               if (!strcmp(config->limits[i].aliases[j], config->limits[k].aliases[l]))
+               if (pgagroal_strcmp(config->limits[i].aliases[j], config->limits[k].aliases[l]))
                {
                   pgagroal_log_fatal("Duplicate alias '%s' found in entries %d and %d (%s:%d vs %s:%d)",
                                      config->limits[i].aliases[j], i + 1, k + 1,
@@ -1615,7 +1615,7 @@ pgagroal_validate_limit_configuration(void* shm)
          }
          for (int k = 0; k < config->limits[j].aliases_count; k++)
          {
-            if (!strcmp(config->limits[i].database, config->limits[j].aliases[k]))
+            if (pgagroal_strcmp(config->limits[i].database, config->limits[j].aliases[k]))
             {
                pgagroal_log_fatal("Database name '%s' in entry %d conflicts with alias in entry %d (%s:%d vs %s:%d)",
                                   config->limits[i].database, i + 1, j + 1,
@@ -1632,7 +1632,7 @@ pgagroal_validate_limit_configuration(void* shm)
 
          for (int j = 0; j < config->number_of_users; j++)
          {
-            if (!strcmp(config->limits[i].username, config->users[j].username))
+            if (pgagroal_strcmp(config->limits[i].username, config->users[j].username))
             {
                user_found = true;
             }
@@ -1962,7 +1962,7 @@ pgagroal_validate_frontend_users_configuration(void* shm)
       {
          char* u = &config->users[i].username[0];
 
-         if (!strcmp(f, u))
+         if (pgagroal_strcmp(f, u))
          {
             found = true;
          }
@@ -2184,7 +2184,7 @@ pgagroal_vault_read_users_configuration(void* shm, char* filename)
 
          if (strlen(username) < MAX_USERNAME_LENGTH &&
              strlen(password) < MAX_PASSWORD_LENGTH &&
-             !strcmp(config->vault_server.user.username, username))
+             pgagroal_strcmp(config->vault_server.user.username, username))
          {
             memcpy(&config->vault_server.user.password, password, strlen(password));
          }
@@ -2430,7 +2430,7 @@ pgagroal_reload_configuration(bool* r, bool* health_check_changed)
       goto error;
    }
 
-   if (strcmp("", config->limit_path))
+   if (!pgagroal_strcmp("", config->limit_path))
    {
       if (pgagroal_read_limit_configuration((void*)reload, config->limit_path))
       {
@@ -2438,7 +2438,7 @@ pgagroal_reload_configuration(bool* r, bool* health_check_changed)
       }
    }
 
-   if (strcmp("", config->users_path))
+   if (!pgagroal_strcmp("", config->users_path))
    {
       if (pgagroal_read_users_configuration((void*)reload, config->users_path))
       {
@@ -2446,7 +2446,7 @@ pgagroal_reload_configuration(bool* r, bool* health_check_changed)
       }
    }
 
-   if (strcmp("", config->frontend_users_path))
+   if (!pgagroal_strcmp("", config->frontend_users_path))
    {
       if (pgagroal_read_frontend_users_configuration((void*)reload, config->frontend_users_path))
       {
@@ -2454,7 +2454,7 @@ pgagroal_reload_configuration(bool* r, bool* health_check_changed)
       }
    }
 
-   if (strcmp("", config->admins_path))
+   if (!pgagroal_strcmp("", config->admins_path))
    {
       if (pgagroal_read_admins_configuration((void*)reload, config->admins_path))
       {
@@ -2462,7 +2462,7 @@ pgagroal_reload_configuration(bool* r, bool* health_check_changed)
       }
    }
 
-   if (strcmp("", config->superuser_path))
+   if (!pgagroal_strcmp("", config->superuser_path))
    {
       if (pgagroal_read_superuser_configuration((void*)reload, config->superuser_path))
       {
@@ -2813,13 +2813,13 @@ error:
 int
 pgagroal_as_bool(char* str, bool* b)
 {
-   if (!strcasecmp(str, "true") || !strcasecmp(str, "on") || !strcasecmp(str, "yes") || !strcasecmp(str, "1"))
+   if (pgagroal_strcasecmp(str, "true") || pgagroal_strcasecmp(str, "on") || pgagroal_strcasecmp(str, "yes") || pgagroal_strcasecmp(str, "1"))
    {
       *b = true;
       return 0;
    }
 
-   if (!strcasecmp(str, "false") || !strcasecmp(str, "off") || !strcasecmp(str, "no") || !strcasecmp(str, "0"))
+   if (pgagroal_strcasecmp(str, "false") || pgagroal_strcasecmp(str, "off") || pgagroal_strcasecmp(str, "no") || pgagroal_strcasecmp(str, "0"))
    {
       *b = false;
       return 0;
@@ -2831,19 +2831,19 @@ pgagroal_as_bool(char* str, bool* b)
 int
 pgagroal_as_logging_type(char* str, int* type)
 {
-   if (!strcasecmp(str, "console"))
+   if (pgagroal_strcasecmp(str, "console"))
    {
       *type = PGAGROAL_LOGGING_TYPE_CONSOLE;
       return 0;
    }
 
-   if (!strcasecmp(str, "file"))
+   if (pgagroal_strcasecmp(str, "file"))
    {
       *type = PGAGROAL_LOGGING_TYPE_FILE;
       return 0;
    }
 
-   if (!strcasecmp(str, "syslog"))
+   if (pgagroal_strcasecmp(str, "syslog"))
    {
       *type = PGAGROAL_LOGGING_TYPE_SYSLOG;
       return 0;
@@ -2906,28 +2906,28 @@ pgagroal_as_logging_level(char* str)
       }
    }
 
-   if (!strcasecmp(str, "info"))
+   if (pgagroal_strcasecmp(str, "info"))
    {
       return PGAGROAL_LOGGING_LEVEL_INFO;
    }
 
-   if (!strcasecmp(str, "warn"))
+   if (pgagroal_strcasecmp(str, "warn"))
    {
       return PGAGROAL_LOGGING_LEVEL_WARN;
    }
 
-   if (!strcasecmp(str, "error"))
+   if (pgagroal_strcasecmp(str, "error"))
    {
       return PGAGROAL_LOGGING_LEVEL_ERROR;
    }
 
-   if (!strcasecmp(str, "fatal"))
+   if (pgagroal_strcasecmp(str, "fatal"))
    {
       return PGAGROAL_LOGGING_LEVEL_FATAL;
    }
 
    // "trace" is a synonym for "debug5"
-   if (!strcasecmp(str, "trace"))
+   if (pgagroal_strcasecmp(str, "trace"))
    {
       return PGAGROAL_LOGGING_LEVEL_DEBUG5;
    }
@@ -2938,13 +2938,13 @@ pgagroal_as_logging_level(char* str)
 int
 pgagroal_as_logging_mode(char* str, int* mode)
 {
-   if (!strcasecmp(str, "a") || !strcasecmp(str, "append"))
+   if (pgagroal_strcasecmp(str, "a") || pgagroal_strcasecmp(str, "append"))
    {
       *mode = PGAGROAL_LOGGING_MODE_APPEND;
       return 0;
    }
 
-   if (!strcasecmp(str, "c") || !strcasecmp(str, "create"))
+   if (pgagroal_strcasecmp(str, "c") || pgagroal_strcasecmp(str, "create"))
    {
       *mode = PGAGROAL_LOGGING_MODE_CREATE;
       return 0;
@@ -2956,19 +2956,19 @@ pgagroal_as_logging_mode(char* str, int* mode)
 int
 pgagroal_as_validation(char* str, int* val)
 {
-   if (!strcasecmp(str, "off"))
+   if (pgagroal_strcasecmp(str, "off"))
    {
       *val = VALIDATION_OFF;
       return 0;
    }
 
-   if (!strcasecmp(str, "foreground"))
+   if (pgagroal_strcasecmp(str, "foreground"))
    {
       *val = VALIDATION_FOREGROUND;
       return 0;
    }
 
-   if (!strcasecmp(str, "background"))
+   if (pgagroal_strcasecmp(str, "background"))
    {
       *val = VALIDATION_BACKGROUND;
       return 0;
@@ -2980,17 +2980,17 @@ pgagroal_as_validation(char* str, int* val)
 int
 pgagroal_as_server_reset_query_behavior_on_failure(char* str, int* val)
 {
-   if (!strcasecmp(str, "discard"))
+   if (pgagroal_strcasecmp(str, "discard"))
    {
       *val = SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_DISCARD;
       return 0;
    }
-   if (!strcasecmp(str, "ignore"))
+   if (pgagroal_strcasecmp(str, "ignore"))
    {
       *val = SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_IGNORE;
       return 0;
    }
-   if (!strcasecmp(str, "try"))
+   if (pgagroal_strcasecmp(str, "try"))
    {
       *val = SERVER_RESET_QUERY_BEHAVIOR_ON_FAILURE_TRY;
       return 0;
@@ -3001,25 +3001,25 @@ pgagroal_as_server_reset_query_behavior_on_failure(char* str, int* val)
 int
 pgagroal_as_pipeline(char* str, int* pipeline)
 {
-   if (!strcasecmp(str, "auto"))
+   if (pgagroal_strcasecmp(str, "auto"))
    {
       *pipeline = PIPELINE_AUTO;
       return 0;
    }
 
-   if (!strcasecmp(str, "performance"))
+   if (pgagroal_strcasecmp(str, "performance"))
    {
       *pipeline = PIPELINE_PERFORMANCE;
       return 0;
    }
 
-   if (!strcasecmp(str, "session"))
+   if (pgagroal_strcasecmp(str, "session"))
    {
       *pipeline = PIPELINE_SESSION;
       return 0;
    }
 
-   if (!strcasecmp(str, "transaction"))
+   if (pgagroal_strcasecmp(str, "transaction"))
    {
       *pipeline = PIPELINE_TRANSACTION;
       return 0;
@@ -3031,19 +3031,19 @@ pgagroal_as_pipeline(char* str, int* pipeline)
 int
 pgagroal_as_hugepage(char* str, unsigned char* hp)
 {
-   if (!strcasecmp(str, "off"))
+   if (pgagroal_strcasecmp(str, "off"))
    {
       *hp = HUGEPAGE_OFF;
       return 0;
    }
 
-   if (!strcasecmp(str, "try"))
+   if (pgagroal_strcasecmp(str, "try"))
    {
       *hp = HUGEPAGE_TRY;
       return 0;
    }
 
-   if (!strcasecmp(str, "on"))
+   if (pgagroal_strcasecmp(str, "on"))
    {
       *hp = HUGEPAGE_ON;
       return 0;
@@ -3055,19 +3055,19 @@ pgagroal_as_hugepage(char* str, unsigned char* hp)
 int
 pgagroal_as_channel_binding(char* str, unsigned char* cb)
 {
-   if (!strcasecmp(str, "disabled"))
+   if (pgagroal_strcasecmp(str, "disabled"))
    {
       *cb = CHANNEL_BINDING_DISABLED;
       return 0;
    }
 
-   if (!strcasecmp(str, "prefer"))
+   if (pgagroal_strcasecmp(str, "prefer"))
    {
       *cb = CHANNEL_BINDING_PREFER;
       return 0;
    }
 
-   if (!strcasecmp(str, "require"))
+   if (pgagroal_strcasecmp(str, "require"))
    {
       *cb = CHANNEL_BINDING_REQUIRE;
       return 0;
@@ -3079,19 +3079,19 @@ pgagroal_as_channel_binding(char* str, unsigned char* cb)
 int
 pgagroal_as_startup_validation(char* str, int* sv)
 {
-   if (!strcasecmp(str, "off"))
+   if (pgagroal_strcasecmp(str, "off"))
    {
       *sv = STARTUP_VALIDATION_OFF;
       return 0;
    }
 
-   if (!strcasecmp(str, "try"))
+   if (pgagroal_strcasecmp(str, "try"))
    {
       *sv = STARTUP_VALIDATION_TRY;
       return 0;
    }
 
-   if (!strcasecmp(str, "on"))
+   if (pgagroal_strcasecmp(str, "on"))
    {
       *sv = STARTUP_VALIDATION_ON;
       return 0;
@@ -3317,7 +3317,7 @@ extract_limit(char* str, int server_max, char** database, char** user, int* max_
       goto cleanup;
    }
 
-   if (!strcasecmp("all", value))
+   if (pgagroal_strcasecmp("all", value))
    {
       *max_size = server_max;
    }
@@ -3334,9 +3334,9 @@ extract_limit(char* str, int server_max, char** database, char** user, int* max_
 
    // Extract initial_size (optional)
    offset = extract_value(str, offset, &value);
-   if (offset != -1 && value && strcmp("", value) != 0)
+   if (offset != -1 && value && !pgagroal_strcmp("", value))
    {
-      if (!strcasecmp("all", value))
+      if (pgagroal_strcasecmp("all", value))
       {
          *initial_size = server_max;
       }
@@ -3353,9 +3353,9 @@ extract_limit(char* str, int server_max, char** database, char** user, int* max_
 
    // Extract min_size (optional)
    offset = extract_value(str, offset, &value);
-   if (offset != -1 && value && strcmp("", value) != 0)
+   if (offset != -1 && value && !pgagroal_strcmp("", value))
    {
-      if (!strcasecmp("all", value))
+      if (pgagroal_strcasecmp("all", value))
       {
          *min_size = server_max;
       }
@@ -4169,7 +4169,7 @@ restart_string(char* name, char* e, char* n, bool skip_non_existing)
       return 0;
    }
 
-   if (strcmp(e, n))
+   if (!pgagroal_strcmp(e, n))
    {
       pgagroal_log_warn("Restart required for %s - Existing %s New %s", name, e, n);
       return 1;
@@ -4197,8 +4197,8 @@ restart_limit(char* name __attribute__((unused)), struct main_configuration* con
       e = &config->limits[i];
       n = &reload->limits[i];
 
-      if (strcmp(e->database, n->database) ||
-          strcmp(e->username, n->username) ||
+      if (!pgagroal_strcmp(e->database, n->database) ||
+          !pgagroal_strcmp(e->username, n->username) ||
           e->max_size != n->max_size ||
           e->initial_size != n->initial_size ||
           e->min_size != n->min_size)
@@ -4218,7 +4218,7 @@ restart_limit(char* name __attribute__((unused)), struct main_configuration* con
       bool aliases_changed = false;
       for (int j = 0; j < n->aliases_count; j++)
       {
-         if (j >= e->aliases_count || strcmp(e->aliases[j], n->aliases[j]) != 0)
+         if (j >= e->aliases_count || !pgagroal_strcmp(e->aliases[j], n->aliases[j]))
          {
             aliases_changed = true;
             break;
@@ -4287,7 +4287,7 @@ health_check_settings_changed(struct main_configuration* config, struct main_con
       return true;
    }
 
-   if (strcmp(config->health_check_user, reload->health_check_user))
+   if (!pgagroal_strcmp(config->health_check_user, reload->health_check_user))
    {
       return true;
    }
@@ -4314,7 +4314,7 @@ is_empty_string(char* s)
       return true;
    }
 
-   if (!strcmp(s, ""))
+   if (pgagroal_strcmp(s, ""))
    {
       return true;
    }
@@ -6475,11 +6475,11 @@ pgagroal_apply_vault_configuration(struct vault_configuration* config,
    }
    else if (key_in_section("tls_cert_auth_mode", section, key, true, &unknown))
    {
-      if (!strcasecmp(value, "verify-ca"))
+      if (pgagroal_strcasecmp(value, "verify-ca"))
       {
          config->tls_cert_auth_mode = TLS_CERT_AUTH_MODE_VERIFY_CA;
       }
-      else if (!strcasecmp(value, "verify-full"))
+      else if (pgagroal_strcasecmp(value, "verify-full"))
       {
          config->tls_cert_auth_mode = TLS_CERT_AUTH_MODE_VERIFY_FULL;
       }

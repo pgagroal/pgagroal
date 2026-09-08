@@ -1249,11 +1249,11 @@ resolve_page(struct message* msg)
 
    pgagroal_write_byte(msg->data + index, '\0');
 
-   if (strcmp(from, "/") == 0 || strcmp(from, "/index.html") == 0)
+   if (pgagroal_strcmp(from, "/") || pgagroal_strcmp(from, "/index.html"))
    {
       return PAGE_HOME;
    }
-   else if (strcmp(from, "/metrics") == 0)
+   else if (pgagroal_strcmp(from, "/metrics"))
    {
       return PAGE_METRICS;
    }

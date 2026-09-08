@@ -524,19 +524,19 @@ main(int argc, char** argv)
             }
             break;
          case 'E':
-            if (!strcmp(optarg, "aes") || !strcmp(optarg, "aes256") || !strcmp(optarg, "aes256gcm"))
+            if (pgagroal_strcmp(optarg, "aes") || pgagroal_strcmp(optarg, "aes256") || pgagroal_strcmp(optarg, "aes256gcm"))
             {
                encryption = MANAGEMENT_ENCRYPTION_AES256_GCM;
             }
-            else if (!strcmp(optarg, "aes192") || !strcmp(optarg, "aes192gcm"))
+            else if (pgagroal_strcmp(optarg, "aes192") || pgagroal_strcmp(optarg, "aes192gcm"))
             {
                encryption = MANAGEMENT_ENCRYPTION_AES192_GCM;
             }
-            else if (!strcmp(optarg, "aes128") || !strcmp(optarg, "aes128gcm"))
+            else if (pgagroal_strcmp(optarg, "aes128") || pgagroal_strcmp(optarg, "aes128gcm"))
             {
                encryption = MANAGEMENT_ENCRYPTION_AES128_GCM;
             }
-            else if (!strcmp(optarg, "none"))
+            else if (pgagroal_strcmp(optarg, "none"))
             {
                encryption = MANAGEMENT_ENCRYPTION_NONE;
                break;
@@ -985,48 +985,48 @@ help_switch_to(void)
 static void
 display_helper(char* command)
 {
-   if (!strcmp(command, COMMAND_CANCELSHUTDOWN))
+   if (pgagroal_strcmp(command, COMMAND_CANCELSHUTDOWN))
    {
       help_cancel_shutdown();
    }
-   else if (!strcmp(command, COMMAND_CONFIG_GET) ||
-            !strcmp(command, COMMAND_CONFIG_LS) ||
-            !strcmp(command, COMMAND_CONFIG_SET) ||
-            !strcmp(command, COMMAND_CONFIG_ALIAS) ||
-            !strcmp(command, COMMAND_RELOAD))
+   else if (pgagroal_strcmp(command, COMMAND_CONFIG_GET) ||
+            pgagroal_strcmp(command, COMMAND_CONFIG_LS) ||
+            pgagroal_strcmp(command, COMMAND_CONFIG_SET) ||
+            pgagroal_strcmp(command, COMMAND_CONFIG_ALIAS) ||
+            pgagroal_strcmp(command, COMMAND_RELOAD))
    {
       help_conf();
    }
-   else if (!strcmp(command, COMMAND_DISABLEDB))
+   else if (pgagroal_strcmp(command, COMMAND_DISABLEDB))
    {
       help_disabledb();
    }
-   else if (!strcmp(command, COMMAND_ENABLEDB))
+   else if (pgagroal_strcmp(command, COMMAND_ENABLEDB))
    {
       help_enabledb();
    }
-   else if (!strcmp(command, COMMAND_FLUSH))
+   else if (pgagroal_strcmp(command, COMMAND_FLUSH))
    {
       help_flush();
    }
-   else if (!strcmp(command, COMMAND_PING))
+   else if (pgagroal_strcmp(command, COMMAND_PING))
    {
       help_ping();
    }
-   else if (!strcmp(command, COMMAND_CLEAR) ||
-            !strcmp(command, COMMAND_CLEAR_SERVER))
+   else if (pgagroal_strcmp(command, COMMAND_CLEAR) ||
+            pgagroal_strcmp(command, COMMAND_CLEAR_SERVER))
    {
       help_clear();
    }
-   else if (!strcmp(command, COMMAND_SHUTDOWN))
+   else if (pgagroal_strcmp(command, COMMAND_SHUTDOWN))
    {
       help_shutdown();
    }
-   else if (!strcmp(command, COMMAND_STATUS))
+   else if (pgagroal_strcmp(command, COMMAND_STATUS))
    {
       help_status_details();
    }
-   else if (!strcmp(command, COMMAND_SWITCH_TO))
+   else if (pgagroal_strcmp(command, COMMAND_SWITCH_TO))
    {
       help_switch_to();
    }
@@ -1559,7 +1559,7 @@ process_set_result(SSL* ssl, int socket, char* config_key, int32_t output_format
    }
 
    // Handle success cases with accurate messaging
-   if (conf_status && !strcmp(conf_status, CONFIGURATION_STATUS_SUCCESS))
+   if (conf_status && pgagroal_strcmp(conf_status, CONFIGURATION_STATUS_SUCCESS))
    {
       printf("Configuration change applied successfully\n");
       printf("   Parameter: %s\n", config_key ? config_key : "unknown");
@@ -1567,7 +1567,7 @@ process_set_result(SSL* ssl, int socket, char* config_key, int32_t output_format
       printf("   New value: %s\n", new_value ? new_value : "unknown");
       printf("   Status: Active (applied to running instance)\n");
    }
-   else if (conf_status && !strcmp(conf_status, CONFIGURATION_STATUS_RESTART_REQUIRED))
+   else if (conf_status && pgagroal_strcmp(conf_status, CONFIGURATION_STATUS_RESTART_REQUIRED))
    {
       printf("Configuration change requires manual restart\n");
       printf("   Parameter: %s\n", config_key ? config_key : "unknown");
@@ -1689,7 +1689,7 @@ get_config_key_result(char* config_key, struct json* j, uintptr_t* r, int32_t ou
       key[MISC_LENGTH - 1] = '\0';
 
       // Treat "pgagroal" as the main section (empty)
-      if (!strcasecmp(section, "pgagroal"))
+      if (pgagroal_strcasecmp(section, "pgagroal"))
       {
          memset(section, 0, MISC_LENGTH);
       }
@@ -1751,14 +1751,14 @@ get_config_key_result(char* config_key, struct json* j, uintptr_t* r, int32_t ou
       if (strlen(context) > 0)
       {
          // Looking for a specific context (like "mydb" in "limit.mydb.username")
-         if (!strcmp(context, iter->key) && iter->value->type == ValueJSON)
+         if (pgagroal_strcmp(context, iter->key) && iter->value->type == ValueJSON)
          {
             struct json* nested_obj = (struct json*)iter->value->data;
             struct json_iterator* nested_iter;
             pgagroal_json_iterator_create(nested_obj, &nested_iter);
             while (pgagroal_json_iterator_next(nested_iter))
             {
-               if (!strcmp(key, nested_iter->key))
+               if (pgagroal_strcmp(key, nested_iter->key))
                {
                   config_value = pgagroal_value_to_string(nested_iter->value, FORMAT_TEXT, NULL, 0);
                   if (output_format == MANAGEMENT_OUTPUT_FORMAT_JSON)
@@ -1772,7 +1772,7 @@ get_config_key_result(char* config_key, struct json* j, uintptr_t* r, int32_t ou
             break;
          }
       }
-      else if (!strcmp(key, iter->key))
+      else if (pgagroal_strcmp(key, iter->key))
       {
          // Handle single or two-part keys
          if (iter->value->type == ValueJSON)

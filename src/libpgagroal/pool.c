@@ -127,11 +127,11 @@ start:
 
             // Check if same rule and username
             if (best_rule == config->connections[i].limit_rule &&
-                !strcmp((const char*)(&config->connections[i].username), username))
+                pgagroal_strcmp((const char*)(&config->connections[i].username), username))
             {
                real_database = resolve_database_name(database, best_rule);
                // Check exact database match
-               if (!strcmp((const char*)(&config->connections[i].database), real_database))
+               if (pgagroal_strcmp((const char*)(&config->connections[i].database), real_database))
                {
                   can_reuse = true;
                }
@@ -1072,7 +1072,7 @@ pgagroal_flush(int mode, char* database)
       {
          bool consider = false;
 
-         if (!strcmp(database, "all") || !strcmp(config->connections[i].database, database))
+         if (pgagroal_strcmp(database, "all") || pgagroal_strcmp(config->connections[i].database, database))
          {
             consider = true;
          }
@@ -1305,13 +1305,13 @@ pgagroal_prefill(bool initial)
             continue;
          }
 
-         if (strcmp("all", config->limits[i].database) && strcmp("all", config->limits[i].username))
+         if (!pgagroal_strcmp("all", config->limits[i].database) && !pgagroal_strcmp("all", config->limits[i].username))
          {
             int user = -1;
 
             for (int j = 0; j < config->number_of_users && user == -1; j++)
             {
-               if (!strcmp(config->limits[i].username, config->users[j].username))
+               if (pgagroal_strcmp(config->limits[i].username, config->users[j].username))
                {
                   user = j;
                }
@@ -1492,7 +1492,7 @@ find_best_rule(char* username, char* database)
          bool database_match = false;
 
          // Check exact database name match or "all"
-         if (!strcmp("all", config->limits[i].database) || !strcmp(database, config->limits[i].database))
+         if (pgagroal_strcmp("all", config->limits[i].database) || pgagroal_strcmp(database, config->limits[i].database))
          {
             database_match = true;
          }
@@ -1501,7 +1501,7 @@ find_best_rule(char* username, char* database)
             // Check if database matches any alias for this limit entry
             for (int j = 0; j < config->limits[i].aliases_count; j++)
             {
-               if (!strcmp(database, config->limits[i].aliases[j]))
+               if (pgagroal_strcmp(database, config->limits[i].aliases[j]))
                {
                   database_match = true;
                   pgagroal_log_debug("Database '%s' matched alias '%s' for rule %d",
@@ -1512,7 +1512,7 @@ find_best_rule(char* username, char* database)
          }
 
          // Check username match
-         bool username_match = (!strcmp("all", config->limits[i].username) || !strcmp(username, config->limits[i].username));
+         bool username_match = (pgagroal_strcmp("all", config->limits[i].username) || pgagroal_strcmp(username, config->limits[i].username));
 
          /* There is a match */
          if (username_match && database_match)
@@ -1523,24 +1523,24 @@ find_best_rule(char* username, char* database)
             }
             else
             {
-               if (!strcmp(username, config->limits[best_rule].username) &&
-                   (!strcmp(database, config->limits[best_rule].database) ||
+               if (pgagroal_strcmp(username, config->limits[best_rule].username) &&
+                   (pgagroal_strcmp(database, config->limits[best_rule].database) ||
                     is_alias_of_limit(database, best_rule)))
                {
                   /* We have a precise rule already */
                }
-               else if (!strcmp("all", config->limits[best_rule].username))
+               else if (pgagroal_strcmp("all", config->limits[best_rule].username))
                {
                   /* User is better */
-                  if (strcmp("all", config->limits[i].username))
+                  if (!pgagroal_strcmp("all", config->limits[i].username))
                   {
                      best_rule = i;
                   }
                }
-               else if (!strcmp("all", config->limits[best_rule].database))
+               else if (pgagroal_strcmp("all", config->limits[best_rule].database))
                {
                   /* Database is better */
-                  if (strcmp("all", config->limits[i].database))
+                  if (!pgagroal_strcmp("all", config->limits[i].database))
                   {
                      best_rule = i;
                   }
@@ -1571,7 +1571,7 @@ is_alias_of_limit(char* database, int limit_index)
 
    for (int i = 0; i < config->limits[limit_index].aliases_count; i++)
    {
-      if (!strcmp(database, config->limits[limit_index].aliases[i]))
+      if (pgagroal_strcmp(database, config->limits[limit_index].aliases[i]))
       {
          return true;
       }
@@ -1627,10 +1627,10 @@ get_connection_count_for_limit_rule(int rule_index, char* username)
    for (int i = 0; i < config->max_connections; i++)
    {
       if (atomic_load(&config->states[i]) != STATE_NOTINIT &&
-          !strcmp((const char*)(&config->connections[i].username), username))
+          pgagroal_strcmp((const char*)(&config->connections[i].username), username))
       {
          // Check if this connection is for the main database name
-         if (!strcmp((const char*)(&config->connections[i].database), config->limits[rule_index].database))
+         if (pgagroal_strcmp((const char*)(&config->connections[i].database), config->limits[rule_index].database))
          {
             count++;
          }
@@ -1639,7 +1639,7 @@ get_connection_count_for_limit_rule(int rule_index, char* username)
             // Check if this connection is for any alias of this database
             for (int j = 0; j < config->limits[rule_index].aliases_count; j++)
             {
-               if (!strcmp((const char*)(&config->connections[i].database), config->limits[rule_index].aliases[j]))
+               if (pgagroal_strcmp((const char*)(&config->connections[i].database), config->limits[rule_index].aliases[j]))
                {
                   count++;
                   break;
@@ -1672,7 +1672,7 @@ remove_connection(char* username, char* database)
 
       if (atomic_compare_exchange_strong(&config->states[i], &free, remove))
       {
-         if (!strcmp(username, config->connections[i].username) && !strcmp(database, config->connections[i].database))
+         if (pgagroal_strcmp(username, config->connections[i].username) && pgagroal_strcmp(database, config->connections[i].database))
          {
             if (!atomic_compare_exchange_strong(&config->states[i], &remove, STATE_FREE))
             {
@@ -2000,8 +2000,8 @@ do_prefill(char* username, char* database, int size)
       // Fallback to old logic if no rule found
       for (int i = 0; i < config->max_connections; i++)
       {
-         if (!strcmp((const char*)(&config->connections[i].username), username) &&
-             !strcmp((const char*)(&config->connections[i].database), database))
+         if (pgagroal_strcmp((const char*)(&config->connections[i].username), username) &&
+             pgagroal_strcmp((const char*)(&config->connections[i].database), database))
          {
             connections++;
          }
@@ -2064,7 +2064,7 @@ resolve_database_name(char* database, int best_rule)
    // Check if this database name is an alias
    for (int j = 0; j < config->limits[best_rule].aliases_count; j++)
    {
-      if (!strcmp(database, config->limits[best_rule].aliases[j]))
+      if (pgagroal_strcmp(database, config->limits[best_rule].aliases[j]))
       {
          return config->limits[best_rule].database; // Return real database name
       }

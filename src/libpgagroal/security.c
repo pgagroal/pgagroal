@@ -750,7 +750,7 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
       pgagroal_extract_username_database(request_msg, &username, &database, &appname);
 
       /* Must be admin database */
-      if (strcmp("admin", database) != 0)
+      if (!pgagroal_strcmp("admin", database))
       {
          pgagroal_log_debug("remote_management_auth: admin: %s / %s", username, address);
          pgagroal_write_connection_refused(c_ssl, client_fd);
@@ -1907,7 +1907,7 @@ retry:
       goto error;
    }
 
-   if (strcmp(pgagroal_read_string(msg->data + 5), password))
+   if (!pgagroal_strcmp(pgagroal_read_string(msg->data + 5), password))
    {
       pgagroal_write_bad_password(c_ssl, client_fd, username);
 
@@ -2013,7 +2013,7 @@ retry:
       size_t gs2_length = 0;
       int commas = 0;
 
-      client_plus = strcmp(mechanism, "SCRAM-SHA-256-PLUS") == 0;
+      client_plus = pgagroal_strcmp(mechanism, "SCRAM-SHA-256-PLUS");
 
       /* The initial response follows the mechanism NUL and its int32 length */
       header = 5 + strlen(mechanism) + 1 + 4;
@@ -2787,7 +2787,7 @@ scram_mechanism_offered(char* sasl, size_t sasl_length, const char* name)
       {
          break;
       }
-      if (!strcmp(mechanism, name))
+      if (pgagroal_strcmp(mechanism, name))
       {
          return true;
       }
@@ -2822,7 +2822,7 @@ scram_strip_channel_binding(struct message* msg)
       char* mechanism = data + offset;
       size_t len = strlen(mechanism);
 
-      if (strcmp(mechanism, "SCRAM-SHA-256-PLUS"))
+      if (!pgagroal_strcmp(mechanism, "SCRAM-SHA-256-PLUS"))
       {
          if (out != offset)
          {
@@ -3193,7 +3193,7 @@ is_allowed(char* username, char* database, char* address, int* hba_method)
 static bool
 is_allowed_username(char* username, char* entry)
 {
-   if (!strcasecmp(entry, "all") || !strcmp(username, entry))
+   if (pgagroal_strcasecmp(entry, "all") || pgagroal_strcmp(username, entry))
    {
       return true;
    }
@@ -3206,7 +3206,7 @@ is_allowed_database(char* database, char* entry)
 {
    struct main_configuration* config = (struct main_configuration*)shmem;
 
-   if (!strcasecmp(entry, "all") || !strcmp(database, entry))
+   if (pgagroal_strcasecmp(entry, "all") || pgagroal_strcmp(database, entry))
    {
       return true;
    }
@@ -3214,12 +3214,12 @@ is_allowed_database(char* database, char* entry)
    // Check if the database is an alias in any limit entry
    for (int i = 0; i < config->number_of_limits; i++)
    {
-      if (!strcmp(entry, config->limits[i].database))
+      if (pgagroal_strcmp(entry, config->limits[i].database))
       {
          // Check if database is an alias of this entry
          for (int j = 0; j < config->limits[i].aliases_count; j++)
          {
-            if (!strcmp(database, config->limits[i].aliases[j]))
+            if (pgagroal_strcmp(database, config->limits[i].aliases[j]))
             {
                pgagroal_log_debug("HBA: Database '%s' matched as alias of '%s'", database, entry);
                return true;
@@ -3247,7 +3247,7 @@ is_allowed_address(char* address, char* entry)
    memset(&addr, 0, sizeof(addr));
    memset(&s_mask, 0, sizeof(s_mask));
 
-   if (!strcasecmp(entry, "all"))
+   if (pgagroal_strcasecmp(entry, "all"))
    {
       return true;
    }
@@ -3295,7 +3295,7 @@ is_allowed_address(char* address, char* entry)
 
    if (ipv4)
    {
-      if (!strcmp(entry, "0.0.0.0/0"))
+      if (pgagroal_strcmp(entry, "0.0.0.0/0"))
       {
          return true;
       }
@@ -3335,7 +3335,7 @@ is_allowed_address(char* address, char* entry)
    }
    else
    {
-      if (!strcmp(entry, "::0/0"))
+      if (pgagroal_strcmp(entry, "::0/0"))
       {
          return true;
       }
@@ -3381,7 +3381,7 @@ is_disabled(char* database)
 
    for (int i = 0; i < NUMBER_OF_DISABLED; i++)
    {
-      if (!strcmp(config->disabled[i], database))
+      if (pgagroal_strcmp(config->disabled[i], database))
       {
          return true;
       }
@@ -3397,27 +3397,27 @@ get_hba_method(int index)
 
    config = (struct main_configuration*)shmem;
 
-   if (!strcasecmp(config->hbas[index].method, "reject"))
+   if (pgagroal_strcasecmp(config->hbas[index].method, "reject"))
    {
       return SECURITY_REJECT;
    }
 
-   if (!strcasecmp(config->hbas[index].method, "trust"))
+   if (pgagroal_strcasecmp(config->hbas[index].method, "trust"))
    {
       return SECURITY_TRUST;
    }
 
-   if (!strcasecmp(config->hbas[index].method, "password"))
+   if (pgagroal_strcasecmp(config->hbas[index].method, "password"))
    {
       return SECURITY_PASSWORD;
    }
 
-   if (!strcasecmp(config->hbas[index].method, "scram-sha-256"))
+   if (pgagroal_strcasecmp(config->hbas[index].method, "scram-sha-256"))
    {
       return SECURITY_SCRAM256;
    }
 
-   if (!strcasecmp(config->hbas[index].method, "all"))
+   if (pgagroal_strcasecmp(config->hbas[index].method, "all"))
    {
       return SECURITY_ALL;
    }
@@ -3432,14 +3432,14 @@ pgagroal_get_user_password(char* username)
 
    config = (struct main_configuration*)shmem;
 
-   if (config->superuser.username[0] != 0 && !strcmp(config->superuser.username, username))
+   if (config->superuser.username[0] != 0 && pgagroal_strcmp(config->superuser.username, username))
    {
       return config->superuser.password;
    }
 
    for (int i = 0; i < config->number_of_users; i++)
    {
-      if (!strcmp(&config->users[i].username[0], username))
+      if (pgagroal_strcmp(&config->users[i].username[0], username))
       {
          return &config->users[i].password[0];
       }
@@ -3457,7 +3457,7 @@ get_frontend_password(char* username)
 
    for (int i = 0; i < config->number_of_frontend_users; i++)
    {
-      if (!strcmp(&config->frontend_users[i].username[0], username))
+      if (pgagroal_strcmp(&config->frontend_users[i].username[0], username))
       {
          return &config->frontend_users[i].password[0];
       }
@@ -3475,7 +3475,7 @@ get_admin_password(char* username)
 
    for (int i = 0; i < config->number_of_admins; i++)
    {
-      if (!strcmp(&config->admins[i].username[0], username))
+      if (pgagroal_strcmp(&config->admins[i].username[0], username))
       {
          return &config->admins[i].password[0];
       }
@@ -3622,7 +3622,7 @@ pgagroal_user_known(char* user)
 
    for (int i = 0; i < config->number_of_users; i++)
    {
-      if (!strcmp(user, config->users[i].username))
+      if (pgagroal_strcmp(user, config->users[i].username))
       {
          return true;
       }
@@ -4637,10 +4637,10 @@ is_tls_user(char* username, char* database)
 
    for (int i = 0; i < config->number_of_hbas; i++)
    {
-      if ((!strcmp(database, config->hbas[i].database) || !strcmp("all", config->hbas[i].database)) &&
-          (!strcmp(username, config->hbas[i].username) || !strcmp("all", config->hbas[i].username)))
+      if ((pgagroal_strcmp(database, config->hbas[i].database) || pgagroal_strcmp("all", config->hbas[i].database)) &&
+          (pgagroal_strcmp(username, config->hbas[i].username) || pgagroal_strcmp("all", config->hbas[i].username)))
       {
-         if (!strcmp("hostssl", config->hbas[i].type))
+         if (pgagroal_strcmp("hostssl", config->hbas[i].type))
          {
             return true;
          }
@@ -5387,7 +5387,7 @@ retry:
    base64_stored_key = strtok(s2, ":");
    base64_server_key = strtok(NULL, ":");
 
-   if (strcmp("SCRAM-SHA-256", scram256) != 0)
+   if (!pgagroal_strcmp("SCRAM-SHA-256", scram256))
    {
       goto error;
    }
@@ -6018,7 +6018,7 @@ pgagroal_is_cert_authorized(const char* cert_identity, const char* requested_use
    // Exact case-sensitive comparison
    // For certificate authentication, we enforce exact match (case-sensitive)
    // to maintain maximum security and avoid ambiguity
-   if (strcmp(cert_identity, requested_username) == 0)
+   if (pgagroal_strcmp(cert_identity, requested_username))
    {
       pgagroal_log_debug("pgagroal_is_cert_authorized: Identity '%s' matches requested user '%s'",
                          cert_identity, requested_username);
@@ -6038,14 +6038,14 @@ resolve_database_alias(char* username, char* database)
    // Find the best rule for this user/database combination
    for (int i = 0; i < config->number_of_limits; i++)
    {
-      bool username_match = (!strcmp("all", config->limits[i].username) || !strcmp(username, config->limits[i].username));
+      bool username_match = (pgagroal_strcmp("all", config->limits[i].username) || pgagroal_strcmp(username, config->limits[i].username));
 
       if (username_match)
       {
          // Check if database matches any alias for this limit entry
          for (int j = 0; j < config->limits[i].aliases_count; j++)
          {
-            if (!strcmp(database, config->limits[i].aliases[j]))
+            if (pgagroal_strcmp(database, config->limits[i].aliases[j]))
             {
                pgagroal_log_debug("resolve_database_alias: '%s' -> '%s' (rule %d)",
                                   database, config->limits[i].database, i);

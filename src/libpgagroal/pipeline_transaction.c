@@ -265,7 +265,7 @@ transaction_client(struct io_watcher* watcher)
                   if (kind == 'P')
                   {
                      char* ps = pgagroal_read_string(msg->data + offset + 5);
-                     if (strcmp(ps, ""))
+                     if (!pgagroal_strcmp(ps, ""))
                      {
                         deallocate = true;
                      }
