@@ -210,7 +210,8 @@ performance_server(struct io_watcher* watcher)
       {
          fatal = false;
 
-         if (!strncmp(msg->data + 6, "FATAL", 5) || !strncmp(msg->data + 6, "PANIC", 5))
+         if (msg->length >= 12 && pgagroal_read_byte(msg->data + 5) == 'S' &&
+             (!strncmp(msg->data + 6, "FATAL", 5) || !strncmp(msg->data + 6, "PANIC", 5)))
          {
             fatal = true;
          }
