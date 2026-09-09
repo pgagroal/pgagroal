@@ -325,6 +325,9 @@ pgagroal_read_configuration(void* shm, char* filename, bool emit_warnings)
                memcpy(&srv.name, &section, strlen(section));
                srv.lineno = lineno;
                srv.valid = true;
+               srv.paused = false;
+               srv.last_paused = 0;
+               srv.last_resumed = 0;
                srv.channel_binding = CHANNEL_BINDING_PREFER;
                idx_server++;
             }
@@ -4058,6 +4061,9 @@ copy_server(struct server* dst, struct server* src)
    int version;
    int minor_version;
    char system_identifier[sizeof(dst->system_identifier)];
+   bool paused;
+   time_t last_paused;
+   time_t last_resumed;
 
    // check the server cloned "seems" the same
    if (is_same_server(dst, src))
@@ -4069,6 +4075,9 @@ copy_server(struct server* dst, struct server* src)
       version = dst->version;
       minor_version = dst->minor_version;
       memcpy(system_identifier, dst->system_identifier, sizeof(system_identifier));
+      paused = dst->paused;
+      last_paused = dst->last_paused;
+      last_resumed = dst->last_resumed;
    }
    else
    {
@@ -4079,6 +4088,9 @@ copy_server(struct server* dst, struct server* src)
       version = 0;
       minor_version = 0;
       memset(system_identifier, 0, sizeof(system_identifier));
+      paused = false;
+      last_paused = 0;
+      last_resumed = 0;
    }
 
    memset(dst, 0, sizeof(struct server));
@@ -4101,6 +4113,11 @@ copy_server(struct server* dst, struct server* src)
    dst->failures = failures;
    atomic_init(&dst->auth_type, auth_type);
    dst->lineno = src->lineno;
+
+   /* Preserve pause bookkeeping across configuration reloads */
+   dst->paused = paused;
+   dst->last_paused = last_paused;
+   dst->last_resumed = last_resumed;
 }
 
 static void

@@ -49,7 +49,7 @@ OPTIONS
   Encrypt the wire protocol
 
 -T, --timeout DURATION
-  Deadline for ``shutdown [gracefully]`` and ``flush [gracefully]``.
+  Deadline for ``shutdown [gracefully]``, ``flush [gracefully]``, and ``pause [gracefully]``.
   ``DURATION`` is a non-negative number with an optional case-insensitive unit
   suffix: ``s`` (seconds, default), ``m`` (minutes), ``h`` (hours), ``d`` (days),
   ``w`` (weeks). Examples: ``30``, ``30s``, ``5m``, ``1h``, ``2d``, ``1w``.
@@ -92,6 +92,17 @@ enable [database]
 
 disable [database]
   Disable the specified database, or all databases if not specified
+
+pause [mode] [server]
+  Pauses traffic at the pooler for a server or all servers. The [mode] can be:
+    - 'gracefully' (default): refuses new clients, evicts idle backend connections, and waits until all active sessions finish naturally.
+    - 'all': actively terminates backend queries but preserves client sockets. Backends are reauthenticated on resume.
+
+  A graceful pause can be bounded with ``-T, --timeout DURATION``; on expiry pgagroal escalates to ``pause all``.
+
+resume [server]
+  Resumes traffic at the pooler for a previously paused server (or all servers).
+  If paused with ``all`` mode, pgagroal attempts to transparently re-authenticate the backend connection using passwords stored in the pooler configuration.
 
 shutdown [mode]
   Stops pgagroal pooler. The [mode] can be:
