@@ -393,7 +393,8 @@ pgagroal_init_prometheus(size_t* p_size, void** p_shmem)
    atomic_init(&prometheus->client_wait, 0);
    atomic_init(&prometheus->client_active, 0);
    atomic_init(&prometheus->client_wait_time, 0);
-
+   atomic_init(&prometheus->client_max_wait_time, 0);
+  atomic_init(&prometheus->client_total_wait_time, 0);
    atomic_init(&prometheus->query_count, 0);
    atomic_init(&prometheus->tx_count, 0);
 
@@ -842,7 +843,43 @@ pgagroal_prometheus_client_wait_sub(void)
 
    atomic_fetch_sub(&prometheus->client_wait, 1);
 }
+/**
+ * Set the maximum client wait time
+ */
+void
+pgagroal_prometheus_client_max_wait_time_set(unsigned long wait_time)
+{
+   struct main_prometheus* prometheus;
+   unsigned long current;
 
+   if (!is_prometheus_enabled())
+   {
+      return;
+   }
+
+   prometheus = (struct main_prometheus*)prometheus_shmem;
+
+   current = atomic_load(&prometheus->client_max_wait_time);
+
+   while (wait_time > current &&!atomic_compare_exchange_weak(&prometheus->client_max_wait_time,&current,wait_time)){}
+}
+/**
+ * Add to the total client wait time
+ */
+void
+pgagroal_prometheus_client_total_wait_time_add(unsigned long wait_time)
+{
+   struct main_prometheus* prometheus;
+
+   if (!is_prometheus_enabled())
+   {
+      return;
+   }
+
+   prometheus = (struct main_prometheus*)prometheus_shmem;
+
+   atomic_fetch_add(&prometheus->client_total_wait_time, wait_time);
+}
 void
 pgagroal_prometheus_client_active_add(void)
 {
@@ -1077,7 +1114,8 @@ pgagroal_prometheus_clear(void)
    atomic_store(&prometheus->client_active, 0);
    atomic_store(&prometheus->client_wait, 0);
    atomic_store(&prometheus->client_wait_time, 0);
-
+   atomic_store(&prometheus->client_max_wait_time, 0);
+   atomic_store(&prometheus->client_total_wait_time, 0);
    atomic_store(&prometheus->query_count, 0);
    atomic_store(&prometheus->tx_count, 0);
 
@@ -1522,6 +1560,14 @@ home_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "  <h2>pgagroal_wait_time</h2>\n");
    data = pgagroal_append(data, "  <p>\n");
    data = pgagroal_append(data, "   The waiting time of clients\n");
+   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <h2>pgagroal_max_wait_time</h2>\n");
+   data = pgagroal_append(data, "  <p>\n");
+   data = pgagroal_append(data, "   The maximum time a client has waited for a connection\n");
+   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <h2>pgagroal_total_wait_time</h2>\n");
+   data = pgagroal_append(data, "  <p>\n");
+   data = pgagroal_append(data, "   The total accumulated client wait time\n");
    data = pgagroal_append(data, "  </p>\n");
    data = pgagroal_append(data, "  <h2>pgagroal_query_count</h2>\n");
    data = pgagroal_append(data, "  <p>\n");
@@ -2549,6 +2595,24 @@ general_information(prometheus_metrics_container_t* container)
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->client_wait_time));
    data = pgagroal_append(data, "\n");
    add_metric_to_art(container->general_metrics, "pgagroal_wait_time", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
+   data = pgagroal_append(data, "#HELP pgagroal_max_wait_time The maximum time a client has waited for a connection\n");
+   data = pgagroal_append(data, "#TYPE pgagroal_max_wait_time gauge\n");
+   data = pgagroal_append(data, "pgagroal_max_wait_time ");
+   data = pgagroal_append_ulong(data, atomic_load(&prometheus->client_max_wait_time));
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_max_wait_time", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
+   data = pgagroal_append(data, "#HELP pgagroal_total_wait_time The total accumulated client wait time\n");
+   data = pgagroal_append(data, "#TYPE pgagroal_total_wait_time counter\n");
+   data = pgagroal_append(data, "pgagroal_total_wait_time ");
+   data = pgagroal_append_ulong(data, atomic_load(&prometheus->client_total_wait_time));
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->general_metrics, "pgagroal_total_wait_time", data, NULL, NULL, 0);
    free(data);
    data = NULL;
 
