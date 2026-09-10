@@ -51,12 +51,14 @@ extern "C" {
  */
 struct worker_io
 {
-   struct io_watcher io; /**< The I/O watcher */
-   int client_fd;        /**< The client descriptor */
-   int server_fd;        /**< The server descriptor */
-   int slot;             /**< The slot */
-   SSL* client_ssl;      /**< The client SSL context */
-   SSL* server_ssl;      /**< The server SSL context */
+   struct io_watcher io;                               /**< The I/O watcher */
+   int client_fd;                                      /**< The client descriptor */
+   int server_fd;                                      /**< The server descriptor */
+   int slot;                                           /**< The slot */
+   SSL* client_ssl;                                    /**< The client SSL context */
+   SSL* server_ssl;                                    /**< The server SSL context */
+   struct pgagroal_message_state client_message_state; /**< The per-connection client parser message state */
+   struct pgagroal_message_state server_message_state; /**< The per-connection server parser message state */
 };
 
 extern volatile int running;
