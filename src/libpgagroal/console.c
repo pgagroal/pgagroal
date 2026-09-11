@@ -27,6 +27,7 @@
  */
 
 /* pgagroal */
+#include <http_server.h>
 #include <pgagroal.h>
 #include <console.h>
 #include <logging.h>
@@ -43,9 +44,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <ctype.h>
+//#include <ctype.h>
 #include <limits.h>
-
 /**
  * @struct console_metric
  * A lightweight metric structure optimized for console display
@@ -141,11 +141,6 @@ struct category_candidate
 #define TLS_HANDSHAKE_BYTE             0x16
 #define TLS_SSL2_BYTE                  0x80
 
-/* Page routing constants */
-#define PAGE_UNKNOWN 0
-#define PAGE_HOME    1
-#define PAGE_API     2
-#define BAD_REQUEST  3
 
 static int build_categories_from_bridge(struct prometheus_bridge* bridge, struct console_page* console);
 static int record_prefix_counts(const char* metric_name, struct prefix_count** counts, int* size, int* capacity);
@@ -166,8 +161,6 @@ static int collect_simple_label_columns(struct console_category* category, char*
 static const char* find_metric_label_value(struct console_metric* metric, const char* key);
 static char* generate_metrics_table(struct console_category* category);
 static char* generate_category_tabs(struct console_page* console);
-static int resolve_page(struct message* msg);
-static int badrequest_page(SSL* client_ssl, int client_fd);
 static int home_page(SSL* client_ssl, int client_fd);
 static int api_page(SSL* client_ssl, int client_fd);
 static int console_init(int endpoint, const char* brand_name, const char* metric_prefix, struct console_page** result);
@@ -178,98 +171,18 @@ static int console_generate_json(struct console_page* console, char** json, size
 static int console_destroy(struct console_page* console);
 
 static int
-resolve_page(struct message* msg)
-{
-   char* from = NULL;
-   int index;
-
-   if (msg->length < 3 || strncmp((char*)msg->data, "GET", 3) != 0)
-   {
-      return BAD_REQUEST;
-   }
-
-   index = 4;
-   from = (char*)msg->data + index;
-
-   while (pgagroal_read_byte(msg->data + index) != ' ')
-   {
-      index++;
-   }
-
-   pgagroal_write_byte(msg->data + index, '\0');
-
-   if (pgagroal_strcmp(from, "/") || pgagroal_strcmp(from, "/index.html"))
-   {
-      return PAGE_HOME;
-   }
-   else if (pgagroal_strcmp(from, "/api") || pgagroal_strcmp(from, "/api/"))
-   {
-      return PAGE_API;
-   }
-   return PAGE_UNKNOWN;
-}
-
-static int
 send_http_response(SSL* client_ssl, int client_fd, const char* content_type, void* body, size_t body_len, const char* page_name)
 {
-   struct message msg;
-   char response_header[512];
-   int header_len;
-   int status = MESSAGE_STATUS_OK;
-
-   memset(&msg, 0, sizeof(struct message));
-   header_len = pgagroal_snprintf(response_header, sizeof(response_header),
-                                  "HTTP/1.1 200 OK\r\n"
-                                  "Content-Type: %s\r\n"
-                                  "Content-Length: %zu\r\n"
-                                  "Connection: close\r\n"
-                                  "\r\n",
-                                  content_type,
-                                  body_len);
-
-   msg.data = response_header;
-   msg.length = header_len;
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      pgagroal_log_error("console %s: failed to write header (status=%d, len=%d)", page_name, status, header_len);
-   }
-
-   if (status == MESSAGE_STATUS_OK && body_len > 0)
-   {
-      memset(&msg, 0, sizeof(struct message));
-      msg.data = body;
-      msg.length = body_len;
-      status = pgagroal_write_message(client_ssl, client_fd, &msg);
-      if (status != MESSAGE_STATUS_OK)
-      {
-         pgagroal_log_error("console %s: failed to write body (status=%d, len=%zu)", page_name, status, body_len);
-      }
-   }
-
-   return status;
-}
-
-static int
-badrequest_page(SSL* client_ssl, int client_fd)
-{
-   struct message msg;
-   char* data = NULL;
    int status;
 
-   memset(&msg, 0, sizeof(struct message));
+   /* Using the standard 200 OK function */
+   status = pgagroal_http_respond_200(client_ssl, client_fd, content_type, (const char*)body);
 
-   data = pgagroal_append(data, "HTTP/1.1 400 Bad Request\r\n");
-   data = pgagroal_append(data, "Content-Length: 0\r\n");
-   data = pgagroal_append(data, "Connection: close\r\n\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   free(data);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      pgagroal_log_error("console %s: failed to write response (status=%d, len=%zu)", 
+                         page_name ? page_name : "unknown", status, body_len);
+   }
 
    return status;
 }
@@ -285,6 +198,7 @@ console_init(int endpoint, const char* brand_name, const char* metric_prefix, st
       goto error;
    }
 
+   // تخصيص ذاكرة الـ console_page
    console = (struct console_page*)malloc(sizeof(struct console_page));
    if (console == NULL)
    {
@@ -294,8 +208,30 @@ console_init(int endpoint, const char* brand_name, const char* metric_prefix, st
 
    memset(console, 0, sizeof(struct console_page));
 
-   console->brand_name = brand_name ? strdup(brand_name) : strdup("Metrics Console");
-   console->metric_prefix = metric_prefix ? strdup(metric_prefix) : NULL;
+   if (brand_name != NULL)
+   {
+      console->brand_name = strdup(brand_name);
+   }
+   else
+   {
+      console->brand_name = strdup("Metrics Console");
+   }
+
+   if (console->brand_name == NULL)
+   {
+      pgagroal_log_error("Failed to allocate memory for brand_name");
+      goto error;
+   }
+
+   if (metric_prefix != NULL)
+   {
+      console->metric_prefix = strdup(metric_prefix);
+      if (console->metric_prefix == NULL)
+      {
+         pgagroal_log_error("Failed to allocate memory for metric_prefix");
+         goto error;
+      }
+   }
 
    console->status = (struct console_status*)malloc(sizeof(struct console_status));
    if (console->status == NULL)
@@ -329,6 +265,11 @@ error:
       console_destroy(console);
    }
 
+   if (result != NULL)
+   {
+      *result = NULL;
+   }
+
    return 1;
 }
 
@@ -359,7 +300,7 @@ home_page(SSL* client_ssl, int client_fd)
 error:
    if (status != 0)
    {
-      badrequest_page(client_ssl, client_fd);
+      pgagroal_http_respond_400(client_ssl, client_fd);
    }
    free(html);
    if (console != NULL)
@@ -397,7 +338,7 @@ api_page(SSL* client_ssl, int client_fd)
 error:
    if (status != 0)
    {
-      badrequest_page(client_ssl, client_fd);
+      pgagroal_http_respond_400(client_ssl, client_fd);
    }
    free(json);
    if (console != NULL)
@@ -435,9 +376,9 @@ console_refresh_metrics(int endpoint, struct console_page* console)
          }
 
          effective_endpoint = 0;
-         resolved_host = (strlen(config->common.host) == 0 || pgagroal_strcmp(config->common.host, "*") || pgagroal_strcmp(config->common.host, "0.0.0.0")) ? "127.0.0.1" : config->common.host;
+         resolved_host = (strlen(config->common.host) == 0 || strcmp(config->common.host, "*") == 0 || strcmp(config->common.host, "0.0.0.0") == 0) ? "127.0.0.1" : config->common.host;
 
-         if (!pgagroal_strcmp(resolved_host, config->common.host))
+         if (strcmp(resolved_host, config->common.host) != 0)
          {
             memset(original_host, 0, sizeof(original_host));
             pgagroal_snprintf(original_host, sizeof(original_host), "%s", config->common.host);
@@ -611,7 +552,7 @@ console_refresh_status(struct console_page* console)
          {
             struct json* server = (struct json*)(iter->value->data);
             char* state = (char*)pgagroal_json_get(server, MANAGEMENT_ARGUMENT_STATE);
-            bool active = state != NULL && (pgagroal_strcmp(state, "Primary") || pgagroal_strcmp(state, "Replica"));
+            bool active = state != NULL && (!strcmp(state, "Primary") || !strcmp(state, "Replica"));
             char* server_name = (char*)pgagroal_json_get(server, MANAGEMENT_ARGUMENT_SERVER);
 
             if (console->status->servers != NULL)
@@ -1296,7 +1237,7 @@ find_or_create_category(struct console_page* console, char* category_name)
    /* Try to find existing */
    for (int i = 0; i < console->category_count; i++)
    {
-      if (pgagroal_strcmp(console->categories[i].name, category_name))
+      if (strcmp(console->categories[i].name, category_name) == 0)
       {
          return &console->categories[i];
       }
@@ -1448,7 +1389,7 @@ extract_labels_from_prometheus_attrs(struct prometheus_attributes* attrs, struct
          continue;
       }
 
-      if (pgagroal_strcmp(attr->key, "server") || pgagroal_strcmp(attr->key, "name"))
+      if (strcmp(attr->key, "server") == 0 || strcmp(attr->key, "name") == 0)
       {
          free(metric->server);
          metric->server = strdup(attr->value);
@@ -1498,7 +1439,7 @@ add_or_increment_prefix(struct prefix_count** counts, int* size, int* capacity, 
    /* Find existing prefix */
    for (int j = 0; j < *size; j++)
    {
-      if (pgagroal_strcmp((*counts)[j].prefix, prefix))
+      if (strcmp((*counts)[j].prefix, prefix) == 0)
       {
          found = j;
          break;
@@ -1920,14 +1861,14 @@ collect_simple_label_columns(struct console_category* category, char*** label_ke
             continue;
          }
 
-         if (pgagroal_strcmp(key, "endpoint"))
+         if (strcmp(key, "endpoint") == 0)
          {
             continue;
          }
 
          for (int i = 0; i < count; i++)
          {
-            if (pgagroal_strcmp(keys[i], key))
+            if (strcmp(keys[i], key) == 0)
             {
                exists = true;
                break;
@@ -1987,7 +1928,7 @@ find_metric_label_value(struct console_metric* metric, const char* key)
          continue;
       }
 
-      if (pgagroal_strcmp(metric->labels[i].key, key))
+      if (strcmp(metric->labels[i].key, key) == 0)
       {
          return metric->labels[i].value;
       }
@@ -2203,64 +2144,47 @@ generate_category_tabs(struct console_page* console)
 void
 pgagroal_console(SSL* client_ssl, int client_fd)
 {
-   struct main_configuration* config = (struct main_configuration*)shmem;
-   struct message* msg = NULL;
-   int page;
+   //struct main_configuration* config = (struct main_configuration*)shmem;
+   struct http_server_request* req = NULL;
    int status = MESSAGE_STATUS_OK;
+
+   struct http_route routes[] = {
+      { "/",    home_page },
+      { "/api", api_page }
+   };
+   int n_routes = sizeof(routes) / sizeof(routes[0]);
 
    pgagroal_start_logging();
    pgagroal_memory_init();
 
-   if (client_ssl)
+   status = pgagroal_http_server_ssl_accept(client_ssl, client_fd);
+
+   if (status == MESSAGE_STATUS_ERROR)
    {
-      char buffer[TLS_PROBE_SIZE] = {0};
-
-      recv(client_fd, buffer, TLS_PROBE_SIZE, MSG_PEEK);
-
-      if ((unsigned char)buffer[0] == TLS_HANDSHAKE_BYTE || (unsigned char)buffer[0] == TLS_SSL2_BYTE) // SSL/TLS request
-      {
-         if (SSL_accept(client_ssl) <= 0)
-         {
-            pgagroal_log_error("Failed to accept SSL connection");
-            goto error;
-         }
-      }
+      pgagroal_log_error("Failed to accept SSL connection");
+      goto error;
    }
-
-   status = pgagroal_read_timeout_message(client_ssl, client_fd,
-                                          (int)pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S),
-                                          &msg);
-   if (status != MESSAGE_STATUS_OK)
+   else if (status == MESSAGE_STATUS_ZERO)
    {
+      // The client attempted to enter Plain HTTP on the encrypted Console port    
+      pgagroal_log_error("Console: Plain HTTP connection attempt on TLS socket");   
+      //pgagroal_http_respond_400(NULL, client_fd);
       goto error;
    }
 
-   page = resolve_page(msg);
-
-   if (page == PAGE_HOME)
+   status = pgagroal_http_server_parse(client_ssl, client_fd, &req);
+   if (status != MESSAGE_STATUS_OK || req == NULL)
    {
-      status = home_page(client_ssl, client_fd);
-   }
-   else if (page == PAGE_API)
-   {
-      status = api_page(client_ssl, client_fd);
-   }
-   else
-   {
-      status = badrequest_page(client_ssl, client_fd);
+      pgagroal_http_respond_400(client_ssl, client_fd);
+      goto error;
    }
 
-error:
+   pgagroal_http_server_dispatch(client_ssl,client_fd,req, routes ,n_routes);
+  error:
+   if (req != NULL) free(req);
    pgagroal_close_ssl(client_ssl);
    pgagroal_disconnect(client_fd);
-
    pgagroal_memory_destroy();
    pgagroal_stop_logging();
-
-   if (status == MESSAGE_STATUS_OK)
-   {
-      exit(0);
-   }
-
    exit(1);
 }
