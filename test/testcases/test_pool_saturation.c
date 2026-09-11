@@ -160,8 +160,8 @@ MCTF_TEST(test_pgagroal_pool_max_size_cap)
 
    for (int i = 0; i < config->number_of_limits; i++)
    {
-      if (!strcmp((const char*)config->limits[i].username, user) &&
-          !strcmp((const char*)config->limits[i].database, database))
+      if (pgagroal_strcmp((const char*)config->limits[i].username, user) &&
+          pgagroal_strcmp((const char*)config->limits[i].database, database))
       {
          max_size = config->limits[i].max_size;
          found_rule = 1;

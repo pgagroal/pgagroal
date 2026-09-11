@@ -72,7 +72,7 @@ pgagroal_create_shared_memory(size_t size, unsigned char hp, void** shmem)
    if (s == NULL)
    {
       visibility = MAP_ANONYMOUS | MAP_SHARED;
-      s = mmap(NULL, size, protection, visibility, 0, 0);
+      s = mmap(NULL, size, protection, visibility, -1, 0);
 
       if (s == (void*)-1)
       {

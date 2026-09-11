@@ -149,10 +149,10 @@ router(SSL* c_ssl, SSL* s_ssl, int client_fd)
    }
 
    // Parse URL parameters for GET requests only
-   if (strcmp(method, "GET") == 0)
+   if (pgagroal_strcmp(method, "GET"))
    {
       // Call the appropriate handler function for the URL path
-      if (strncmp(path, "/users/", 7) == 0 && strcmp(method, "GET") == 0) // Only one '/'
+      if (strncmp(path, "/users/", 7) == 0 && pgagroal_strcmp(method, "GET")) // Only one '/'
       {
          // Extract the username from the path
          sscanf(path, "/users/%128s", username);
@@ -192,7 +192,7 @@ router(SSL* c_ssl, SSL* s_ssl, int client_fd)
          // Call the appropriate handler function with the username
          route_users(username, &response, s_ssl, client_fd);
       }
-      else if (strncmp(path, "/status", 7) == 0 && strcmp(method, "GET") == 0)
+      else if (strncmp(path, "/status", 7) == 0 && pgagroal_strcmp(method, "GET"))
       {
          pgagroal_log_debug("router: Processing status endpoint request");
          route_status(&response);

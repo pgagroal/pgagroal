@@ -218,7 +218,7 @@ status_details(bool details, struct json* response)
 
       pgagroal_server_get_connectivity_info(i, &srv_status, &srv_primary, &behind_bytes);
 
-      if (pgagroal_compare_string(srv_primary, "Yes"))
+      if (pgagroal_strcmp(srv_primary, "Yes"))
       {
          number_of_primary++;
       }
@@ -238,7 +238,7 @@ status_details(bool details, struct json* response)
 
       pgagroal_json_put(servers, config->servers[i].name, (uintptr_t)js, ValueJSON);
 
-      if (srv_primary != NULL && pgagroal_compare_string(srv_primary, "No"))
+      if (srv_primary != NULL && pgagroal_strcmp(srv_primary, "No"))
       {
          char rep_status[64] = {0};
          char slot_name[64] = {0};
@@ -254,7 +254,7 @@ status_details(bool details, struct json* response)
          pgagroal_json_create(&standby_js);
          if (wal_result == 0)
          {
-            bool is_streaming = pgagroal_compare_string(rep_status, "streaming");
+            bool is_streaming = pgagroal_strcmp(rep_status, "streaming");
             pgagroal_json_put(standby_js, MANAGEMENT_ARGUMENT_STREAMING, (uintptr_t)is_streaming, ValueBool);
             pgagroal_json_put(standby_js, MANAGEMENT_ARGUMENT_WAL_RECEIVER_STATUS, (uintptr_t)rep_status, ValueString);
             pgagroal_json_put(standby_js, MANAGEMENT_ARGUMENT_SLOT_NAME, (uintptr_t)slot_name, ValueString);

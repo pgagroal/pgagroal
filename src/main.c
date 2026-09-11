@@ -532,7 +532,7 @@ main(int argc, char** argv)
 
    if (directory_path != NULL)
    {
-      if (!strcmp(directory_path, PGAGROAL_DEFAULT_CONFIGURATION_PATH))
+      if (pgagroal_strcmp(directory_path, PGAGROAL_DEFAULT_CONFIGURATION_PATH))
       {
          pgagroal_log_warn("Using the default configuration directory %s, -D can be omitted.", directory_path);
       }
@@ -1756,7 +1756,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       pgagroal_management_create_response(payload, -1, &res);
       pgagroal_json_create(&databases);
 
-      if (!strcmp("all", database))
+      if (pgagroal_strcmp("all", database))
       {
          struct json* js = NULL;
 
@@ -1777,7 +1777,7 @@ accept_mgt_cb(struct io_watcher* watcher)
          {
             struct json* js = NULL;
 
-            if (!strcmp(config->disabled[i], database))
+            if (pgagroal_strcmp(config->disabled[i], database))
             {
                memset(&config->disabled[i], 0, MAX_DATABASE_LENGTH);
 
@@ -1819,7 +1819,7 @@ accept_mgt_cb(struct io_watcher* watcher)
 
       config->all_disabled = false;
 
-      if (!strcmp("*", database) || !strcmp("all", database))
+      if (pgagroal_strcmp("*", database) || pgagroal_strcmp("all", database))
       {
          struct json* js = NULL;
 
@@ -2245,7 +2245,7 @@ accept_mgt_cb(struct io_watcher* watcher)
 
       for (int i = 0; index == -1 && i < config->number_of_frontend_users; i++)
       {
-         if (!strcmp(&config->frontend_users[i].username[0], username))
+         if (pgagroal_strcmp(&config->frontend_users[i].username[0], username))
          {
             index = i;
          }
@@ -3090,7 +3090,7 @@ arm_flush_timeout(int64_t seconds, const char* database)
    }
    for (int i = 0; i < NUMBER_OF_LIMITS; i++)
    {
-      if (flush_timeouts[i].in_use && !strcmp(flush_timeouts[i].database, db))
+      if (flush_timeouts[i].in_use && pgagroal_strcmp(flush_timeouts[i].database, db))
       {
          slot = i;
          break;

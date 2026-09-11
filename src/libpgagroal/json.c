@@ -643,15 +643,15 @@ fill_value(char* str, char* key, uint64_t* index, struct json* o)
       {
          val = pgagroal_append_char(val, str[idx++]);
       }
-      if (pgagroal_compare_string(val, "null"))
+      if (pgagroal_strcmp(val, "null"))
       {
          json_add(o, key, 0, ValueString);
       }
-      else if (pgagroal_compare_string(val, "true"))
+      else if (pgagroal_strcmp(val, "true"))
       {
          json_add(o, key, true, ValueBool);
       }
-      else if (pgagroal_compare_string(val, "false"))
+      else if (pgagroal_strcmp(val, "false"))
       {
          json_add(o, key, false, ValueBool);
       }

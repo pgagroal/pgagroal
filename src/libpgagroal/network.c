@@ -71,7 +71,7 @@ pgagroal_bind(const char* hostname, int port, int** fds, int* length, bool no_de
    int* star_fds = NULL;
    int star_length = 0;
 
-   if (!strcmp("*", hostname))
+   if (pgagroal_strcmp("*", hostname))
    {
       if (getifaddrs(&ifaddr) == -1)
       {

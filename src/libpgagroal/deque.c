@@ -124,7 +124,7 @@ pgagroal_deque_remove(struct deque* deque, char* tag)
    pgagroal_deque_iterator_create(deque, &iter);
    while (pgagroal_deque_iterator_next(iter))
    {
-      if (pgagroal_compare_string(iter->tag, tag))
+      if (pgagroal_strcmp(iter->tag, tag))
       {
          pgagroal_deque_iterator_remove(iter);
          cnt++;
@@ -618,7 +618,7 @@ deque_find(struct deque* deque, char* tag)
 
    while (n != NULL)
    {
-      if (pgagroal_compare_string(tag, n->tag))
+      if (pgagroal_strcmp(tag, n->tag))
       {
          return n;
       }
@@ -706,9 +706,9 @@ to_text_string(struct deque* deque, char* tag, int indent)
 {
    char* ret = NULL;
    int cnt = 0;
-   int next_indent = pgagroal_compare_string(tag, BULLET_POINT) ? 0 : indent;
+   int next_indent = pgagroal_strcmp(tag, BULLET_POINT) ? 0 : indent;
    // we have a tag and it's not the bullet point, so that means another line
-   if (tag != NULL && !pgagroal_compare_string(tag, BULLET_POINT))
+   if (tag != NULL && !pgagroal_strcmp(tag, BULLET_POINT))
    {
       ret = pgagroal_indent(ret, tag, indent);
       next_indent += INDENT_PER_LEVEL;
@@ -729,7 +729,7 @@ to_text_string(struct deque* deque, char* tag, int indent)
       if (cnt == 0)
       {
          cnt++;
-         if (pgagroal_compare_string(tag, BULLET_POINT))
+         if (pgagroal_strcmp(tag, BULLET_POINT))
          {
             next_indent = indent + INDENT_PER_LEVEL;
          }

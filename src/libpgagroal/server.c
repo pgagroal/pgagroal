@@ -247,7 +247,7 @@ pgagroal_check_server_identifiers(bool strict)
          {
             continue;
          }
-         if (!strcmp(identifiers[i], identifiers[j]))
+         if (pgagroal_strcmp(identifiers[i], identifiers[j]))
          {
             if (strict)
             {
@@ -1057,7 +1057,7 @@ pgagroal_server_clear(char* server)
 
    FOREACH_VALID_SERVER
    {
-      if (!strcmp(config->servers[i].name, server))
+      if (pgagroal_strcmp(config->servers[i].name, server))
       {
          state = atomic_load(&config->servers[i].state);
 
@@ -1098,7 +1098,7 @@ pgagroal_server_switch(char* server)
    // Find target server by name
    FOREACH_VALID_SERVER
    {
-      if (!strcmp(config->servers[i].name, server))
+      if (pgagroal_strcmp(config->servers[i].name, server))
       {
          new_primary = i;
          break;
@@ -1339,7 +1339,7 @@ process_server_parameters(int server, struct deque* server_parameters)
       pgagroal_log_trace("%s/process server_parameter '%s'", config->servers[server].name, iter->tag);
       char* value = pgagroal_value_to_string(iter->value, FORMAT_TEXT, NULL, 0);
       free(value);
-      if (!strcmp("server_version", iter->tag))
+      if (pgagroal_strcmp("server_version", iter->tag))
       {
          char* server_version = pgagroal_value_to_string(iter->value, FORMAT_TEXT, NULL, 0);
          if (sscanf(server_version, "%d.%d", &major, &minor) == 2)

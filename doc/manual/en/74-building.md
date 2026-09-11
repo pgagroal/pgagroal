@@ -10,6 +10,8 @@ The main build system is defined in [CMakeLists.txt][cmake_txt]. The flags for S
 
 ### Compiling
 
+On Fedora / RHEL:
+
 Install the dependencies with
 
 ```sh
@@ -24,6 +26,23 @@ dnf install git gcc cmake make      \
             lz4 lz4-devel           \
             bzip2 bzip2-devel       \
             clang clang-analyzer clang-tools-extra
+```
+On Ubuntu / Debian:
+
+Install the dependencies with
+
+```sh
+apt install build-essential \
+            liburing-dev \
+            libssl-dev \
+            systemd libsystemd-dev \
+            python3-docutils \
+            libatomic1 \
+            zlib1g-dev \
+            libzstd-dev \
+            liblz4-dev \
+            libbz2-dev \
+            clang clang-tools
 ```
 
 To build [**pgagroal**][pgagroal] in release mode:
@@ -60,6 +79,8 @@ The build system will automatically detect the compiler version and enable the a
 * [pandoc](https://pandoc.org/)
 * [texlive](https://www.tug.org/texlive/)
 
+On Fedora / RHEL :
+
 ```sh
 dnf install pandoc texlive-scheme-basic \
             'tex(fvextra.sty)' 'tex(footnote.sty)' 'tex(footnotebackref.sty)' \
@@ -69,6 +90,16 @@ dnf install pandoc texlive-scheme-basic \
             'tex(titling.sty)' 'tex(csquotes.sty)' \
             'tex(zref-abspage.sty)' 'tex(needspace.sty)' \
             'tex(selnolig.sty)'
+```
+
+On Ubuntu / Debian :
+
+```sh
+apt install pandoc texlive-latex-base \
+            texlive-latex-extra \
+            texlive-latex-recommended \
+            texlive-fonts-recommended \
+            texlive-xetex 
 ```
 
 You will need the `Eisvogel` template as well which you can install through
@@ -86,10 +117,20 @@ where `$HOME` is your home directory.
 
 This process is optional. If you choose not to generate the API HTML files, you can opt out of downloading these dependencies, and the process will automatically skip the generation.
 
+On Fedora / RHEL :
+
 Download dependencies
 
 ``` sh
 dnf install graphviz doxygen
+```
+
+On Ubuntu / Debian :
+
+Download dependencies
+
+``` sh
+apt install graphviz doxygen
 ```
 
 These packages will be detected during `cmake` and built as part of the main build.
@@ -161,6 +202,15 @@ On Red Hat/Fedora systems:
 ```
 sudo dnf install libasan libasan-static
 ```
+
+On Ubuntu/Debian systems:
+
+AddressSanitizer is typically included with build-essential. If needed separately, install:
+
+```
+sudo apt install libasan8
+```
+
 
 Package names and versions may vary depending on your distribution and compiler version.
 

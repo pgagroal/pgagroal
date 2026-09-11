@@ -540,7 +540,7 @@ config_init(const char* output_path, bool quiet, bool force)
       {
          if (prompt_input("Log level (fatal, error, warn, info, debug, trace)", CONFIGURATION_DEFAULT_LOG_LEVEL, log_level, sizeof(log_level)) == 0)
          {
-            if (pgagroal_as_logging_level(log_level) != PGAGROAL_LOGGING_LEVEL_FATAL || !strcasecmp(log_level, "fatal"))
+            if (pgagroal_as_logging_level(log_level) != PGAGROAL_LOGGING_LEVEL_FATAL || pgagroal_strcasecmp(log_level, "fatal"))
             {
                break;
             }
@@ -750,7 +750,7 @@ config_get(const char* file_path, const char* section, const char* key)
             *(bracket_end + 1) = '\0';
          }
 
-         if (!strcmp(trimmed, section_header))
+         if (pgagroal_strcmp(trimmed, section_header))
          {
             in_section = true;
          }
@@ -792,7 +792,7 @@ config_get(const char* file_path, const char* section, const char* key)
                found_value = trim(found_value);
             }
 
-            if (!strcmp(found_key, key))
+            if (pgagroal_strcmp(found_key, key))
             {
                printf("%s\n", found_value);
                fclose(file);
@@ -885,7 +885,7 @@ config_set(const char* file_path, const char* section, const char* key, const ch
             *(bracket_end + 1) = '\0';
          }
 
-         if (!strcmp(trimmed, section_header))
+         if (pgagroal_strcmp(trimmed, section_header))
          {
             section_found = true;
             section_start = i;
@@ -913,7 +913,7 @@ config_set(const char* file_path, const char* section, const char* key, const ch
             {
                *eq = '\0';
                char* found_key = trim(kt);
-               if (!strcmp(found_key, key))
+               if (pgagroal_strcmp(found_key, key))
                {
                   key_found = true;
                   key_line = i;
@@ -1139,7 +1139,7 @@ config_del(const char* file_path, const char* section, const char* key)
          if (bracket_end)
             *(bracket_end + 1) = '\0';
 
-         if (!strcmp(trimmed, section_header))
+         if (pgagroal_strcmp(trimmed, section_header))
          {
             section_found = true;
             section_start = i;
@@ -1164,7 +1164,7 @@ config_del(const char* file_path, const char* section, const char* key)
             if (eq != NULL)
             {
                *eq = '\0';
-               if (!strcmp(trim(kt), key))
+               if (pgagroal_strcmp(trim(kt), key))
                {
                   key_line = i;
                }
@@ -1295,7 +1295,7 @@ config_ls(const char* file_path, const char* section)
 
          if (section != NULL)
          {
-            if (!strcmp(trimmed, section_header))
+            if (pgagroal_strcmp(trimmed, section_header))
             {
                in_section = true;
             }

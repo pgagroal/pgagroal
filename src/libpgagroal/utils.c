@@ -120,7 +120,7 @@ pgagroal_extract_username_database(struct message* msg, char** username, char** 
 
    for (int i = 0; i < counter; i++)
    {
-      if (!strcmp(array[i], "user"))
+      if (pgagroal_strcmp(array[i], "user"))
       {
          size = strlen(array[i + 1]) + 1;
          un = calloc(1, size);
@@ -128,7 +128,7 @@ pgagroal_extract_username_database(struct message* msg, char** username, char** 
 
          *username = un;
       }
-      else if (!strcmp(array[i], "database"))
+      else if (pgagroal_strcmp(array[i], "database"))
       {
          size = strlen(array[i + 1]) + 1;
          db = calloc(1, size);
@@ -136,7 +136,7 @@ pgagroal_extract_username_database(struct message* msg, char** username, char** 
 
          *database = db;
       }
-      else if (!strcmp(array[i], "application_name"))
+      else if (pgagroal_strcmp(array[i], "application_name"))
       {
          size = strlen(array[i + 1]) + 1;
          an = calloc(1, size);
@@ -875,7 +875,7 @@ pgagroal_ends_with(char* str, char* suffix)
    int str_len = strlen(str);
    int suffix_len = strlen(suffix);
 
-   return (str_len >= suffix_len) && (strcmp(str + (str_len - suffix_len), suffix) == 0);
+   return (str_len >= suffix_len) && (pgagroal_strcmp(str + (str_len - suffix_len), suffix));
 }
 
 char*
@@ -968,6 +968,43 @@ char*
 pgagroal_append_ullong(char* orig, unsigned long long l)
 {
    return pgagroal_format_and_append(orig, "%llu", l);
+}
+
+char*
+pgagroal_append_double(char* orig, double d)
+{
+   return pgagroal_format_and_append(orig, "%lf", d);
+}
+
+char*
+pgagroal_append_double_precision(char* orig, double d, int precision)
+{
+   char* format = NULL;
+   format = pgagroal_append_char(format, '%');
+   format = pgagroal_append_char(format, '.');
+   format = pgagroal_append_int(format, precision);
+   format = pgagroal_append_char(format, 'f');
+
+   orig = pgagroal_format_and_append(orig, format, d);
+
+   free(format);
+
+   return orig;
+}
+
+char*
+pgagroal_append_bool(char* orig, bool b)
+{
+   if (b)
+   {
+      orig = pgagroal_append(orig, "true");
+   }
+   else
+   {
+      orig = pgagroal_append(orig, "false");
+   }
+
+   return orig;
 }
 
 __attribute__((unused)) static bool
@@ -1128,7 +1165,7 @@ pgagroal_backtrace(void)
          }
 
          buffer[strlen(buffer) - 1] = '\0'; // Remove trailing newline
-         if (strcmp(buffer, "main") == 0)
+         if (pgagroal_strcmp(buffer, "main"))
          {
             found_main = true;
          }
@@ -1340,6 +1377,24 @@ pgagroal_append_char(char* orig, char c)
 }
 
 char*
+pgagroal_append_bytes(char* orig, const char* s, size_t s_length, size_t orig_length)
+{
+   char* n = NULL;
+   if (s == NULL || s_length == 0)
+   {
+      return orig;
+   }
+   n = (char*)realloc(orig, orig_length + s_length + 1);
+   if (n == NULL)
+   {
+      return orig;
+   }
+   memcpy(n + orig_length, s, s_length);
+   n[orig_length + s_length] = '\0';
+   return n;
+}
+
+char*
 pgagroal_indent(char* str, char* tag, int indent)
 {
    for (int i = 0; i < indent; i++)
@@ -1354,7 +1409,7 @@ pgagroal_indent(char* str, char* tag, int indent)
 }
 
 bool
-pgagroal_compare_string(const char* str1, const char* str2)
+pgagroal_strcmp(const char* str1, const char* str2)
 {
    if (str1 == NULL && str2 == NULL)
    {
@@ -1365,6 +1420,22 @@ pgagroal_compare_string(const char* str1, const char* str2)
       return false;
    }
    return strcmp(str1, str2) == 0;
+}
+
+bool
+pgagroal_strcasecmp(const char* str1, const char* str2)
+{
+   if (str1 == NULL && str2 == NULL)
+   {
+      return true;
+   }
+
+   if ((str1 == NULL && str2 != NULL) || (str1 != NULL && str2 == NULL))
+   {
+      return false;
+   }
+
+   return strcasecmp(str1, str2) == 0;
 }
 
 char*
@@ -2279,7 +2350,7 @@ pgagroal_is_username_reserved(char* username)
 
    for (i = 0; i < count; i++)
    {
-      if (pgagroal_compare_string(username, restricted_usernames[i]))
+      if (pgagroal_strcmp(username, restricted_usernames[i]))
       {
          return true;
       }
@@ -2304,7 +2375,7 @@ pgagroal_is_database_reserved(char* database)
 
    for (i = 0; i < count; i++)
    {
-      if (pgagroal_compare_string(database, restricted_databases[i]))
+      if (pgagroal_strcmp(database, restricted_databases[i]))
       {
          return true;
       }

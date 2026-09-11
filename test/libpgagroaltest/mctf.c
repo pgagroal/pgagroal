@@ -181,7 +181,7 @@ mctf_extract_module_name(const char* file_path)
 
    /* Remove ".c" suffix if present */
    size_t len = strlen(basename);
-   if (len > 2 && strcmp(basename + len - 2, ".c") == 0)
+   if (len > 2 && pgagroal_strcmp(basename + len - 2, ".c"))
    {
       len -= 2;
    }
@@ -441,7 +441,7 @@ mctf_run_tests(mctf_filter_type_t filter_type, const char* filter)
          continue;
       }
 
-      if (!current_module || strcmp(current_module, test->module) != 0)
+      if (!current_module || !pgagroal_strcmp(current_module, test->module))
       {
          if (current_module)
          {

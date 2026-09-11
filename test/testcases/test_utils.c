@@ -92,15 +92,32 @@ cleanup:
 
 MCTF_TEST(test_utils_compare_string)
 {
-   MCTF_ASSERT(pgagroal_compare_string(NULL, NULL), cleanup,
+   MCTF_ASSERT(pgagroal_strcmp(NULL, NULL), cleanup,
                "two NULLs should compare equal");
-   MCTF_ASSERT(!pgagroal_compare_string("a", NULL), cleanup,
+   MCTF_ASSERT(!pgagroal_strcmp("a", NULL), cleanup,
                "non-NULL vs NULL should differ");
-   MCTF_ASSERT(!pgagroal_compare_string(NULL, "a"), cleanup,
+   MCTF_ASSERT(!pgagroal_strcmp(NULL, "a"), cleanup,
                "NULL vs non-NULL should differ");
-   MCTF_ASSERT(pgagroal_compare_string("same", "same"), cleanup,
+   MCTF_ASSERT(pgagroal_strcmp("same", "same"), cleanup,
                "identical strings should compare equal");
-   MCTF_ASSERT(!pgagroal_compare_string("a", "b"), cleanup,
+   MCTF_ASSERT(!pgagroal_strcmp("a", "b"), cleanup,
+               "different strings should not compare equal");
+
+cleanup:
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_utils_insensitive_compare_string)
+{
+   MCTF_ASSERT(pgagroal_strcasecmp(NULL, NULL), cleanup,
+               "two NULLs should compare equal");
+   MCTF_ASSERT(!pgagroal_strcasecmp("a", NULL), cleanup,
+               "non-NULL vs NULL should differ");
+   MCTF_ASSERT(!pgagroal_strcasecmp(NULL, "a"), cleanup,
+               "NULL vs non-NULL should differ");
+   MCTF_ASSERT(pgagroal_strcasecmp("Same", "same"), cleanup,
+               "same strings with different case should compare equal");
+   MCTF_ASSERT(!pgagroal_strcasecmp("a", "b"), cleanup,
                "different strings should not compare equal");
 
 cleanup:
@@ -141,6 +158,54 @@ MCTF_TEST(test_utils_append_numbers)
    s = pgagroal_append(NULL, "n=");
    s = pgagroal_append_ulong(s, ULONG_MAX);
    MCTF_ASSERT_STR_EQ(s, "n=18446744073709551615", cleanup, "append_ulong did not concatenate");
+
+cleanup:
+   free(s);
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_utils_append_double)
+{
+   char* s = NULL;
+
+   /* %lf writes the whole integer part, so a large double needs far more
+      room than a small fixed buffer: 1e19 alone is 20 digits before the
+      six decimals. */
+   s = pgagroal_append_double(NULL, 1e19);
+   MCTF_ASSERT_PTR_NONNULL(s, cleanup, "append_double returned NULL");
+   MCTF_ASSERT_STR_EQ(s, "10000000000000000000.000000", cleanup, "append_double truncated 1e19");
+   free(s);
+   s = NULL;
+
+   s = pgagroal_append_double(NULL, 0.5);
+   MCTF_ASSERT_STR_EQ(s, "0.500000", cleanup, "append_double wrong for 0.5");
+   free(s);
+   s = NULL;
+
+   s = pgagroal_append_double_precision(NULL, 1e19, 2);
+   MCTF_ASSERT_STR_EQ(s, "10000000000000000000.00", cleanup, "append_double_precision truncated 1e19");
+   free(s);
+   s = NULL;
+
+   s = pgagroal_append_double_precision(NULL, 3.14159, 3);
+   MCTF_ASSERT_STR_EQ(s, "3.142", cleanup, "append_double_precision wrong for 3.14159");
+
+cleanup:
+   free(s);
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_utils_append_bool)
+{
+   char* s = NULL;
+
+   s = pgagroal_append_bool(NULL, true);
+   MCTF_ASSERT_STR_EQ(s, "true", cleanup, "append_bool wrong for true");
+   free(s);
+   s = NULL;
+
+   s = pgagroal_append_bool(NULL, false);
+   MCTF_ASSERT_STR_EQ(s, "false", cleanup, "append_bool wrong for false");
 
 cleanup:
    free(s);

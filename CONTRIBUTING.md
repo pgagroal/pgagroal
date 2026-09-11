@@ -34,7 +34,7 @@ Don't forget to indicate your pgagroal version.
 You can use the follow command, if you are using a [Fedora](https://getfedora.org/) based platform:
 
 ```
-dnf install git gcc cmake make liburing liburing-devel openssl openssl-devel systemd systemd-devel python3-docutils libasan libasan-static binutils clang clang-analyzer clang-tools-extra
+dnf install git gcc cmake make liburing liburing-devel openssl openssl-devel systemd systemd-devel python3-docutils libatomic zlib zlib-devel libzstd libzstd-devel lz4 lz4-devel bzip2 bzip2-devel libasan libasan-static binutils clang clang-analyzer clang-tools-extra
 ```
 
 in order to get the necessary dependencies.

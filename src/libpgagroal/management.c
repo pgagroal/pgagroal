@@ -965,7 +965,7 @@ pgagroal_management_response_error(SSL* ssl, int socket, char* server, int32_t e
       {
          FOREACH_VALID_SERVER
          {
-            if (!strcmp(server, config->servers[i].name))
+            if (pgagroal_strcmp(server, config->servers[i].name))
             {
                srv = i;
             }

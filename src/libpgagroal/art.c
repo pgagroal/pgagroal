@@ -1742,7 +1742,7 @@ art_to_text_string_cb(void* param, const char* key, struct value* value)
    {
       tag = pgagroal_append(tag, " ");
    }
-   if (pgagroal_compare_string(p->tag, BULLET_POINT))
+   if (pgagroal_strcmp(p->tag, BULLET_POINT))
    {
       if (p->cnt == 1)
       {
@@ -1825,7 +1825,7 @@ to_text_string(struct art* t, char* tag, int indent)
 {
    char* ret = NULL;
    int next_indent = indent;
-   if (tag != NULL && !pgagroal_compare_string(tag, BULLET_POINT))
+   if (tag != NULL && !pgagroal_strcmp(tag, BULLET_POINT))
    {
       ret = pgagroal_indent(ret, tag, indent);
       next_indent += INDENT_PER_LEVEL;
