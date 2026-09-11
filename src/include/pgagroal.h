@@ -623,8 +623,9 @@ struct main_prometheus
    atomic_ulong client_wait;      /**< The number of waiting clients */
    atomic_ulong client_active;    /**< The number of active clients */
    atomic_ulong client_wait_time; /**< The time the client waits */
-
-   atomic_ullong query_count; /**< The number of queries */
+   atomic_ulong client_max_wait_time;   /**< The maximum client wait time */
+   atomic_ulong client_total_wait_time; /**< The total client wait time */
+   atomic_ulong query_count; /**< The number of queries */
    atomic_ullong tx_count;    /**< The number of transactions */
 
    atomic_ullong network_sent;     /**< The bytes sent by clients */

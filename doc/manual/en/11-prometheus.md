@@ -54,6 +54,14 @@ The number of failed servers
 
 The waiting time of clients
 
+**pgagroal_max_wait_time**
+
+The maximum time a client has waited for a connection
+
+**pgagroal_total_wait_time**
+
+The total accumulated client wait time
+
 **pgagroal_query_count**
 
 The number of queries

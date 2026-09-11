@@ -357,10 +357,13 @@ start:
 
       config->connections[*slot].timestamp = time(NULL);
 
-      if (config->common.metrics > 0)
-      {
-         atomic_store(&prometheus->client_wait_time, difftime(time(NULL), start_time));
-      }
+   if (config->common.metrics > 0)
+   {
+     unsigned long wait_time = (unsigned long)difftime(time(NULL), start_time);
+     atomic_store(&prometheus->client_wait_time, wait_time);
+     pgagroal_prometheus_client_total_wait_time_add(wait_time);
+     pgagroal_prometheus_client_max_wait_time_set(wait_time);
+   }
       pgagroal_prometheus_connection_success();
       pgagroal_tracking_event_slot(TRACKER_GET_CONNECTION_SUCCESS, *slot);
       pgagroal_prometheus_connection_unawaiting(best_rule);
@@ -435,7 +438,10 @@ retry2:
 timeout:
    if (config->common.metrics > 0)
    {
-      atomic_store(&prometheus->client_wait_time, difftime(time(NULL), start_time));
+    unsigned long wait_time = (unsigned long)difftime(time(NULL), start_time);
+    atomic_store(&prometheus->client_wait_time, wait_time);
+    pgagroal_prometheus_client_total_wait_time_add(wait_time);
+    pgagroal_prometheus_client_max_wait_time_set(wait_time);
    }
    pgagroal_prometheus_connection_timeout();
    pgagroal_tracking_event_basic(TRACKER_GET_CONNECTION_TIMEOUT, username, database);
@@ -450,7 +456,10 @@ error:
    atomic_fetch_sub(&config->active_connections, 1);
    if (config->common.metrics > 0)
    {
-      atomic_store(&prometheus->client_wait_time, difftime(time(NULL), start_time));
+   unsigned long wait_time = (unsigned long)difftime(time(NULL), start_time);
+   atomic_store(&prometheus->client_wait_time, wait_time);
+   pgagroal_prometheus_client_total_wait_time_add(wait_time);
+   pgagroal_prometheus_client_max_wait_time_set(wait_time);
    }
    pgagroal_prometheus_connection_error();
    pgagroal_prometheus_connection_unawaiting(best_rule);
