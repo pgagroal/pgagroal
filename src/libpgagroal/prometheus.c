@@ -27,6 +27,7 @@
  */
 
 /* pgagroal */
+#include <http_server.h>
 #include <security.h>
 #include <pgagroal.h>
 #include <art.h>
@@ -53,11 +54,6 @@
 #include <errno.h>
 
 #define CHUNK_SIZE                   32768
-
-#define PAGE_UNKNOWN                 0
-#define PAGE_HOME                    1
-#define PAGE_METRICS                 2
-#define BAD_REQUEST                  3
 
 #define FIVE_SECONDS                 5
 #define TEN_SECONDS                  10
@@ -118,15 +114,10 @@ static int add_metric_to_art(struct art* art_tree, char* key, char* value,
 static void output_art_metrics(SSL* client_ssl, int client_fd, struct art* art_tree);
 static void output_all_metrics(SSL* client_ssl, int client_fd, prometheus_metrics_container_t* container);
 
-static int resolve_page(struct message* msg);
-static int badrequest_page(SSL* client_ssl, int client_fd);
-static int unknown_page(SSL* client_ssl, int client_fd);
 static int home_page(SSL* client_ssl, int client_fd);
 static int home_vault_page(SSL* client_ssl, int client_fd);
 static int metrics_page(SSL* client_ssl, int client_fd);
 static int metrics_vault_page(SSL* client_ssl, int client_fd);
-static int bad_request(SSL* client_ssl, int client_fd);
-static int redirect_page(SSL* client_ssl, int client_fd, char* path);
 
 static void general_information(prometheus_metrics_container_t* container);
 static void general_vault_information(prometheus_metrics_container_t* container);
@@ -143,8 +134,6 @@ static void write_os_kernel_version(prometheus_metrics_container_t* container);
 static int parse_certificate_file(const char* cert_path, struct certificate_info* cert_info);
 static void certificate_information(prometheus_metrics_container_t* container);
 
-static int send_chunk(SSL* cilent_ssl, int client_fd, char* data);
-
 static bool is_metrics_cache_configured(void);
 static bool is_metrics_cache_valid(void);
 static bool metrics_cache_append(char* data);
@@ -157,118 +146,52 @@ void
 pgagroal_prometheus(SSL* client_ssl, int client_fd)
 {
    int status;
-   int page;
-   struct message* msg = NULL;
-   struct main_configuration* config;
+   struct http_server_request* req = NULL;
+   char base_url[1024];
+   struct configuration* config;
 
-   if (!is_prometheus_enabled())
-   {
-      exit(1);
-   }
+   config = (struct configuration*)shmem;
 
-   pgagroal_start_logging();
-   pgagroal_memory_init();
+   struct http_route routes[] = {
+      {"/",home_page},
+      {"/metrics",metrics_page}
+   };
+   int n_routes = sizeof(routes) / sizeof(routes[0]);
 
-   config = (struct main_configuration*)shmem;
-
-   if (client_ssl)
-   {
-      if (pgagroal_is_ssl_request(client_fd))
-      {
-         if (SSL_accept(client_ssl) <= 0)
-         {
-            pgagroal_log_debug("Failed to accept SSL connection: disconnect %d", client_fd);
-            goto error;
-         }
-      }
-      else
-      {
-         char* path = "/";
-         char* base_url = NULL;
-
-         if (pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg) != MESSAGE_STATUS_OK)
-         {
-            pgagroal_log_error("Failed to read message");
-            goto error;
-         }
-
-         char* path_start = strstr(msg->data, " ");
-         if (path_start)
-         {
-            path_start++;
-            char* path_end = strstr(path_start, " ");
-            if (path_end)
-            {
-               *path_end = '\0';
-               path = path_start;
-            }
-         }
-
-         base_url = pgagroal_format_and_append(base_url, "https://%s:%d%s", config->common.host, config->common.metrics, path);
-
-         if (redirect_page(NULL, client_fd, base_url) != MESSAGE_STATUS_OK)
-         {
-            pgagroal_log_error("Failed to redirect to: %s", base_url);
-            free(base_url);
-            goto error;
-         }
-
-         pgagroal_close_ssl(client_ssl);
-         pgagroal_disconnect(client_fd);
-
-         pgagroal_memory_destroy();
-         pgagroal_stop_logging();
-
-         free(base_url);
-
-         exit(0);
-      }
-   }
-
-   status = pgagroal_read_timeout_message(client_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
-   if (status != MESSAGE_STATUS_OK)
+   status = pgagroal_http_server_ssl_accept(client_ssl, client_fd);
+   
+   if (status == MESSAGE_STATUS_ERROR)
    {
       goto error;
    }
-
-   page = resolve_page(msg);
-
-   if (page == PAGE_HOME)
+   else if (status == MESSAGE_STATUS_ZERO)
    {
-      home_page(client_ssl, client_fd);
-   }
-   else if (page == PAGE_METRICS)
-   {
-      metrics_page(client_ssl, client_fd);
-   }
-   else if (page == PAGE_UNKNOWN)
-   {
-      unknown_page(client_ssl, client_fd);
-   }
-   else
-   {
-      bad_request(client_ssl, client_fd);
+      snprintf(base_url, sizeof(base_url), "https://127.0.0.1:%d/", config->metrics);
+      goto done;
    }
 
+   status = pgagroal_http_server_parse(client_ssl, client_fd, &req);  
+   if (status != MESSAGE_STATUS_OK  || req == NULL)
+   {
+      goto error;
+   }
+   pgagroal_http_server_dispatch(client_ssl, client_fd, req, routes, n_routes);
+
+done:
+if (req != NULL) pgagroal_http_request_free(req); 
    pgagroal_close_ssl(client_ssl);
    pgagroal_disconnect(client_fd);
-
    pgagroal_memory_destroy();
    pgagroal_stop_logging();
-
    exit(0);
 
 error:
-
-   badrequest_page(client_ssl, client_fd);
-
+   if (req != NULL) pgagroal_http_request_free(req); 
    pgagroal_log_debug("pgagroal_prometheus: disconnect %d", client_fd);
    pgagroal_close_ssl(client_ssl);
    pgagroal_disconnect(client_fd);
-
    pgagroal_memory_destroy();
    pgagroal_stop_logging();
-
    exit(1);
 }
 
@@ -276,9 +199,8 @@ void
 pgagroal_vault_prometheus(SSL* client_ssl, int client_fd)
 {
    int status;
-   int page;
-   struct message* msg = NULL;
-   struct vault_configuration* config;
+   int exit_code = 0;
+   struct http_server_request* req = NULL;
 
    if (!is_prometheus_enabled())
    {
@@ -288,49 +210,50 @@ pgagroal_vault_prometheus(SSL* client_ssl, int client_fd)
    pgagroal_start_logging();
    pgagroal_memory_init();
 
-   config = (struct vault_configuration*)shmem;
+   struct http_route routes[] = {
+      {"/", home_vault_page},
+      {"/metrics", metrics_vault_page}
+   };
+   int n_routes = sizeof(routes) / sizeof(routes[0]);
 
-   status = pgagroal_read_timeout_message(client_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
-   if (status != MESSAGE_STATUS_OK)
+   // 1. Detect Plain HTTP on TLS Port 
+   status = pgagroal_http_server_ssl_accept(client_ssl, client_fd);
+   if (status == MESSAGE_STATUS_ERROR)
    {
       goto error;
    }
-
-   page = resolve_page(msg);
-
-   if (page == PAGE_HOME)
+   else if (status == MESSAGE_STATUS_ZERO)
    {
-      home_vault_page(client_ssl, client_fd);
-   }
-   else if (page == PAGE_METRICS)
-   {
-      metrics_vault_page(client_ssl, client_fd);
-   }
-   else if (page == PAGE_UNKNOWN)
-   {
-      unknown_page(client_ssl, client_fd);
-   }
-   else
-   {
-      bad_request(client_ssl, client_fd);
+      goto done;
    }
 
-   pgagroal_disconnect(client_fd);
+   status = pgagroal_http_server_parse(client_ssl, client_fd, &req);
+   if (status != MESSAGE_STATUS_OK || req == NULL)
+   {
+      pgagroal_http_respond_400(client_ssl, client_fd);
+      goto error;
+   }
 
-   pgagroal_memory_destroy();
-   pgagroal_stop_logging();
+   pgagroal_http_server_dispatch(client_ssl, client_fd, req, routes, n_routes);
 
-   exit(0);
+done:
+   exit_code = 0;
+   goto cleanup;
 
 error:
+   pgagroal_log_debug("pgagroal_vault_prometheus: disconnect %d", client_fd);
+   exit_code = 1;
 
-   pgagroal_log_debug("pgagroal_prometheus: disconnect %d", client_fd);
+cleanup:
+   if (req != NULL)
+   {
+      pgagroal_http_request_free(req);
+   }
+   pgagroal_close_ssl(client_ssl);
    pgagroal_disconnect(client_fd);
-
    pgagroal_memory_destroy();
    pgagroal_stop_logging();
-
-   exit(1);
+   exit(exit_code);
 }
 
 int
@@ -1188,236 +1111,28 @@ pgagroal_prometheus_logging(int type)
 }
 
 static int
-redirect_page(SSL* client_ssl, int client_fd, char* path)
-{
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 301 Moved Permanently\r\n");
-   data = pgagroal_append(data, "Location: ");
-   data = pgagroal_append(data, path);
-   data = pgagroal_append(data, "\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-   data = pgagroal_append(data, "Content-Length: 0\r\n");
-   data = pgagroal_append(data, "Connection: close\r\n");
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   free(data);
-
-   return status;
-}
-
-static int
-resolve_page(struct message* msg)
-{
-   char* from = NULL;
-   int index;
-
-   if (msg->length < 3 || strncmp((char*)msg->data, "GET", 3) != 0)
-   {
-      pgagroal_log_debug("Promethus: Not a GET request");
-      return BAD_REQUEST;
-   }
-
-   index = 4;
-   from = (char*)msg->data + index;
-
-   while (pgagroal_read_byte(msg->data + index) != ' ')
-   {
-      index++;
-   }
-
-   pgagroal_write_byte(msg->data + index, '\0');
-
-   if (strcmp(from, "/") == 0 || strcmp(from, "/index.html") == 0)
-   {
-      return PAGE_HOME;
-   }
-   else if (strcmp(from, "/metrics") == 0)
-   {
-      return PAGE_METRICS;
-   }
-
-   return PAGE_UNKNOWN;
-}
-
-static int
-badrequest_page(SSL* client_ssl, int client_fd)
-{
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 400 Bad Request\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   free(data);
-
-   return status;
-}
-
-static int
-unknown_page(SSL* client_ssl, int client_fd)
-{
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 403 Forbidden\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   free(data);
-
-   return status;
-}
-
-static int
 home_page(SSL* client_ssl, int client_fd)
 {
    char* data = NULL;
-   time_t now;
-   char time_buf[32];
    int status;
-   struct message msg;
-   struct main_prometheus* prometheus;
-   struct certificate_metrics* cert_metrics;
-   int cert_count = 0;
-   bool has_valid_certs = false;
-
-   prometheus = (struct main_prometheus*)prometheus_shmem;
-   cert_metrics = &prometheus->cert_metrics;
-   cert_count = atomic_load(&cert_metrics->cert_count);
-
-   // Check if we have at least one valid certificate
-   for (int i = 0; i < cert_count && i < MAX_CERTIFICATES; i++)
-   {
-      struct certificate_info* cert = &cert_metrics->certs[i];
-      if (cert->expiry_time > 0)
-      {
-         has_valid_certs = true;
-         break;
-      }
-   }
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 200 OK\r\n");
-   data = pgagroal_append(data, "Content-Type: text/html; charset=utf-8\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-   data = pgagroal_append(data, "Transfer-Encoding: chunked\r\n");
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto done;
-   }
-
-   free(data);
-   data = NULL;
 
    data = pgagroal_append(data, "<!DOCTYPE html>\n");
    data = pgagroal_append(data, "<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\">\n");
    data = pgagroal_append(data, "<head>\n");
    data = pgagroal_append(data, "  <title>pgagroal exporter</title>\n");
-   data = pgagroal_append(data, "  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>");
+   data = pgagroal_append(data, "  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n");
    data = pgagroal_append(data, "  <style>\n");
-   data = pgagroal_append(data, "   table { \n");
-   data = pgagroal_append(data, "           margin: auto;\n");
-   data = pgagroal_append(data, "           border: 2px solid black;\n");
-   data = pgagroal_append(data, "         }\n");
-   data = pgagroal_append(data, "   td { \n");
-   data = pgagroal_append(data, "           border: 1px solid black;\n");
-   data = pgagroal_append(data, "           text-align: center;;\n");
-   data = pgagroal_append(data, "      }\n");
-   data = pgagroal_append(data, "   ul { \n");
-   data = pgagroal_append(data, "           text-align: left;\n");
-   data = pgagroal_append(data, "      }\n");
-   data = pgagroal_append(data, "   ol { \n");
-   data = pgagroal_append(data, "           text-align: left;\n");
-   data = pgagroal_append(data, "      }\n");
+   data = pgagroal_append(data, "    table { margin: auto; border: 2px solid black; }\n");
+   data = pgagroal_append(data, "    td { border: 1px solid black; text-align: center; }\n");
+   data = pgagroal_append(data, "    ul { text-align: left; }\n");
+   data = pgagroal_append(data, "    ol { text-align: left; }\n");
    data = pgagroal_append(data, "  </style>\n");
    data = pgagroal_append(data, "</head>\n");
    data = pgagroal_append(data, "<body>\n");
    data = pgagroal_append(data, "  <h1>pgagroal exporter</h1>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   <a href=\"/metrics\">Metrics</a>\n");
-   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <p><a href=\"/metrics\">Metrics</a></p>\n");
    data = pgagroal_append(data, "  <h2>pgagroal_state</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The state of pgagroal\n");
-   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <p>The state of pgagroal</p>\n");
    data = pgagroal_append(data, "  <table>\n");
    data = pgagroal_append(data, "    <tbody>\n");
    data = pgagroal_append(data, "      <tr>\n");
@@ -1431,502 +1146,12 @@ home_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "      </tr>\n");
    data = pgagroal_append(data, "    </tbody>\n");
    data = pgagroal_append(data, "  </table>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_pipeline_mode</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The mode of pipeline\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <table>\n");
-   data = pgagroal_append(data, "    <tbody>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>value</td>\n");
-   data = pgagroal_append(data, "        <td>Mode\n");
-   data = pgagroal_append(data, "          <ol>\n");
-   data = pgagroal_append(data, "            <li>Performance</li>\n");
-   data = pgagroal_append(data, "            <li>Session</li>\n");
-   data = pgagroal_append(data, "            <li>Transaction</li>\n");
-   data = pgagroal_append(data, "          </ol>\n");
-   data = pgagroal_append(data, "        </td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "    </tbody>\n");
-   data = pgagroal_append(data, "  </table>\n");
-   data = pgagroal_append(data, "  <h2>pgagroalserver_reset_query_behavior_on_failure</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The failure behavior of server_reset_query\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <table>\n");
-   data = pgagroal_append(data, "    <tbody>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>value</td>\n");
-   data = pgagroal_append(data, "        <td>Behavior\n");
-   data = pgagroal_append(data, "          <ol start=\"0\">\n");
-   data = pgagroal_append(data, "            <li>Discard: kill the connection and open a fresh one</li>\n");
-   data = pgagroal_append(data, "            <li>Ignore: log a warning and return the connection to the pool dirty</li>\n");
-   data = pgagroal_append(data, "            <li>Try: kill the connection but retry on every subsequent return</li>\n");
-   data = pgagroal_append(data, "          </ol>\n");
-   data = pgagroal_append(data, "        </td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "    </tbody>\n");
-   data = pgagroal_append(data, "  </table>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_logging_info</h2>\n");
-   data = pgagroal_append(data, "  The number of INFO logging statements\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_logging_warn</h2>\n");
-   data = pgagroal_append(data, "  The number of WARN logging statements\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_logging_error</h2>\n");
-   data = pgagroal_append(data, "  The number of ERROR logging statements\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_logging_fatal</h2>\n");
-   data = pgagroal_append(data, "  The number of FATAL logging statements\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_server_error</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Errors for servers\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <table>\n");
-   data = pgagroal_append(data, "    <tbody>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>name</td>\n");
-   data = pgagroal_append(data, "        <td>The name of the server</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>state</td>\n");
-   data = pgagroal_append(data, "        <td>The server state\n");
-   data = pgagroal_append(data, "          <ul>\n");
-   data = pgagroal_append(data, "            <li>not_init</li>\n");
-   data = pgagroal_append(data, "            <li>primary</li>\n");
-   data = pgagroal_append(data, "            <li>replica</li>\n");
-   data = pgagroal_append(data, "            <li>failover</li>\n");
-   data = pgagroal_append(data, "            <li>failed</li>\n");
-   data = pgagroal_append(data, "          </ul>\n");
-   data = pgagroal_append(data, "        </td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "    </tbody>\n");
-   data = pgagroal_append(data, "  </table>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_server_streaming</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Whether a standby is actively streaming from its primary (-1=primary, 0=no, 1=yes)\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <table>\n");
-   data = pgagroal_append(data, "    <tbody>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>name</td>\n");
-   data = pgagroal_append(data, "        <td>The name of the server</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "    </tbody>\n");
-   data = pgagroal_append(data, "  </table>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_failed_servers</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The number of failed servers. Only set if failover is enabled\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_wait_time</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The waiting time of clients\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_query_count</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The number of queries. Only session and transaction modes are supported\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_query_count</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The number of queries per connection. Only session and transaction modes are supported\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <table>\n");
-   data = pgagroal_append(data, "    <tbody>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>id</td>\n");
-   data = pgagroal_append(data, "        <td>The connection identifier</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>user</td>\n");
-   data = pgagroal_append(data, "        <td>The user name</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>database</td>\n");
-   data = pgagroal_append(data, "        <td>The database</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>application_name</td>\n");
-   data = pgagroal_append(data, "        <td>The application name</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "    </tbody>\n");
-   data = pgagroal_append(data, "  </table>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_tx_count</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The number of transactions. Only session and transaction modes are supported\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_active_connections</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The number of active connections\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_total_connections</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The number of total connections\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_max_connections</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The maximum number of connections\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Connection information\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <table>\n");
-   data = pgagroal_append(data, "    <tbody>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>id</td>\n");
-   data = pgagroal_append(data, "        <td>The connection identifier</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>user</td>\n");
-   data = pgagroal_append(data, "        <td>The user name</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>database</td>\n");
-   data = pgagroal_append(data, "        <td>The database</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>application_name</td>\n");
-   data = pgagroal_append(data, "        <td>The application name</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>state</td>\n");
-   data = pgagroal_append(data, "        <td>The connection state\n");
-   data = pgagroal_append(data, "          <ul>\n");
-   data = pgagroal_append(data, "            <li>not_init</li>\n");
-   data = pgagroal_append(data, "            <li>init</li>\n");
-   data = pgagroal_append(data, "            <li>free</li>\n");
-   data = pgagroal_append(data, "            <li>in_use</li>\n");
-   data = pgagroal_append(data, "            <li>gracefully</li>\n");
-   data = pgagroal_append(data, "            <li>flush</li>\n");
-   data = pgagroal_append(data, "            <li>idle_check</li>\n");
-   data = pgagroal_append(data, "            <li>max_connection_age</li>\n");
-   data = pgagroal_append(data, "            <li>validation</li>\n");
-   data = pgagroal_append(data, "            <li>remove</li>\n");
-   data = pgagroal_append(data, "          </ul>\n");
-   data = pgagroal_append(data, "        </td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "    </tbody>\n");
-   data = pgagroal_append(data, "  </table>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_limit</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Limit information\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <table>\n");
-   data = pgagroal_append(data, "    <tbody>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>user</td>\n");
-   data = pgagroal_append(data, "        <td>The user name</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>database</td>\n");
-   data = pgagroal_append(data, "        <td>The database</td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "      <tr>\n");
-   data = pgagroal_append(data, "        <td>type</td>\n");
-   data = pgagroal_append(data, "        <td>The information type\n");
-   data = pgagroal_append(data, "          <ul>\n");
-   data = pgagroal_append(data, "            <li>min</li>\n");
-   data = pgagroal_append(data, "            <li>initial</li>\n");
-   data = pgagroal_append(data, "            <li>max</li>\n");
-   data = pgagroal_append(data, "            <li>active</li>\n");
-   data = pgagroal_append(data, "            <li>backend</li>\n");
-   data = pgagroal_append(data, "          </ul>\n");
-   data = pgagroal_append(data, "        </td>\n");
-   data = pgagroal_append(data, "      </tr>\n");
-   data = pgagroal_append(data, "    </tbody>\n");
-   data = pgagroal_append(data, "  </table>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_limit_awaiting</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Connections awaiting on hold reported by limit entries\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "   <table>\n");
-   data = pgagroal_append(data, "     <tbody>\n");
-   data = pgagroal_append(data, "       <tr>\n");
-   data = pgagroal_append(data, "         <td>user</td>\n");
-   data = pgagroal_append(data, "         <td>The user name</td>\n");
-   data = pgagroal_append(data, "       </tr>\n");
-   data = pgagroal_append(data, "       <tr>\n");
-   data = pgagroal_append(data, "         <td>database</td>\n");
-   data = pgagroal_append(data, "         <td>The database</td>\n");
-   data = pgagroal_append(data, "       </tr>\n");
-   data = pgagroal_append(data, "     </tbody>\n");
-   data = pgagroal_append(data, "   </table>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_session_time</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Histogram of session times\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_error</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection errors\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_kill</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection kills\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_remove</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection removes\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_timeout</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection time outs\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_return</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection returns\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_invalid</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection invalids\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_get</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection gets\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_idletimeout</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection idle timeouts\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_max_connection_age</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection max age timeouts\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_flush</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection flushes\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_success</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection successes\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_connection_awaiting</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of connection suspended due to <i>blocking_timeout</i>\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_auth_user_success</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of successful user authentications\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_auth_user_bad_password</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of bad passwords during user authentication\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_auth_user_error</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of errors during user authentication\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_client_wait</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of waiting clients\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_client_active</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of active clients\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_network_sent</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Bytes sent by clients. Only session and transaction modes are supported\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_network_received</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Bytes received from servers. Only session and transaction modes are supported\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_client_sockets</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of sockets the client used\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_self_sockets</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of sockets used by pgagroal itself\n");
-   data = pgagroal_append(data, "  </p>\n");
-#if defined(HAVE_LINUX)
-   data = pgagroal_append(data, "  <h2>pgagroal_os_linux</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "  Reports the kernel version of the Linux system where pgagroal is running, including major, minor, and patch versions.\n");
-   data = pgagroal_append(data, "  </p>\n");
-#elif defined(HAVE_OPENBSD) || defined(HAVE_FREEBSD)
-   data = pgagroal_append(data, "  <h2>pgagroal_os_bsd</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "  Reports the operating system version of the BSD system where pgagroal is running, including major and minor versions (patch version is not available).\n");
-   data = pgagroal_append(data, "  </p>\n");
-#elif defined(HAVE_OSX)
-   data = pgagroal_append(data, "  <h2>pgagroal_os_macos</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "  Reports the kernel version of the macOS system where pgagroal is running, including major, minor, and patch versions.\n");
-   data = pgagroal_append(data, "  </p>\n");
-#endif
-   data = pgagroal_append(data, "  <h2>pgagroal_certificates_total</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Total number of TLS certificates configured across all components (main server, metrics, database connections)\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_certificates_accessible</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of TLS certificate files that can be read from disk\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_certificates_valid</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of TLS certificates that are valid and properly formatted\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_certificates_expired</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of TLS certificates that have expired\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_certificates_expiring_soon</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of TLS certificates expiring within 30 days\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_certificates_inaccessible</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of TLS certificate files that cannot be read (missing or permission issues)\n");
-   data = pgagroal_append(data, "  </p>\n");
-   data = pgagroal_append(data, "  <h2>pgagroal_certificates_parse_errors</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   Number of TLS certificates with parsing or format errors\n");
-   data = pgagroal_append(data, "  </p>\n");
-   if (has_valid_certs)
-   {
-      data = pgagroal_append(data, "  <h2>pgagroal_tls_certificate_expiration_seconds</h2>\n");
-      data = pgagroal_append(data, "  <p>\n");
-      data = pgagroal_append(data, "   Unix timestamp when the certificate expires. Use (value - time()) to get seconds until expiration\n");
-      data = pgagroal_append(data, "  </p>\n");
-   }
-   // Only show status metric HTML if certificates are configured
-   if (cert_count > 0)
-   {
-      data = pgagroal_append(data, "  <h2>pgagroal_tls_certificate_status</h2>\n");
-      data = pgagroal_append(data, "  <p>\n");
-      data = pgagroal_append(data, "   Certificate status: 1=valid and accessible, 0=invalid or inaccessible\n");
-      data = pgagroal_append(data, "  </p>\n");
-      data = pgagroal_append(data, "  <table>\n");
-      data = pgagroal_append(data, "    <tbody>\n");
-      data = pgagroal_append(data, "      <tr>\n");
-      data = pgagroal_append(data, "        <td>server</td>\n");
-      data = pgagroal_append(data, "        <td>The server component using the certificate</td>\n");
-      data = pgagroal_append(data, "      </tr>\n");
-      data = pgagroal_append(data, "      <tr>\n");
-      data = pgagroal_append(data, "        <td>path</td>\n");
-      data = pgagroal_append(data, "        <td>The file path to the certificate</td>\n");
-      data = pgagroal_append(data, "      </tr>\n");
-      data = pgagroal_append(data, "    </tbody>\n");
-      data = pgagroal_append(data, "  </table>\n");
-   }
-   if (has_valid_certs)
-   {
-      data = pgagroal_append(data, "  <h2>pgagroal_tls_certificate_key_size_bits</h2>\n");
-      data = pgagroal_append(data, "  <p>\n");
-      data = pgagroal_append(data, "   Size of the certificate's public key in bits (e.g., 2048, 4096)\n");
-      data = pgagroal_append(data, "  </p>\n");
-      data = pgagroal_append(data, "  <h2>pgagroal_tls_certificate_is_ca</h2>\n");
-      data = pgagroal_append(data, "  <p>\n");
-      data = pgagroal_append(data, "   Whether the certificate is a Certificate Authority: 1=CA certificate, 0=end-entity certificate\n");
-      data = pgagroal_append(data, "  </p>\n");
-      data = pgagroal_append(data, "  <h2>pgagroal_tls_certificate_key_type</h2>\n");
-      data = pgagroal_append(data, "  <p>The <code>pgagroal_tls_certificate_key_type</code> metric uses the following numeric values:</p>\n");
-      data = pgagroal_append(data, "  <table>\n");
-      data = pgagroal_append(data, "    <tbody>\n");
-      data = pgagroal_append(data, "      <tr><th>Value</th><th>Key Type</th><th>Description</th></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>0</td><td>UNKNOWN</td><td>Unknown or unrecognized key type</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>1</td><td>RSA</td><td>RSA public key algorithm</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>2</td><td>ECDSA</td><td>Elliptic Curve Digital Signature Algorithm</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>3</td><td>ED25519</td><td>EdDSA signature scheme using Curve25519</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>4</td><td>ED448</td><td>EdDSA signature scheme using Curve448</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>5</td><td>DSA</td><td>Digital Signature Algorithm</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>6</td><td>DH</td><td>Diffie-Hellman key exchange</td></tr>\n");
-      data = pgagroal_append(data, "    </tbody>\n");
-      data = pgagroal_append(data, "  </table>\n");
-      data = pgagroal_append(data, "  </p>\n");
-      data = pgagroal_append(data, "  <h2>pgagroal_tls_certificate_signature_algorithm</h2>\n");
-      data = pgagroal_append(data, "  <p>The <code>pgagroal_tls_certificate_signature_algorithm</code> metric uses the following numeric values:</p>\n");
-      data = pgagroal_append(data, "  <table>\n");
-      data = pgagroal_append(data, "    <tbody>\n");
-      data = pgagroal_append(data, "      <tr><th>Value</th><th>Algorithm</th><th>Description</th></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>0</td><td>UNKNOWN</td><td>Unknown or unrecognized signature algorithm</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>1</td><td>SHA256WithRSA</td><td>SHA-256 hash with RSA encryption</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>2</td><td>SHA384WithRSA</td><td>SHA-384 hash with RSA encryption</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>3</td><td>SHA512WithRSA</td><td>SHA-512 hash with RSA encryption</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>4</td><td>SHA1WithRSA</td><td>SHA-1 hash with RSA encryption (deprecated)</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>5</td><td>ECDSAWithSHA256</td><td>ECDSA with SHA-256 hash</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>6</td><td>ECDSAWithSHA384</td><td>ECDSA with SHA-384 hash</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>7</td><td>ECDSAWithSHA512</td><td>ECDSA with SHA-512 hash</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>8</td><td>ED25519</td><td>Ed25519 signature algorithm</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>9</td><td>ED448</td><td>Ed448 signature algorithm</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>10</td><td>SHA256WithPSS</td><td>SHA-256 with RSA-PSS padding</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>11</td><td>SHA384WithPSS</td><td>SHA-384 with RSA-PSS padding</td></tr>\n");
-      data = pgagroal_append(data, "      <tr><td>12</td><td>SHA512WithPSS</td><td>SHA-512 with RSA-PSS padding</td></tr>\n");
-      data = pgagroal_append(data, "    </tbody>\n");
-      data = pgagroal_append(data, "  </table>\n");
-      data = pgagroal_append(data, "  </p>\n");
-      data = pgagroal_append(data, "  <h2>pgagroal_tls_certificate_info</h2>\n");
-      data = pgagroal_append(data, "  <p>\n");
-      data = pgagroal_append(data, "   Comprehensive certificate metadata as labels. Value is always 1. Use labels for certificate details\n");
-      data = pgagroal_append(data, "  </p>\n");
-      data = pgagroal_append(data, "  <table>\n");
-      data = pgagroal_append(data, "    <tbody>\n");
-      data = pgagroal_append(data, "      <tr>\n");
-      data = pgagroal_append(data, "        <td>server</td>\n");
-      data = pgagroal_append(data, "        <td>The server component</td>\n");
-      data = pgagroal_append(data, "      </tr>\n");
-      data = pgagroal_append(data, "      <tr>\n");
-      data = pgagroal_append(data, "        <td>subject</td>\n");
-      data = pgagroal_append(data, "        <td>Certificate subject (e.g., /CN=localhost)</td>\n");
-      data = pgagroal_append(data, "      </tr>\n");
-      data = pgagroal_append(data, "      <tr>\n");
-      data = pgagroal_append(data, "        <td>issuer</td>\n");
-      data = pgagroal_append(data, "        <td>Certificate issuer</td>\n");
-      data = pgagroal_append(data, "      </tr>\n");
-      data = pgagroal_append(data, "      <tr>\n");
-      data = pgagroal_append(data, "        <td>serial_number</td>\n");
-      data = pgagroal_append(data, "        <td>Certificate serial number</td>\n");
-      data = pgagroal_append(data, "      </tr>\n");
-      data = pgagroal_append(data, "      <tr>\n");
-      data = pgagroal_append(data, "        <td>expires_date</td>\n");
-      data = pgagroal_append(data, "        <td>Certificate expiration date (YYYY-MM-DD)</td>\n");
-      data = pgagroal_append(data, "      </tr>\n");
-      data = pgagroal_append(data, "      <tr>\n");
-      data = pgagroal_append(data, "        <td>valid_from_date</td>\n");
-      data = pgagroal_append(data, "        <td>Certificate valid from date (YYYY-MM-DD)</td>\n");
-      data = pgagroal_append(data, "      </tr>\n");
-      data = pgagroal_append(data, "      <tr>\n");
-      data = pgagroal_append(data, "        <td>key_type_name</td>\n");
-      data = pgagroal_append(data, "        <td>Key type name (RSA, ECDSA, etc.)</td>\n");
-      data = pgagroal_append(data, "      </tr>\n");
-      data = pgagroal_append(data, "      <tr>\n");
-      data = pgagroal_append(data, "        <td>signature_algorithm_name</td>\n");
-      data = pgagroal_append(data, "        <td>Signature algorithm name (SHA256WithRSA, etc.)</td>\n");
-      data = pgagroal_append(data, "      </tr>\n");
-      data = pgagroal_append(data, "      <tr>\n");
-      data = pgagroal_append(data, "        <td>key_size</td>\n");
-      data = pgagroal_append(data, "        <td>Key size in bits</td>\n");
-      data = pgagroal_append(data, "      </tr>\n");
-      data = pgagroal_append(data, "    </tbody>\n");
-      data = pgagroal_append(data, "  </table>\n");
-   }
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   <a href=\"https://pgagroal.github.io/\">pgagroal.github.io/</a>\n");
-   data = pgagroal_append(data, "  </p>\n");
    data = pgagroal_append(data, "</body>\n");
    data = pgagroal_append(data, "</html>\n");
 
-   send_chunk(client_ssl, client_fd, data);
+   status = pgagroal_http_respond_200(client_ssl, client_fd, "text/html", data);
+
    free(data);
-   data = NULL;
-
-   /* Footer */
-   data = pgagroal_append(data, "0\r\n\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-done:
-   if (data != NULL)
-   {
-      free(data);
-   }
-
    return status;
 }
 
@@ -1934,40 +1159,7 @@ static int
 home_vault_page(SSL* client_ssl, int client_fd)
 {
    char* data = NULL;
-   time_t now;
-   char time_buf[32];
    int status;
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 200 OK\r\n");
-   data = pgagroal_append(data, "Content-Type: text/html; charset=utf-8\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-   data = pgagroal_append(data, "Transfer-Encoding: chunked\r\n");
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto done;
-   }
-
-   free(data);
-   data = NULL;
 
    data = pgagroal_append(data, "<!DOCTYPE html>\n");
    data = pgagroal_append(data, "<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\">\n");
@@ -2010,101 +1202,49 @@ home_vault_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "</body>\n");
    data = pgagroal_append(data, "</html>\n");
 
-   send_chunk(client_ssl, client_fd, data);
+   status = pgagroal_http_respond_200(client_ssl, client_fd,
+                                     "text/html; charset=utf-8",
+                                     data);
+
    free(data);
-   data = NULL;
-
-   /* Footer */
-   data = pgagroal_append(data, "0\r\n\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-done:
-   if (data != NULL)
-   {
-      free(data);
-   }
-
    return status;
 }
 
 static int
 metrics_page(SSL* client_ssl, int client_fd)
 {
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
    struct prometheus_cache* cache;
    signed char cache_is_free;
 
    cache = (struct prometheus_cache*)prometheus_cache_shmem;
 
-   memset(&msg, 0, sizeof(struct message));
-
 retry_cache_locking:
    cache_is_free = STATE_FREE;
    if (atomic_compare_exchange_strong(&cache->lock, &cache_is_free, STATE_IN_USE))
    {
-      // can serve the message out of cache?
       if (is_metrics_cache_configured() && is_metrics_cache_valid())
       {
-         // serve the message directly out of the cache
-         pgagroal_log_debug("Serving metrics out of cache (%d/%d bytes valid until %lld)",
-                            strlen(cache->data),
-                            cache->size,
-                            cache->valid_until);
-
-         msg.kind = 0;
-         msg.length = strlen(cache->data);
-         msg.data = cache->data;
+         /* Serve cached data */
+         pgagroal_http_respond_200(client_ssl, client_fd,
+                                   "text/plain; version=0.0.4; charset=utf-8",
+                                   cache->data);
       }
       else
       {
-         // build the message without the cache
+         /* Fresh generation using Chunked Helpers */
          metrics_cache_invalidate();
 
-         now = time(NULL);
-
-         memset(&time_buf, 0, sizeof(time_buf));
-         ctime_r(&now, &time_buf[0]);
-         time_buf[strlen(time_buf) - 1] = 0;
-
-         data = pgagroal_append(data, "HTTP/1.1 200 OK\r\n");
-         data = pgagroal_append(data, "Content-Type: text/plain; version=0.0.3; charset=utf-8\r\n");
-         data = pgagroal_append(data, "Date: ");
-         data = pgagroal_append(data, &time_buf[0]);
-         data = pgagroal_append(data, "\r\n");
-         metrics_cache_append(data); // cache here to avoid the chunking for the cache
-         data = pgagroal_append(data, "Transfer-Encoding: chunked\r\n");
-         data = pgagroal_append(data, "\r\n");
-
-         msg.kind = 0;
-         msg.length = strlen(data);
-         msg.data = data;
-
-         status = pgagroal_write_message(client_ssl, client_fd, &msg);
-         if (status != MESSAGE_STATUS_OK)
+         if (pgagroal_http_respond_chunked_start(client_ssl, client_fd,
+                                                "text/plain; version=0.0.4; charset=utf-8") != MESSAGE_STATUS_OK)
          {
             metrics_cache_invalidate();
             atomic_store(&cache->lock, STATE_FREE);
-
             goto error;
          }
 
-         free(data);
-         data = NULL;
-
-         /* ART-based metrics container */
          prometheus_metrics_container_t* container = NULL;
          if (create_metrics_container(&container))
          {
-            pgagroal_log_error("Failed to create metrics container");
             metrics_cache_invalidate();
             atomic_store(&cache->lock, STATE_FREE);
             goto error;
@@ -2122,119 +1262,64 @@ retry_cache_locking:
          write_os_kernel_version(container);
          certificate_information(container);
 
-         /* Output ART metrics */
+         /* Stream output */
          output_all_metrics(client_ssl, client_fd, container);
-
-         /* Destroy container */
          destroy_metrics_container(container);
 
-         /* Footer */
-         data = pgagroal_append(data, "0\r\n\r\n");
-
-         msg.kind = 0;
-         msg.length = strlen(data);
-         msg.data = data;
-
+         /* Close stream cleanly */
+         pgagroal_http_respond_chunked_end(client_ssl, client_fd);
          metrics_cache_finalize();
       }
 
-      // free the cache
       atomic_store(&cache->lock, STATE_FREE);
-
-   } // end of cache locking
+   }
    else
    {
-      /* Sleep for 1ms */
-      SLEEP_AND_GOTO(1000000L, retry_cache_locking)
+      SLEEP_AND_GOTO(1000000L, retry_cache_locking);
    }
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   free(data);
 
    return 0;
 
 error:
-
-   free(data);
-
    return 1;
 }
 
 static int
 metrics_vault_page(SSL* client_ssl, int client_fd)
 {
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
    struct prometheus_cache* cache;
    signed char cache_is_free;
 
    cache = (struct prometheus_cache*)prometheus_cache_shmem;
 
-   memset(&msg, 0, sizeof(struct message));
-
 retry_cache_locking:
    cache_is_free = STATE_FREE;
    if (atomic_compare_exchange_strong(&cache->lock, &cache_is_free, STATE_IN_USE))
    {
-      // can serve the message out of cache?
+      /* 1. If the data is already stored in the cache, send it immediately as a standard 200 OK response. */     
       if (is_metrics_cache_configured() && is_metrics_cache_valid())
       {
-         // serve the message directly out of the cache
-         pgagroal_log_debug("Serving metrics out of cache (%d/%d bytes valid until %lld)",
-                            strlen(cache->data),
-                            cache->size,
-                            cache->valid_until);
+         pgagroal_log_debug("Serving vault metrics out of cache (%d/%d bytes valid until %lld)",
+                            strlen(cache->data), cache->size, cache->valid_until);
 
-         msg.kind = 0;
-         msg.length = strlen(cache->data);
-         msg.data = cache->data;
+         pgagroal_http_respond_200(client_ssl, client_fd,
+                                   "text/plain; version=0.0.4; charset=utf-8",
+                                   cache->data);
       }
       else
       {
-         // build the message without the cache
+         /* 2. Aggregating the new metrics as a chunked response */
          metrics_cache_invalidate();
 
-         now = time(NULL);
-
-         memset(&time_buf, 0, sizeof(time_buf));
-         ctime_r(&now, &time_buf[0]);
-         time_buf[strlen(time_buf) - 1] = 0;
-
-         data = pgagroal_append(data, "HTTP/1.1 200 OK\r\n");
-         data = pgagroal_append(data, "Content-Type: text/plain; version=0.0.3; charset=utf-8\r\n");
-         data = pgagroal_append(data, "Date: ");
-         data = pgagroal_append(data, &time_buf[0]);
-         data = pgagroal_append(data, "\r\n");
-         metrics_cache_append(data); // cache here to avoid the chunking for the cache
-         data = pgagroal_append(data, "Transfer-Encoding: chunked\r\n");
-         data = pgagroal_append(data, "\r\n");
-
-         msg.kind = 0;
-         msg.length = strlen(data);
-         msg.data = data;
-
-         status = pgagroal_write_message(client_ssl, client_fd, &msg);
-         if (status != MESSAGE_STATUS_OK)
+         /* Start of Chunked Response */
+         if (pgagroal_http_respond_chunked_start(client_ssl, client_fd,
+                                                "text/plain; version=0.0.4; charset=utf-8") != MESSAGE_STATUS_OK)
          {
             metrics_cache_invalidate();
             atomic_store(&cache->lock, STATE_FREE);
-
             goto error;
          }
 
-         free(data);
-         data = NULL;
-
-         /* ART-based metrics container */
          prometheus_metrics_container_t* container = NULL;
          if (create_metrics_container(&container))
          {
@@ -2244,85 +1329,32 @@ retry_cache_locking:
             goto error;
          }
 
+         /* Collecting Vault-specific metrics */ 
          general_vault_information(container);
          internal_vault_information(container);
 
-         /* Output ART metrics */
+         /* Streaming metrics via chunks */ 
          output_all_metrics(client_ssl, client_fd, container);
 
-         /* Destroy container */
          destroy_metrics_container(container);
 
-         /* Footer */
-         data = pgagroal_append(data, "0\r\n\r\n");
-
-         msg.kind = 0;
-         msg.length = strlen(data);
-         msg.data = data;
+         /* Terminate the stream with a terminal chunk (0\r\n\r\n) */
+         pgagroal_http_respond_chunked_end(client_ssl, client_fd);
 
          metrics_cache_finalize();
       }
 
-      // free the cache
       atomic_store(&cache->lock, STATE_FREE);
-
-   } // end of cache locking
+   }
    else
    {
-      /* Sleep for 1ms */
-      SLEEP_AND_GOTO(1000000L, retry_cache_locking)
+      SLEEP_AND_GOTO(1000000L, retry_cache_locking);
    }
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   free(data);
 
    return 0;
 
 error:
-
-   free(data);
-
    return 1;
-}
-
-static int
-bad_request(SSL* client_ssl, int client_fd)
-{
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 400 Bad Request\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   free(data);
-
-   return status;
 }
 
 static void
@@ -3573,7 +2605,7 @@ metrics_cache_append(char* data)
 
    // append the data to the data field
    memcpy(cache->data + origin_length, data, append_length);
-   cache->data[origin_length + append_length + 1] = '\0';
+   cache->data[origin_length + append_length ] = '\0';
    return true;
 }
 
