@@ -134,6 +134,85 @@ void
 pgagroal_free_message(struct message* msg);
 
 /**
+ * Callback invoked by pgagroal_parse_message once per complete message boundary.
+ * For messages with a payload it fires when both the header and the first payload
+ * byte have arrived, so the callback can safely read msg[5] (e.g. the transaction
+ * state byte of a ReadyForQuery 'Z' message). A NULL arg is valid; the callback
+ * is responsible for guarding against it if needed.
+ * @param kind The message type byte (e.g. 'Z', 'E', 'D')
+ * @param msg Pointer to the message start (kind byte included); at least 6 bytes
+ *            are valid when msglen > 5
+ * @param msglen Declared total length of the message (kind byte + 4-byte length field + payload)
+ * @param arg Caller-supplied context passed through unchanged from pgagroal_parse_message
+ */
+typedef void (*pgagroal_message_callback)(char kind, char* msg, int msglen, void* arg);
+
+/**
+ * Parser state for pgagroal_parse_message. Zero-initialize before the first
+ * call and pass the same instance on every subsequent call for the same
+ * connection so the parser can resume exactly where the previous read stopped.
+ * All fields are private to the parser; callers must not modify them directly.
+ */
+struct pgagroal_message_state
+{
+   char header[5];          /**< Partial header buffer (kind byte + 4-byte length field) */
+   char first_payload_byte; /**< First byte of the payload, e.g. transaction state for 'Z' */
+   int header_len;          /**< Bytes of the header received so far (0-5); 5 means complete */
+   int payload_remaining;   /**< Payload bytes not yet consumed from the current message */
+};
+
+/**
+ * Read a buffer holding one or more concatenated PostgreSQL protocol messages
+ * that may be split across multiple reads. The caller keeps the parser state
+ * in `state` (zero it before the first call); it is updated so a subsequent
+ * call can continue exactly where this one stopped.
+ *
+ * The callback is invoked once per message. For a message without a payload
+ * it fires as soon as the header (kind byte + length field) is complete; for
+ * a message with a payload it fires when the header and the first payload
+ * byte are present, so the callback can read past the header (e.g. the
+ * transaction state byte of a Z message). A header split across reads is
+ * buffered in the state until it can be parsed, so a split never
+ * desynchronizes the parser.
+ * @param state Parser state, zero-initialized before the first call
+ * @param data The buffer holding the received bytes
+ * @param length The number of received bytes
+ * @param callback The callback to invoke per message
+ * @param arg An argument passed through to the callback
+ */
+void
+pgagroal_parse_message(struct pgagroal_message_state* state,
+                       char* data,
+                       int length,
+                       pgagroal_message_callback callback, void* arg);
+
+/**
+ * Caller-supplied context passed to pgagroal_pipeline_server_rfq via the
+ * pgagroal_parse_message arg parameter. All pointer fields are optional;
+ * pass NULL for any field that does not need tracking.
+ */
+struct pipeline_server_state
+{
+   bool* in_tx;   /**< Updated with the transaction state from 'Z' messages */
+   bool* saw_rfq; /**< Set to true when a genuine idle ReadyForQuery is seen */
+   bool* fatal;   /**< Set to true when an 'E' message carries FATAL or PANIC */
+};
+
+/**
+ * Shared server-side message callback for the session and transaction
+ * pipelines. Updates the pipeline transaction state and prometheus counters
+ * when a genuine ReadyForQuery ('Z') boundary is seen, and sets the fatal
+ * flag when a genuine ErrorResponse ('E') carries FATAL or PANIC.
+ * Safe to call with a NULL arg; returns immediately in that case.
+ * @param kind The message type byte
+ * @param msg Pointer to the message start (kind byte included)
+ * @param msglen Declared total length of the message
+ * @param arg Pointer to a pipeline_server_state, or NULL
+ */
+void
+pgagroal_pipeline_server_rfq(char kind, char* msg, int msglen, void* arg);
+
+/**
  * Write an empty message
  * @param ssl The SSL struct
  * @param socket The socket descriptor

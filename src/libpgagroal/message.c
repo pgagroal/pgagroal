@@ -37,6 +37,7 @@
 #include <tls.h>
 #include <utils.h>
 #include <worker.h>
+#include <prometheus.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -389,6 +390,204 @@ pgagroal_free_message(struct message* msg)
 
       free(msg);
       msg = NULL;
+   }
+}
+
+void
+pgagroal_parse_message(struct pgagroal_message_state* state,
+                       char* data,
+                       int length,
+                       pgagroal_message_callback callback,
+                       void* arg)
+{
+   int offset = 0;
+
+   while (offset < length)
+   {
+      /*
+       * Something arrived, so we need to check `state` to understand
+       * where we were.
+       */
+
+      if (state->header_len == 5)
+      {
+         /*
+          * a full header is now present, since it has the length of 5 (kind + length)
+          * therefore get the first byte after the header (e.g., a `I` after a `Z` kind)
+          */
+         state->first_payload_byte = data[offset];
+         offset += 1;
+         state->payload_remaining -= 1;
+         state->header_len = 0; // header read
+
+         if (callback != NULL)
+         {
+            char kind = pgagroal_read_byte(state->header);
+            int msglen = pgagroal_read_int32(state->header + 1) + 1;
+
+            /*
+             * pass the whole thing to the callback, so the kind + length + first byte
+             */
+            char msg[6];
+            memcpy(msg, state->header, 5);
+            msg[5] = state->first_payload_byte;
+            callback(kind, msg, msglen, arg);
+         }
+
+         continue;
+      }
+
+      /*
+       * move forward to consume every other stuff
+       * within the payload
+       */
+      if (state->payload_remaining > 0)
+      {
+         int to_consume = MIN(state->payload_remaining, length - offset);
+         offset += to_consume;
+         state->payload_remaining -= to_consume;
+         continue;
+      }
+
+      /*
+       * here the header has fully arrived and there is nothing
+       * more (no payload)
+       */
+      if (state->header_len == 0 && offset + 5 <= length)
+      {
+         char kind = pgagroal_read_byte(data + offset);
+         int msglen = pgagroal_read_int32(data + offset + 1) + 1;
+
+         if (msglen == 5 || offset + 6 <= length)
+         {
+            /*
+             * payload is present, or the message has none, so the
+             * callback may read past the header (e.g. the Z state byte).
+             */
+            if (callback != NULL)
+            {
+               callback(kind, data + offset, msglen, arg);
+            }
+
+            offset += 5;
+            state->payload_remaining = msglen - 5;
+         }
+         else
+         {
+            /*
+             * header arrived, wait to handle the first payload byte (if any)
+             */
+            memcpy(state->header, data + offset, 5);
+            state->header_len = 5;
+            state->payload_remaining = msglen - 5;
+            offset = length;
+            continue;
+         }
+      }
+      else
+      {
+         /* Buffer a message header split across reads until it is complete */
+         int n = MIN(5 - state->header_len, length - offset);
+         memcpy(state->header + state->header_len, data + offset, n);
+         state->header_len += n;
+         offset += n;
+
+         if (state->header_len < 5)
+         {
+            /* Buffer exhausted mid-header; continue on the next call */
+            continue;
+         }
+
+         char kind = pgagroal_read_byte(state->header);
+         int msglen = pgagroal_read_int32(state->header + 1) + 1;
+
+         state->payload_remaining = msglen - 5;
+
+         if (msglen == 5 || offset < length)
+         {
+            /* The payload is present, or the message has none */
+            state->first_payload_byte = (msglen > 5) ? data[offset] : 0;
+            state->header_len = 0;
+
+            if (callback != NULL)
+            {
+               /* Build a contiguous view so the callback may read msg+5
+                * (e.g. the state byte of a Z message). */
+               char msg[8];
+               memcpy(msg, state->header, 5);
+               msg[5] = state->first_payload_byte;
+               msg[6] = 0;
+               msg[7] = 0;
+               callback(kind, msg, msglen, arg);
+            }
+         }
+         else
+         {
+            /* Await the first payload byte in a later call */
+            state->header_len = 5;
+            continue;
+         }
+      }
+
+      /*
+       * consume any remaining payload
+       */
+      if (state->payload_remaining > 0)
+      {
+         int to_consume = MIN(state->payload_remaining, length - offset);
+         offset += to_consume;
+         state->payload_remaining -= to_consume;
+      }
+   }
+}
+
+void
+pgagroal_pipeline_server_rfq(char kind, char* msg,
+                             int msglen __attribute__((unused)),
+                             void* arg)
+{
+   /*
+    * arg is NULL when the callback is invoked without a caller-supplied
+    * pipeline_server_state (e.g. from a test or a future caller that does
+    * not need saw_rfq or fatal tracking). This is a valid use case for a
+    * general-purpose callback, so return silently rather than crashing.
+    */
+   if (arg == NULL)
+      return;
+
+   struct pipeline_server_state* state = (struct pipeline_server_state*)arg;
+
+   /*
+    * if 'Z' need to read the first payload byte
+    * to get the transaction status
+    */
+   if (kind == 'Z')
+   {
+      char tx_state = pgagroal_read_byte(msg + 5);
+
+      if (tx_state != 'I' && !*(state->in_tx))
+      {
+         pgagroal_prometheus_tx_count_add();
+      }
+
+      *(state->in_tx) = (tx_state != 'I');
+
+      if (state->saw_rfq != NULL && !*(state->in_tx))
+      {
+         *(state->saw_rfq) = true;
+      }
+   }
+   else if (kind == 'E')
+   {
+      if (state->fatal != NULL)
+      {
+         /* msg+6 is valid here because pgagroal_parse_message only fires
+          * the callback once the first payload byte has arrived */
+         if (!strncmp(msg + 6, "FATAL", 5) || !strncmp(msg + 6, "PANIC", 5))
+         {
+            *(state->fatal) = true;
+         }
+      }
    }
 }
 

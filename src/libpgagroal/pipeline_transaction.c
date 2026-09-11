@@ -68,8 +68,8 @@ static char username[MAX_USERNAME_LENGTH];
 static char database[MAX_DATABASE_LENGTH];
 static char appname[MAX_APPLICATION_NAME];
 static bool in_tx;
-static int next_client_message;
-static int next_server_message;
+static struct pgagroal_message_state client_message_state;
+static struct pgagroal_message_state server_message_state;
 static int unix_socket = -1;
 static int deallocate;
 static bool fatal;
@@ -78,6 +78,7 @@ static bool saw_x = false;
 static struct io_watcher io_mgt;
 static struct worker_io server_io;
 static bool io_watcher_active = false;
+static bool saw_rfq;
 
 struct pipeline
 transaction_pipeline(void)
@@ -109,14 +110,15 @@ transaction_start(struct event_loop* loop, struct worker_io* w)
    struct main_configuration* config = NULL;
 
    config = (struct main_configuration*)shmem;
+   saw_rfq = false;
 
    slot = -1;
    memcpy(&username[0], config->connections[w->slot].username, MAX_USERNAME_LENGTH);
    memcpy(&database[0], config->connections[w->slot].database, MAX_DATABASE_LENGTH);
    memcpy(&appname[0], config->connections[w->slot].appname, MAX_APPLICATION_NAME);
    in_tx = false;
-   next_client_message = 0;
-   next_server_message = 0;
+   memset(&client_message_state, 0, sizeof(client_message_state));
+   memset(&server_message_state, 0, sizeof(server_message_state));
    deallocate = false;
 
    memset(&p, 0, sizeof(p));
@@ -199,6 +201,36 @@ transaction_periodic(void)
 }
 
 static void
+transaction_client_message(char kind, char* msg, int msglen __attribute__((unused)), void* arg)
+{
+   struct worker_io* wi = (struct worker_io*)arg;
+   struct main_configuration* config = (struct main_configuration*)shmem;
+
+   if (config->track_prepared_statements)
+   {
+      /* The P message tell us the prepared statement */
+      if (kind == 'P')
+      {
+         char* ps = pgagroal_read_string(msg + 5);
+         if (!pgagroal_strcmp(ps, ""))
+         {
+            deallocate = true;
+         }
+      }
+   }
+
+   /* The Q and E message tell us the execute of the simple query and the prepared statement */
+   if (kind == 'Q' || kind == 'E')
+   {
+      pgagroal_prometheus_query_count_add();
+      if (wi != NULL)
+      {
+         pgagroal_prometheus_query_count_specified_add(wi->slot);
+      }
+   }
+}
+
+static void
 transaction_client(struct io_watcher* watcher)
 {
    int status = MESSAGE_STATUS_ERROR;
@@ -250,53 +282,11 @@ transaction_client(struct io_watcher* watcher)
 
       if (likely(msg->kind != 'X'))
       {
-         int offset = 0;
-
-         while (offset < msg->length)
-         {
-            if (next_client_message == 0)
-            {
-               char kind = pgagroal_read_byte(msg->data + offset);
-               int length = pgagroal_read_int32(msg->data + offset + 1);
-
-               if (config->track_prepared_statements)
-               {
-                  /* The P message tell us the prepared statement */
-                  if (kind == 'P')
-                  {
-                     char* ps = pgagroal_read_string(msg->data + offset + 5);
-                     if (!pgagroal_strcmp(ps, ""))
-                     {
-                        deallocate = true;
-                     }
-                  }
-               }
-
-               /* The Q and E message tell us the execute of the simple query and the prepared statement */
-               if (kind == 'Q' || kind == 'E')
-               {
-                  pgagroal_prometheus_query_count_add();
-                  pgagroal_prometheus_query_count_specified_add(wi->slot);
-               }
-
-               /* Calculate the offset to the next message */
-               if (offset + length + 1 <= msg->length)
-               {
-                  next_client_message = 0;
-                  offset += length + 1;
-               }
-               else
-               {
-                  next_client_message = length + 1 - (msg->length - offset);
-                  offset = msg->length;
-               }
-            }
-            else
-            {
-               offset = MIN(next_client_message, msg->length);
-               next_client_message -= offset;
-            }
-         }
+         pgagroal_parse_message(&client_message_state,
+                                msg->data,
+                                msg->length,
+                                transaction_client_message,
+                                wi);
 
          status = pgagroal_send_message(watcher, msg);
 
@@ -413,46 +403,13 @@ transaction_server(struct io_watcher* watcher)
    {
       pgagroal_prometheus_network_received_add(msg->length);
 
-      int offset = 0;
-
-      while (offset < msg->length)
-      {
-         if (next_server_message == 0)
-         {
-            char kind = pgagroal_read_byte(msg->data + offset);
-            int length = pgagroal_read_int32(msg->data + offset + 1);
-
-            /* The Z message tell us the transaction state */
-            if (kind == 'Z')
-            {
-               char tx_state = pgagroal_read_byte(msg->data + offset + 5);
-
-               if (tx_state != 'I' && !in_tx)
-               {
-                  pgagroal_prometheus_tx_count_add();
-               }
-
-               in_tx = tx_state != 'I';
-            }
-
-            /* Calculate the offset to the next message */
-            if (offset + length + 1 <= msg->length)
-            {
-               next_server_message = 0;
-               offset += length + 1;
-            }
-            else
-            {
-               next_server_message = length + 1 - (msg->length - offset);
-               offset = msg->length;
-            }
-         }
-         else
-         {
-            offset = MIN(next_server_message, msg->length);
-            next_server_message -= offset;
-         }
-      }
+      saw_rfq = false; /* reset before each chunk */
+      struct pipeline_server_state pipeline_server_state = {&in_tx, &saw_rfq, &fatal};
+      pgagroal_parse_message(&server_message_state,
+                             msg->data,
+                             msg->length,
+                             pgagroal_pipeline_server_rfq,
+                             &pipeline_server_state);
 
       status = pgagroal_send_message(watcher, msg);
 
@@ -461,16 +418,8 @@ transaction_server(struct io_watcher* watcher)
          goto client_error;
       }
 
-      if (unlikely(msg->kind == 'E'))
-      {
-         if (!strncmp(msg->data + 6, "FATAL", 5) || !strncmp(msg->data + 6, "PANIC", 5))
-         {
-            fatal = true;
-         }
-      }
-
       /* Check for ReadyForQuery message (Z) to detect transaction completion */
-      if (msg->kind == 'Z' && !in_tx && slot != -1)
+      if (saw_rfq && !in_tx && slot != -1)
       {
          /* Transaction completed - stop I/O watcher immediately if still active */
          if (io_watcher_active)
