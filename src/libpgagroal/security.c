@@ -3537,7 +3537,7 @@ pgagroal_get_master_key(char** masterkey)
       }
    }
 
-   master_key_file = fopen(&buf[0], "r");
+   pgagroal_fopen_secure(&buf[0], "r", &master_key_file);
    if (master_key_file == NULL)
    {
       goto error;

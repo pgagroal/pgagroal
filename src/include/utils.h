@@ -314,6 +314,21 @@ bool
 pgagroal_exists(const char* f);
 
 /**
+ * Open a file in a secure way
+ *
+ * Creating, writing or appending adds O_NOFOLLOW, so the last path component
+ * cannot be redirected through a symlink; O_CLOEXEC is always added. A created
+ * file is set to rw------- through the descriptor.
+ *
+ * @param path The path
+ * @param mode The mode, like "w", "wb", "r" or "r+", where an 'x' means exclusive creation
+ * @param file The resulting file
+ * @return 0 upon success, 1 if the file exists and the mode is exclusive, otherwise 2
+ */
+int
+pgagroal_fopen_secure(const char* path, const char* mode, FILE** file);
+
+/**
  * Path is a regular file
  * @param f The path
  * @return The result
