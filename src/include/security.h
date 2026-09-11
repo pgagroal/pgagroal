@@ -115,6 +115,9 @@ pgagroal_get_user_password(char* username);
 bool
 pgagroal_user_known(char* user);
 
+bool
+pgagroal_is_allowed_address(char* address, char* entry);
+
 /**
  * Is the TLS configuration valid
  * @return 0 upon success, otherwise 1
