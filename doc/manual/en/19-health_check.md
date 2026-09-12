@@ -49,7 +49,9 @@ To set up a dedicated health check user:
    ```sql
    CREATE ROLE pgagroal_health WITH LOGIN PASSWORD 'your_secure_password' CONNECTION LIMIT 1;
    CREATE DATABASE pgagroal_health WITH OWNER pgagroal_health;
+   GRANT pg_monitor TO pgagroal_health;
    ```
+   *Note: The pg_monitor privilege is required for the health check user to query the pg_stat_replication view, which allows pgagroal to verify that standbys are correctly streaming from the correct primary.*
 
 2. **Register the user with pgagroal**:
    Use `pgagroal-admin` to add the user to your `pgagroal_users.conf`:

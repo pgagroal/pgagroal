@@ -129,6 +129,22 @@ int
 pgagroal_server_get_connectivity_info(int server, char** status, char** primary, int64_t* behind_bytes);
 
 /**
+ * Get the primary's replication slot / connected-standby state.
+ *
+ * @param server        The primary's server index into config->servers[]
+ * @param slot_names    Output: slot name per row
+ * @param client_addrs  Output: connected client address per row
+ * @param max_rows      Capacity of slot_names/client_addrs (rows beyond this are dropped)
+ * @param num_rows      Output: actual number of rows returned
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_server_get_replication_slots_status(int server,
+                                             char slot_names[][MISC_LENGTH],
+                                             char client_addrs[][MISC_LENGTH],
+                                             int max_rows, int* num_rows);
+
+/**
  * Get the WAL receiver status and streaming details for a configured standby server.
  *
  * @param server        The server index into config->servers[]
