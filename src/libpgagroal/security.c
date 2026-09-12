@@ -97,7 +97,7 @@ static int server_scram256(char* username, char* password, int slot, SSL* server
 static bool is_allowed(char* username, char* database, char* address, int* hba_method);
 static bool is_allowed_username(char* username, char* entry);
 static bool is_allowed_database(char* database, char* entry);
-static bool is_allowed_address(char* address, char* entry);
+bool pgagroal_is_allowed_address(char* address, char* entry);
 static bool is_disabled(char* database);
 
 static int get_hba_method(int index);
@@ -3177,7 +3177,7 @@ is_allowed(char* username, char* database, char* address, int* hba_method)
 
    for (int i = 0; i < config->number_of_hbas; i++)
    {
-      if (is_allowed_address(address, config->hbas[i].address) &&
+      if (pgagroal_is_allowed_address(address, config->hbas[i].address) &&
           is_allowed_database(database, config->hbas[i].database) &&
           is_allowed_username(username, config->hbas[i].username))
       {
@@ -3231,8 +3231,8 @@ is_allowed_database(char* database, char* entry)
    return false;
 }
 
-static bool
-is_allowed_address(char* address, char* entry)
+bool
+pgagroal_is_allowed_address(char* address, char* entry)
 {
    struct sockaddr_in address_sa4;
    struct sockaddr_in6 address_sa6;
@@ -3240,6 +3240,7 @@ is_allowed_address(char* address, char* entry)
    struct sockaddr_in6 entry_sa6;
    char addr[INET6_ADDRSTRLEN];
    char s_mask[4];
+   size_t n;
    int mask;
    char* marker;
    bool ipv4 = true;
@@ -3259,10 +3260,36 @@ is_allowed_address(char* address, char* entry)
       return false;
    }
 
-   memcpy(&addr, entry, marker - entry);
+   n = marker - entry;
+   if (n >= sizeof(addr))
+   {
+      pgagroal_log_warn("Invalid HBA entry: %s", entry);
+      return false;
+   }
+
+   memcpy(&addr, entry, n);
+   addr[n] = '\0';
    marker += sizeof(char);
-   memcpy(&s_mask, marker, strlen(marker));
-   mask = atoi(s_mask);
+   n = strlen(marker);
+   if (n >= sizeof(s_mask) || n == 0)
+   {
+      pgagroal_log_warn("Invalid HBA entry: %s", entry);
+      return false;
+   }
+
+   memcpy(s_mask, marker, n);
+   s_mask[n] = '\0';
+
+   {
+      char* endptr = NULL;
+      long val = strtol(s_mask, &endptr, 10);
+      if (endptr == s_mask || *endptr != '\0')
+      {
+         pgagroal_log_warn("Invalid HBA entry: %s", entry);
+         return false;
+      }
+      mask = (int)val;
+   }
 
    if (strchr(addr, ':') == NULL)
    {
@@ -3347,7 +3374,6 @@ is_allowed_address(char* address, char* entry)
       }
 
       struct sockaddr_in6 netmask;
-      bool result = false;
 
       memset(&netmask, 0, sizeof(struct sockaddr_in6));
 
@@ -3358,10 +3384,13 @@ is_allowed_address(char* address, char* entry)
 
       for (unsigned i = 0; i < 16; i++)
       {
-         result |= (0 != (address_sa6.sin6_addr.s6_addr[i] & !netmask.sin6_addr.s6_addr[i]));
+         if ((address_sa6.sin6_addr.s6_addr[i] & netmask.sin6_addr.s6_addr[i]) !=
+             (entry_sa6.sin6_addr.s6_addr[i] & netmask.sin6_addr.s6_addr[i]))
+         {
+            return false;
+         }
       }
-
-      return result;
+      return true;
    }
 
    return false;
