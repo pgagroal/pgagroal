@@ -65,6 +65,8 @@ MCTF (Minimal C Test Framework) is pgagroal's custom test framework designed for
 - **Flexible assertions** - Assert macros with optional printf-style error messages
 - **Test filtering** - Run tests by name pattern ('-t') or by module ('-m')
 - **Test skipping** - Skip tests conditionally using 'MCTF_SKIP()' when prerequisites aren't met
+- **Per-test pgagroal log slicing** - Captures each test's pgagroal log window into `/tmp/pgagroal-test/log/<module>__<test>.pgagroal.log`
+- **Automatic ERROR gate** - A test that otherwise passes is marked failed if its log slice contains ` ERROR ` lines
 - **Cleanup pattern** - Structured cleanup using goto labels for resource management
 - **Error tracking** - Automatic error tracking with line numbers and custom error messages
 - **Multiple assertion types** - Various assertion macros ('MCTF_ASSERT', 'MCTF_ASSERT_PTR_NONNULL', 'MCTF_ASSERT_INT_EQ', 'MCTF_ASSERT_STR_EQ', etc.)
