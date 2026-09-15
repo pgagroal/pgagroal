@@ -48,3 +48,17 @@ MCTF_TEST(test_pgagroal_connection_load)
 cleanup:
    MCTF_FINISH();
 }
+
+// execute_sql helper: deterministic query
+MCTF_TEST(test_pgagroal_execute_sql)
+{
+   int ok = 0;
+   char* result = NULL;
+
+   ok = !pgagroal_tsclient_execute_sql(user, database, "SELECT 1;", &result);
+   MCTF_ASSERT(ok, cleanup, "pgagroal_tsclient_execute_sql did not return success");
+   MCTF_ASSERT_STR_EQ(result, "1\n", cleanup, "SELECT 1 did not return exactly '1\\n'");
+cleanup:
+   free(result);
+   MCTF_FINISH();
+}
