@@ -27,6 +27,7 @@
  */
 
 /* pgagroal */
+#include <http_server.h>
 #include <security.h>
 #include <pgagroal.h>
 #include <art.h>
@@ -53,11 +54,6 @@
 #include <errno.h>
 
 #define CHUNK_SIZE                   32768
-
-#define PAGE_UNKNOWN                 0
-#define PAGE_HOME                    1
-#define PAGE_METRICS                 2
-#define BAD_REQUEST                  3
 
 #define FIVE_SECONDS                 5
 #define TEN_SECONDS                  10
@@ -118,15 +114,10 @@ static int add_metric_to_art(struct art* art_tree, char* key, char* value,
 static void output_art_metrics(SSL* client_ssl, int client_fd, struct art* art_tree);
 static void output_all_metrics(SSL* client_ssl, int client_fd, prometheus_metrics_container_t* container);
 
-static int resolve_page(struct message* msg);
-static int badrequest_page(SSL* client_ssl, int client_fd);
-static int unknown_page(SSL* client_ssl, int client_fd);
 static int home_page(SSL* client_ssl, int client_fd);
 static int home_vault_page(SSL* client_ssl, int client_fd);
 static int metrics_page(SSL* client_ssl, int client_fd);
 static int metrics_vault_page(SSL* client_ssl, int client_fd);
-static int bad_request(SSL* client_ssl, int client_fd);
-static int redirect_page(SSL* client_ssl, int client_fd, char* path);
 
 static void general_information(prometheus_metrics_container_t* container);
 static void general_vault_information(prometheus_metrics_container_t* container);
@@ -143,8 +134,6 @@ static void write_os_kernel_version(prometheus_metrics_container_t* container);
 static int parse_certificate_file(const char* cert_path, struct certificate_info* cert_info);
 static void certificate_information(prometheus_metrics_container_t* container);
 
-static int send_chunk(SSL* cilent_ssl, int client_fd, char* data);
-
 static bool is_metrics_cache_configured(void);
 static bool is_metrics_cache_valid(void);
 static bool metrics_cache_append(char* data);
@@ -157,118 +146,71 @@ void
 pgagroal_prometheus(SSL* client_ssl, int client_fd)
 {
    int status;
-   int page;
-   struct message* msg = NULL;
-   struct main_configuration* config;
+   struct http_server_request* req = NULL;
+   char base_url[2048];
+   struct configuration* config;
 
-   if (!is_prometheus_enabled())
-   {
-      exit(1);
-   }
-
+   config = (struct configuration*)shmem;
    pgagroal_start_logging();
    pgagroal_memory_init();
 
-   config = (struct main_configuration*)shmem;
+   struct http_route routes[] = {
+      {"/", home_page},
+      {"/metrics", metrics_page},
+      {"/index.html", home_page}};
+   int n_routes = sizeof(routes) / sizeof(routes[0]);
 
-   if (client_ssl)
-   {
-      if (pgagroal_is_ssl_request(client_fd))
-      {
-         if (SSL_accept(client_ssl) <= 0)
-         {
-            pgagroal_log_debug("Failed to accept SSL connection: disconnect %d", client_fd);
-            goto error;
-         }
-      }
-      else
-      {
-         char* path = "/";
-         char* base_url = NULL;
+   status = pgagroal_http_server_ssl_accept(client_ssl, client_fd);
 
-         if (pgagroal_read_timeout_message(NULL, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg) != MESSAGE_STATUS_OK)
-         {
-            pgagroal_log_error("Failed to read message");
-            goto error;
-         }
-
-         char* path_start = strstr(msg->data, " ");
-         if (path_start)
-         {
-            path_start++;
-            char* path_end = strstr(path_start, " ");
-            if (path_end)
-            {
-               *path_end = '\0';
-               path = path_start;
-            }
-         }
-
-         base_url = pgagroal_format_and_append(base_url, "https://%s:%d%s", config->common.host, config->common.metrics, path);
-
-         if (redirect_page(NULL, client_fd, base_url) != MESSAGE_STATUS_OK)
-         {
-            pgagroal_log_error("Failed to redirect to: %s", base_url);
-            free(base_url);
-            goto error;
-         }
-
-         pgagroal_close_ssl(client_ssl);
-         pgagroal_disconnect(client_fd);
-
-         pgagroal_memory_destroy();
-         pgagroal_stop_logging();
-
-         free(base_url);
-
-         exit(0);
-      }
-   }
-
-   status = pgagroal_read_timeout_message(client_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
-   if (status != MESSAGE_STATUS_OK)
+   if (status == MESSAGE_STATUS_ERROR)
    {
       goto error;
    }
+   else if (status == MESSAGE_STATUS_ZERO)
+   {
+      char request_path[1024] = "/";
+      char buffer[PGAGROAL_HTTP_TLS_PROBE_SIZE] = {0};
+      char method[16] = {0};
+      if (recv(client_fd, buffer, sizeof(buffer) - 1, MSG_PEEK) > 0)
+      {
+         if (sscanf(buffer, "%15s %1023s", method, request_path) != 2)
+         {
+            strncpy(request_path, "/", sizeof(request_path));
+         }
+      }
+      snprintf(base_url, sizeof(base_url), "https://%s:%d%s", config->host, config->metrics, request_path);
+      if (pgagroal_http_respond_redirect(NULL, client_fd, base_url) != MESSAGE_STATUS_OK)
+      {
+         goto error;
+      }
+      goto done;
+   }
 
-   page = resolve_page(msg);
+   status = pgagroal_http_server_parse(client_ssl, client_fd, &req);
+   if (status != MESSAGE_STATUS_OK || req == NULL)
+   {
+      pgagroal_http_respond_400(client_ssl, client_fd);
+      goto error;
+   }
+   pgagroal_http_server_dispatch(client_ssl, client_fd, req, routes, n_routes);
 
-   if (page == PAGE_HOME)
-   {
-      home_page(client_ssl, client_fd);
-   }
-   else if (page == PAGE_METRICS)
-   {
-      metrics_page(client_ssl, client_fd);
-   }
-   else if (page == PAGE_UNKNOWN)
-   {
-      unknown_page(client_ssl, client_fd);
-   }
-   else
-   {
-      bad_request(client_ssl, client_fd);
-   }
-
+done:
+   if (req != NULL)
+      pgagroal_http_request_free(req);
    pgagroal_close_ssl(client_ssl);
    pgagroal_disconnect(client_fd);
-
    pgagroal_memory_destroy();
    pgagroal_stop_logging();
-
    exit(0);
 
 error:
-
-   badrequest_page(client_ssl, client_fd);
-
+   if (req != NULL)
+      pgagroal_http_request_free(req);
    pgagroal_log_debug("pgagroal_prometheus: disconnect %d", client_fd);
    pgagroal_close_ssl(client_ssl);
    pgagroal_disconnect(client_fd);
-
    pgagroal_memory_destroy();
    pgagroal_stop_logging();
-
    exit(1);
 }
 
@@ -276,61 +218,78 @@ void
 pgagroal_vault_prometheus(SSL* client_ssl, int client_fd)
 {
    int status;
-   int page;
-   struct message* msg = NULL;
-   struct vault_configuration* config;
+   int exit_code = 0;
+   struct http_server_request* req = NULL;
+   char base_url[2048];
+   struct configuration* config;
 
    if (!is_prometheus_enabled())
    {
       exit(1);
    }
 
+   config = (struct configuration*)shmem;
    pgagroal_start_logging();
    pgagroal_memory_init();
 
-   config = (struct vault_configuration*)shmem;
+   struct http_route routes[] = {
+      {"/", home_vault_page},
+      {"/metrics", metrics_vault_page},
+      {"/index.html", home_vault_page}};
+   int n_routes = sizeof(routes) / sizeof(routes[0]);
 
-   status = pgagroal_read_timeout_message(client_ssl, client_fd, pgagroal_time_convert(config->common.authentication_timeout, FORMAT_TIME_S), &msg);
-   if (status != MESSAGE_STATUS_OK)
+   status = pgagroal_http_server_ssl_accept(client_ssl, client_fd);
+   if (status == MESSAGE_STATUS_ERROR)
    {
       goto error;
    }
-
-   page = resolve_page(msg);
-
-   if (page == PAGE_HOME)
+   else if (status == MESSAGE_STATUS_ZERO)
    {
-      home_vault_page(client_ssl, client_fd);
-   }
-   else if (page == PAGE_METRICS)
-   {
-      metrics_vault_page(client_ssl, client_fd);
-   }
-   else if (page == PAGE_UNKNOWN)
-   {
-      unknown_page(client_ssl, client_fd);
-   }
-   else
-   {
-      bad_request(client_ssl, client_fd);
+      char request_path[1024] = "/";
+      char buffer[PGAGROAL_HTTP_TLS_PROBE_SIZE] = {0};
+      char method[16] = {0};
+      if (recv(client_fd, buffer, sizeof(buffer) - 1, MSG_PEEK) > 0)
+      {
+         if (sscanf(buffer, "%15s %1023s", method, request_path) != 2)
+         {
+            strncpy(request_path, "/", sizeof(request_path));
+         }
+      }
+      snprintf(base_url, sizeof(base_url), "https://%s:%d%s", config->host, config->metrics, request_path);
+      if (pgagroal_http_respond_redirect(NULL, client_fd, base_url) != MESSAGE_STATUS_OK)
+      {
+         goto error;
+      }
+      goto done;
    }
 
-   pgagroal_disconnect(client_fd);
+   status = pgagroal_http_server_parse(client_ssl, client_fd, &req);
+   if (status != MESSAGE_STATUS_OK || req == NULL)
+   {
+      pgagroal_http_respond_400(client_ssl, client_fd);
+      goto error;
+   }
 
-   pgagroal_memory_destroy();
-   pgagroal_stop_logging();
+   pgagroal_http_server_dispatch(client_ssl, client_fd, req, routes, n_routes);
 
-   exit(0);
+done:
+   exit_code = 0;
+   goto cleanup;
 
 error:
+   pgagroal_log_debug("pgagroal_vault_prometheus: disconnect %d", client_fd);
+   exit_code = 1;
 
-   pgagroal_log_debug("pgagroal_prometheus: disconnect %d", client_fd);
+cleanup:
+   if (req != NULL)
+   {
+      pgagroal_http_request_free(req);
+   }
+   pgagroal_close_ssl(client_ssl);
    pgagroal_disconnect(client_fd);
-
    pgagroal_memory_destroy();
    pgagroal_stop_logging();
-
-   exit(1);
+   exit(exit_code);
 }
 
 int
@@ -1188,155 +1147,10 @@ pgagroal_prometheus_logging(int type)
 }
 
 static int
-redirect_page(SSL* client_ssl, int client_fd, char* path)
-{
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 301 Moved Permanently\r\n");
-   data = pgagroal_append(data, "Location: ");
-   data = pgagroal_append(data, path);
-   data = pgagroal_append(data, "\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-   data = pgagroal_append(data, "Content-Length: 0\r\n");
-   data = pgagroal_append(data, "Connection: close\r\n");
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   free(data);
-
-   return status;
-}
-
-static int
-resolve_page(struct message* msg)
-{
-   char* from = NULL;
-   int index;
-
-   if (msg->length < 3 || strncmp((char*)msg->data, "GET", 3) != 0)
-   {
-      pgagroal_log_debug("Promethus: Not a GET request");
-      return BAD_REQUEST;
-   }
-
-   index = 4;
-   from = (char*)msg->data + index;
-
-   while (pgagroal_read_byte(msg->data + index) != ' ')
-   {
-      index++;
-   }
-
-   pgagroal_write_byte(msg->data + index, '\0');
-
-   if (pgagroal_strcmp(from, "/") || pgagroal_strcmp(from, "/index.html"))
-   {
-      return PAGE_HOME;
-   }
-   else if (pgagroal_strcmp(from, "/metrics"))
-   {
-      return PAGE_METRICS;
-   }
-
-   return PAGE_UNKNOWN;
-}
-
-static int
-badrequest_page(SSL* client_ssl, int client_fd)
-{
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 400 Bad Request\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   free(data);
-
-   return status;
-}
-
-static int
-unknown_page(SSL* client_ssl, int client_fd)
-{
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 403 Forbidden\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   free(data);
-
-   return status;
-}
-
-static int
 home_page(SSL* client_ssl, int client_fd)
 {
    char* data = NULL;
-   time_t now;
-   char time_buf[32];
    int status;
-   struct message msg;
    struct main_prometheus* prometheus;
    struct certificate_metrics* cert_metrics;
    int cert_count = 0;
@@ -1344,9 +1158,8 @@ home_page(SSL* client_ssl, int client_fd)
 
    prometheus = (struct main_prometheus*)prometheus_shmem;
    cert_metrics = &prometheus->cert_metrics;
-   cert_count = atomic_load(&cert_metrics->cert_count);
 
-   // Check if we have at least one valid certificate
+   cert_count = atomic_load(&cert_metrics->cert_count);
    for (int i = 0; i < cert_count && i < MAX_CERTIFICATES; i++)
    {
       struct certificate_info* cert = &cert_metrics->certs[i];
@@ -1356,68 +1169,24 @@ home_page(SSL* client_ssl, int client_fd)
          break;
       }
    }
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 200 OK\r\n");
-   data = pgagroal_append(data, "Content-Type: text/html; charset=utf-8\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-   data = pgagroal_append(data, "Transfer-Encoding: chunked\r\n");
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto done;
-   }
-
-   free(data);
-   data = NULL;
-
    data = pgagroal_append(data, "<!DOCTYPE html>\n");
    data = pgagroal_append(data, "<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\">\n");
    data = pgagroal_append(data, "<head>\n");
    data = pgagroal_append(data, "  <title>pgagroal exporter</title>\n");
-   data = pgagroal_append(data, "  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>");
+   data = pgagroal_append(data, "  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"/>\n");
    data = pgagroal_append(data, "  <style>\n");
-   data = pgagroal_append(data, "   table { \n");
-   data = pgagroal_append(data, "           margin: auto;\n");
-   data = pgagroal_append(data, "           border: 2px solid black;\n");
-   data = pgagroal_append(data, "         }\n");
-   data = pgagroal_append(data, "   td { \n");
-   data = pgagroal_append(data, "           border: 1px solid black;\n");
-   data = pgagroal_append(data, "           text-align: center;;\n");
-   data = pgagroal_append(data, "      }\n");
-   data = pgagroal_append(data, "   ul { \n");
-   data = pgagroal_append(data, "           text-align: left;\n");
-   data = pgagroal_append(data, "      }\n");
-   data = pgagroal_append(data, "   ol { \n");
-   data = pgagroal_append(data, "           text-align: left;\n");
-   data = pgagroal_append(data, "      }\n");
+   data = pgagroal_append(data, "    table { margin: auto; border: 2px solid black; }\n");
+   data = pgagroal_append(data, "    td { border: 1px solid black; text-align: center; }\n");
+   data = pgagroal_append(data, "    ul { text-align: left; }\n");
+   data = pgagroal_append(data, "    ol { text-align: left; }\n");
    data = pgagroal_append(data, "  </style>\n");
    data = pgagroal_append(data, "</head>\n");
    data = pgagroal_append(data, "<body>\n");
    data = pgagroal_append(data, "  <h1>pgagroal exporter</h1>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   <a href=\"/metrics\">Metrics</a>\n");
-   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <p><a href=\"/metrics\">Metrics</a></p>\n");
+
    data = pgagroal_append(data, "  <h2>pgagroal_state</h2>\n");
-   data = pgagroal_append(data, "  <p>\n");
-   data = pgagroal_append(data, "   The state of pgagroal\n");
-   data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "  <p>The state of pgagroal</p>\n");
    data = pgagroal_append(data, "  <table>\n");
    data = pgagroal_append(data, "    <tbody>\n");
    data = pgagroal_append(data, "      <tr>\n");
@@ -1905,28 +1674,13 @@ home_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "  <p>\n");
    data = pgagroal_append(data, "   <a href=\"https://pgagroal.github.io/\">pgagroal.github.io/</a>\n");
    data = pgagroal_append(data, "  </p>\n");
+
    data = pgagroal_append(data, "</body>\n");
    data = pgagroal_append(data, "</html>\n");
 
-   send_chunk(client_ssl, client_fd, data);
+   status = pgagroal_http_respond_200(client_ssl, client_fd, "text/html; charset=utf-8", data);
+
    free(data);
-   data = NULL;
-
-   /* Footer */
-   data = pgagroal_append(data, "0\r\n\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-done:
-   if (data != NULL)
-   {
-      free(data);
-   }
-
    return status;
 }
 
@@ -1934,40 +1688,7 @@ static int
 home_vault_page(SSL* client_ssl, int client_fd)
 {
    char* data = NULL;
-   time_t now;
-   char time_buf[32];
    int status;
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 200 OK\r\n");
-   data = pgagroal_append(data, "Content-Type: text/html; charset=utf-8\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-   data = pgagroal_append(data, "Transfer-Encoding: chunked\r\n");
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto done;
-   }
-
-   free(data);
-   data = NULL;
 
    data = pgagroal_append(data, "<!DOCTYPE html>\n");
    data = pgagroal_append(data, "<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"en\">\n");
@@ -2010,101 +1731,49 @@ home_vault_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "</body>\n");
    data = pgagroal_append(data, "</html>\n");
 
-   send_chunk(client_ssl, client_fd, data);
+   status = pgagroal_http_respond_200(client_ssl, client_fd,
+                                      "text/html; charset=utf-8",
+                                      data);
+
    free(data);
-   data = NULL;
-
-   /* Footer */
-   data = pgagroal_append(data, "0\r\n\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-done:
-   if (data != NULL)
-   {
-      free(data);
-   }
-
    return status;
 }
 
 static int
 metrics_page(SSL* client_ssl, int client_fd)
 {
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
    struct prometheus_cache* cache;
    signed char cache_is_free;
 
    cache = (struct prometheus_cache*)prometheus_cache_shmem;
 
-   memset(&msg, 0, sizeof(struct message));
-
 retry_cache_locking:
    cache_is_free = STATE_FREE;
    if (atomic_compare_exchange_strong(&cache->lock, &cache_is_free, STATE_IN_USE))
    {
-      // can serve the message out of cache?
       if (is_metrics_cache_configured() && is_metrics_cache_valid())
       {
-         // serve the message directly out of the cache
-         pgagroal_log_debug("Serving metrics out of cache (%d/%d bytes valid until %lld)",
-                            strlen(cache->data),
-                            cache->size,
-                            cache->valid_until);
-
-         msg.kind = 0;
-         msg.length = strlen(cache->data);
-         msg.data = cache->data;
+         /* Serve cached data */
+         pgagroal_http_respond_200(client_ssl, client_fd,
+                                   "text/plain; version=0.0.4; charset=utf-8",
+                                   cache->data);
       }
       else
       {
-         // build the message without the cache
+         /* Fresh generation using Chunked Helpers */
          metrics_cache_invalidate();
 
-         now = time(NULL);
-
-         memset(&time_buf, 0, sizeof(time_buf));
-         ctime_r(&now, &time_buf[0]);
-         time_buf[strlen(time_buf) - 1] = 0;
-
-         data = pgagroal_append(data, "HTTP/1.1 200 OK\r\n");
-         data = pgagroal_append(data, "Content-Type: text/plain; version=0.0.3; charset=utf-8\r\n");
-         data = pgagroal_append(data, "Date: ");
-         data = pgagroal_append(data, &time_buf[0]);
-         data = pgagroal_append(data, "\r\n");
-         metrics_cache_append(data); // cache here to avoid the chunking for the cache
-         data = pgagroal_append(data, "Transfer-Encoding: chunked\r\n");
-         data = pgagroal_append(data, "\r\n");
-
-         msg.kind = 0;
-         msg.length = strlen(data);
-         msg.data = data;
-
-         status = pgagroal_write_message(client_ssl, client_fd, &msg);
-         if (status != MESSAGE_STATUS_OK)
+         if (pgagroal_http_respond_chunked_start(client_ssl, client_fd,
+                                                 "text/plain; version=0.0.4; charset=utf-8") != MESSAGE_STATUS_OK)
          {
             metrics_cache_invalidate();
             atomic_store(&cache->lock, STATE_FREE);
-
             goto error;
          }
 
-         free(data);
-         data = NULL;
-
-         /* ART-based metrics container */
          prometheus_metrics_container_t* container = NULL;
          if (create_metrics_container(&container))
          {
-            pgagroal_log_error("Failed to create metrics container");
             metrics_cache_invalidate();
             atomic_store(&cache->lock, STATE_FREE);
             goto error;
@@ -2122,119 +1791,64 @@ retry_cache_locking:
          write_os_kernel_version(container);
          certificate_information(container);
 
-         /* Output ART metrics */
+         /* Stream output */
          output_all_metrics(client_ssl, client_fd, container);
-
-         /* Destroy container */
          destroy_metrics_container(container);
 
-         /* Footer */
-         data = pgagroal_append(data, "0\r\n\r\n");
-
-         msg.kind = 0;
-         msg.length = strlen(data);
-         msg.data = data;
-
+         /* Close stream cleanly */
+         pgagroal_http_respond_chunked_end(client_ssl, client_fd);
          metrics_cache_finalize();
       }
 
-      // free the cache
       atomic_store(&cache->lock, STATE_FREE);
-
-   } // end of cache locking
+   }
    else
    {
-      /* Sleep for 1ms */
-      SLEEP_AND_GOTO(1000000L, retry_cache_locking)
+      SLEEP_AND_GOTO(1000000L, retry_cache_locking);
    }
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   free(data);
 
    return 0;
 
 error:
-
-   free(data);
-
    return 1;
 }
 
 static int
 metrics_vault_page(SSL* client_ssl, int client_fd)
 {
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
    struct prometheus_cache* cache;
    signed char cache_is_free;
 
    cache = (struct prometheus_cache*)prometheus_cache_shmem;
 
-   memset(&msg, 0, sizeof(struct message));
-
 retry_cache_locking:
    cache_is_free = STATE_FREE;
    if (atomic_compare_exchange_strong(&cache->lock, &cache_is_free, STATE_IN_USE))
    {
-      // can serve the message out of cache?
+      /* 1. If the data is already stored in the cache, send it immediately as a standard 200 OK response. */
       if (is_metrics_cache_configured() && is_metrics_cache_valid())
       {
-         // serve the message directly out of the cache
-         pgagroal_log_debug("Serving metrics out of cache (%d/%d bytes valid until %lld)",
-                            strlen(cache->data),
-                            cache->size,
-                            cache->valid_until);
+         pgagroal_log_debug("Serving vault metrics out of cache (%d/%d bytes valid until %lld)",
+                            strlen(cache->data), cache->size, cache->valid_until);
 
-         msg.kind = 0;
-         msg.length = strlen(cache->data);
-         msg.data = cache->data;
+         pgagroal_http_respond_200(client_ssl, client_fd,
+                                   "text/plain; version=0.0.4; charset=utf-8",
+                                   cache->data);
       }
       else
       {
-         // build the message without the cache
+         /* 2. Aggregating the new metrics as a chunked response */
          metrics_cache_invalidate();
 
-         now = time(NULL);
-
-         memset(&time_buf, 0, sizeof(time_buf));
-         ctime_r(&now, &time_buf[0]);
-         time_buf[strlen(time_buf) - 1] = 0;
-
-         data = pgagroal_append(data, "HTTP/1.1 200 OK\r\n");
-         data = pgagroal_append(data, "Content-Type: text/plain; version=0.0.3; charset=utf-8\r\n");
-         data = pgagroal_append(data, "Date: ");
-         data = pgagroal_append(data, &time_buf[0]);
-         data = pgagroal_append(data, "\r\n");
-         metrics_cache_append(data); // cache here to avoid the chunking for the cache
-         data = pgagroal_append(data, "Transfer-Encoding: chunked\r\n");
-         data = pgagroal_append(data, "\r\n");
-
-         msg.kind = 0;
-         msg.length = strlen(data);
-         msg.data = data;
-
-         status = pgagroal_write_message(client_ssl, client_fd, &msg);
-         if (status != MESSAGE_STATUS_OK)
+         /* Start of Chunked Response */
+         if (pgagroal_http_respond_chunked_start(client_ssl, client_fd,
+                                                 "text/plain; version=0.0.4; charset=utf-8") != MESSAGE_STATUS_OK)
          {
             metrics_cache_invalidate();
             atomic_store(&cache->lock, STATE_FREE);
-
             goto error;
          }
 
-         free(data);
-         data = NULL;
-
-         /* ART-based metrics container */
          prometheus_metrics_container_t* container = NULL;
          if (create_metrics_container(&container))
          {
@@ -2244,85 +1858,32 @@ retry_cache_locking:
             goto error;
          }
 
+         /* Collecting Vault-specific metrics */
          general_vault_information(container);
          internal_vault_information(container);
 
-         /* Output ART metrics */
+         /* Streaming metrics via chunks */
          output_all_metrics(client_ssl, client_fd, container);
 
-         /* Destroy container */
          destroy_metrics_container(container);
 
-         /* Footer */
-         data = pgagroal_append(data, "0\r\n\r\n");
-
-         msg.kind = 0;
-         msg.length = strlen(data);
-         msg.data = data;
+         /* Terminate the stream with a terminal chunk (0\r\n\r\n) */
+         pgagroal_http_respond_chunked_end(client_ssl, client_fd);
 
          metrics_cache_finalize();
       }
 
-      // free the cache
       atomic_store(&cache->lock, STATE_FREE);
-
-   } // end of cache locking
+   }
    else
    {
-      /* Sleep for 1ms */
-      SLEEP_AND_GOTO(1000000L, retry_cache_locking)
+      SLEEP_AND_GOTO(1000000L, retry_cache_locking);
    }
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   if (status != MESSAGE_STATUS_OK)
-   {
-      goto error;
-   }
-
-   free(data);
 
    return 0;
 
 error:
-
-   free(data);
-
    return 1;
-}
-
-static int
-bad_request(SSL* client_ssl, int client_fd)
-{
-   char* data = NULL;
-   time_t now;
-   char time_buf[32];
-   int status;
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-   memset(&data, 0, sizeof(data));
-
-   now = time(NULL);
-
-   memset(&time_buf, 0, sizeof(time_buf));
-   ctime_r(&now, &time_buf[0]);
-   time_buf[strlen(time_buf) - 1] = 0;
-
-   data = pgagroal_append(data, "HTTP/1.1 400 Bad Request\r\n");
-   data = pgagroal_append(data, "Date: ");
-   data = pgagroal_append(data, &time_buf[0]);
-   data = pgagroal_append(data, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(data);
-   msg.data = data;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   free(data);
-
-   return status;
 }
 
 static void
@@ -3356,38 +2917,6 @@ connection_awaiting_information(prometheus_metrics_container_t* container)
    }
 }
 
-static int
-send_chunk(SSL* client_ssl, int client_fd, char* data)
-{
-   int status;
-   char* m = NULL;
-   struct message msg;
-
-   memset(&msg, 0, sizeof(struct message));
-
-   m = calloc(1, 20);
-   if (m == NULL)
-   {
-      pgagroal_log_fatal("Couldn't allocate memory while binding host");
-      return MESSAGE_STATUS_ERROR;
-   }
-
-   sprintf(m, "%zX\r\n", strlen(data));
-
-   m = pgagroal_append(m, data);
-   m = pgagroal_append(m, "\r\n");
-
-   msg.kind = 0;
-   msg.length = strlen(m);
-   msg.data = m;
-
-   status = pgagroal_write_message(client_ssl, client_fd, &msg);
-
-   free(m);
-
-   return status;
-}
-
 /**
  * Checks if the Prometheus cache configuration setting
  * (`metrics_cache`) has a non-zero value, that means there
@@ -3573,7 +3102,7 @@ metrics_cache_append(char* data)
 
    // append the data to the data field
    memcpy(cache->data + origin_length, data, append_length);
-   cache->data[origin_length + append_length + 1] = '\0';
+   cache->data[origin_length + append_length] = '\0';
    return true;
 }
 
@@ -4547,7 +4076,7 @@ output_art_metrics(SSL* client_ssl, int client_fd, struct art* art_tree)
       prometheus_metric_value_t* mv = (prometheus_metric_value_t*)pgagroal_value_data(iter->value);
       if (mv != NULL && mv->value != NULL)
       {
-         send_chunk(client_ssl, client_fd, mv->value);
+         pgagroal_http_respond_chunked_write(client_ssl, client_fd, mv->value);
          metrics_cache_append(mv->value);
       }
    }
