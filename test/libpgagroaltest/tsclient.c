@@ -573,6 +573,74 @@ cleanup:
    return peak;
 }
 
+char*
+pgagroal_tsclient_scrape_metrics()
+{
+   struct main_configuration* config = (struct main_configuration*)shmem;
+   char tmp[] = "/tmp/pgagroal_metrics_XXXXXX";
+   char* cmd = NULL;
+   char* body = NULL;
+   FILE* f = NULL;
+   long size;
+   int fd;
+
+   if (config == NULL || config->common.metrics <= 0)
+   {
+      return NULL;
+   }
+
+   fd = mkstemp(tmp);
+   if (fd < 0)
+   {
+      return NULL;
+   }
+   close(fd);
+
+   cmd = pgagroal_append(cmd, "curl -s -m 2 http://");
+   cmd = pgagroal_append(cmd, config->common.host);
+   cmd = pgagroal_append_char(cmd, ':');
+   cmd = pgagroal_append_int(cmd, config->common.metrics);
+   cmd = pgagroal_append(cmd, "/metrics -o ");
+   cmd = pgagroal_append(cmd, tmp);
+
+   if (system(cmd) != 0)
+   {
+      free(cmd);
+      unlink(tmp);
+      return NULL;
+   }
+   free(cmd);
+
+   f = fopen(tmp, "r");
+   if (f != NULL)
+   {
+      if (fseek(f, 0, SEEK_END) == 0)
+      {
+         size = ftell(f);
+         if (size >= 0 && fseek(f, 0, SEEK_SET) == 0)
+         {
+            body = malloc((size_t)size + 1);
+            if (body != NULL)
+            {
+               if (fread(body, 1, (size_t)size, f) == (size_t)size)
+               {
+                  body[size] = '\0';
+               }
+               else
+               {
+                  free(body);
+                  body = NULL;
+               }
+            }
+         }
+      }
+      fclose(f);
+   }
+
+   unlink(tmp);
+   return body;
+}
+
 static int
 scrape_limit_backend(int metrics_port, char* host, char* user, char* database)
 {
