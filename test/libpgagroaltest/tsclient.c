@@ -63,6 +63,8 @@ static char* get_log_file_path();
 static void* hold_thread_main(void* arg);
 static int scrape_limit_backend(int metrics_port, char* host, char* user, char* database);
 static int compute_client_watchdog(struct main_configuration* config, int hold_seconds);
+static int read_file_into_string(char* path, char** out);
+static char* escape_shell(char* input);
 
 int
 pgagroal_tsclient_init(char* base_dir)
@@ -229,6 +231,100 @@ pgagroal_tsclient_execute_pgbench(char* user, char* database, bool select_only, 
 
    free(command);
    free(log_file_path);
+
+   return ret;
+}
+
+int
+pgagroal_tsclient_execute_sql(char* user, char* database, const char* sql, char** result)
+{
+   struct main_configuration* config = NULL;
+   const char* password = NULL;
+   char* command = NULL;
+   char* escaped_sql = NULL;
+   char  tmp[] = "/tmp/pgagroal_sql_XXXXXX";
+   int fd;
+   int ret = 1;
+
+   if (result != NULL)
+   {
+      *result = NULL;
+   }
+
+   if (user == NULL || database == NULL || sql == NULL || result == NULL)
+   {
+      return 1;
+   }
+
+   config = (struct main_configuration*)shmem;
+   if (config == NULL)
+   {
+      return 1;
+   }
+
+   fd = mkstemp(tmp);
+   if (fd < 0)
+   {
+      return 1;
+   }
+   close(fd);
+
+   /* Get password from environment variables */
+   /* Priority: PGPASSWORD > PG_USER_PASSWORD > PG_UTF8_USER_PASSWORD */
+   password = getenv("PGPASSWORD");
+   if (password == NULL)
+   {
+      password = getenv("PG_USER_PASSWORD");
+   }
+   if (password == NULL)
+   {
+      password = getenv("PG_UTF8_USER_PASSWORD");
+   }
+
+   if (password != NULL && strlen(password) > 0)
+   {
+      command = pgagroal_append(command, "PGPASSWORD=");
+      command = pgagroal_append(command, (char*)password);
+      command = pgagroal_append_char(command, ' ');
+   }
+
+   /* The SQL travels inside double quotes on the psql command line, so it must
+    * be escaped for the invoking shell: embedded " $ ` \ (and sequences like
+    * $() or backticks) would otherwise be mangled or executed. */
+   escaped_sql = escape_shell((char*)sql);
+
+   command = pgagroal_append(command, "psql -v ON_ERROR_STOP=1 -X -A -t -h ");
+   command = pgagroal_append(command, config->common.host);
+   command = pgagroal_append(command, " -p ");
+   command = pgagroal_append_int(command, config->common.port);
+   command = pgagroal_append(command, " -U ");
+   command = pgagroal_append(command, user);
+   command = pgagroal_append(command, " -d ");
+   command = pgagroal_append(command, database);
+   command = pgagroal_append(command, " -c \"");
+   command = pgagroal_append(command, escaped_sql);
+   command = pgagroal_append(command, "\" > ");
+   command = pgagroal_append(command, tmp);
+   command = pgagroal_append(command, " 2>&1 < /dev/null");
+
+   free(escaped_sql);
+   escaped_sql = NULL;
+
+   if (system(command) != 0)
+   {
+      /* psql failed (query error, connection failure, ...). The sibling
+       * test helpers persist stderr in a log file they append to; here the
+       * temp file is unlinked, so surface psql's error text via \a result
+       * (2>&1 merged it into tmp) instead of losing it. */
+      (void)read_file_into_string(tmp, result);
+      free(command);
+      unlink(tmp);
+      return 1;
+   }
+   free(command);
+
+   ret = read_file_into_string(tmp, result);
+   unlink(tmp);
 
    return ret;
 }
@@ -666,6 +762,95 @@ hold_thread_main(void* arg)
    }
    a->exit_status = system(a->command);
    return NULL;
+}
+
+static int
+read_file_into_string(char* path, char** out)
+{
+   FILE* f = NULL;
+   long size;
+   char* buffer = NULL;
+
+   if (out == NULL)
+   {
+      return 1;
+   }
+   *out = NULL;
+
+   f = fopen(path, "rb");
+   if (f == NULL)
+   {
+      return 1;
+   }
+
+   if (fseek(f, 0, SEEK_END) != 0)
+   {
+      fclose(f);
+      return 1;
+   }
+   size = ftell(f);
+   if (size < 0)
+   {
+      fclose(f);
+      return 1;
+   }
+   if (fseek(f, 0, SEEK_SET) != 0)
+   {
+      fclose(f);
+      return 1;
+   }
+
+   buffer = (char*)calloc((size_t)size + 1, sizeof(char));
+   if (buffer == NULL)
+   {
+      fclose(f);
+      return 1;
+   }
+
+   if (size > 0)
+   {
+      if (fread(buffer, sizeof(char), (size_t)size, f) != (size_t)size)
+      {
+         free(buffer);
+         fclose(f);
+         return 1;
+      }
+   }
+
+   fclose(f);
+   *out = buffer;
+   return 0;
+}
+
+/*
+ * Escape \a input for a double-quoted shell word so that the shell passes it
+ * to the command verbatim. Backslash, double quote, $ and backtick are the
+ * metacharacters that stay active inside double quotes; escaping the backslash
+ * first keeps the escape sequences themselves intact. Returns a malloc'd
+ * string, or NULL when \a input is NULL. The caller owns the result.
+ */
+static char*
+escape_shell(char* input)
+{
+   char* escaped = NULL;
+
+   if (input == NULL)
+   {
+      return NULL;
+   }
+
+   for (size_t i = 0; i < strlen(input); i++)
+   {
+      char c = input[i];
+
+      if (c == '\\' || c == '"' || c == '$' || c == '`')
+      {
+         escaped = pgagroal_append_char(escaped, '\\');
+      }
+      escaped = pgagroal_append_char(escaped, c);
+   }
+
+   return escaped;
 }
 
 static char*

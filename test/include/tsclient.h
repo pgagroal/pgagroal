@@ -78,6 +78,29 @@ int
 pgagroal_tsclient_execute_pgbench(char* user, char* database, bool select_only, int client_count, int thread_count, int transaction_count);
 
 /**
+ * Execute an arbitrary SQL statement through pgagroal against the requested
+ * database and return the psql text output via \a result.
+ * Uses psql -v ON_ERROR_STOP=1 -X -A -t so the result contains only the
+ * data rows in unaligned text form (no column headers, no psqlrc).
+ * The statement is sent to psql with -c; the SQL text is escaped for the
+ * invoking shell, so embedded double quotes, $, backticks and backslashes
+ * are preserved (arbitrary statement text is accepted).
+ * On success \a *result is a NUL-terminated string allocated with malloc(3)
+ * holding psql's data rows (empty if the query produced no rows). The caller
+ * owns \a *result and must free() it.
+ * On failure 1 is returned and \a *result holds psql's error output (an empty
+ * string if the shell could not run psql); it is set to NULL only if argument
+ * validation itself fails.
+ * @param user name of the user
+ * @param database name of the database
+ * @param sql the SQL statement to execute
+ * @param result pointer receiving the malloc'd output string (free by caller)
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_tsclient_execute_sql(char* user, char* database, const char* sql, char** result);
+
+/**
  * Initialize a database using pgbench
  * @param user name of the user
  * @param database name of the database
