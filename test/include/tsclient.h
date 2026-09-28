@@ -120,6 +120,13 @@ int
 pgagroal_tsclient_limit_backend_peak(char* user, char* database, int client_count, int hold_seconds);
 
 /**
+ * Scrape the Prometheus metrics endpoint of the running test instance.
+ * @return the metrics response body, or NULL if it could not be scraped
+ */
+char*
+pgagroal_tsclient_scrape_metrics();
+
+/**
 * Run a pgagroal-cli management command against the running test instance,
  * using the testsuite configuration so the CLI targets the same management
  * endpoint the instance listens on.

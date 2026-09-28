@@ -2336,8 +2336,8 @@ general_information(prometheus_metrics_container_t* container)
 
    prometheus = (struct main_prometheus*)prometheus_shmem;
 
-   data = pgagroal_append(data, "#HELP pgagroal_state The state of pgagroal\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_state gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_state The state of pgagroal\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_state gauge\n");
    data = pgagroal_append(data, "pgagroal_state ");
    if (config->gracefully)
    {
@@ -2352,8 +2352,8 @@ general_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_pipeline_mode The mode of pipeline\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_pipeline_mode gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_pipeline_mode The mode of pipeline\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_pipeline_mode gauge\n");
    data = pgagroal_append(data, "pgagroal_pipeline_mode ");
    data = pgagroal_append_int(data, config->pipeline);
    data = pgagroal_append(data, "\n");
@@ -2361,8 +2361,8 @@ general_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_server_reset_query_behavior_on_failure The failure behavior of server_reset_query (0=discard, 1=ignore, 2=try)\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_server_reset_query_behavior_on_failure gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_server_reset_query_behavior_on_failure The failure behavior of server_reset_query (0=discard, 1=ignore, 2=try)\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_server_reset_query_behavior_on_failure gauge\n");
    data = pgagroal_append(data, "pgagroal_server_reset_query_behavior_on_failure ");
    data = pgagroal_append_int(data, config->server_reset_query_behavior_on_failure);
    data = pgagroal_append(data, "\n");
@@ -2370,8 +2370,8 @@ general_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_server_error The number of errors for servers\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_server_error counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_server_error The number of errors for servers\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_server_error counter\n");
    FOREACH_VALID_SERVER
    {
       int state = atomic_load(&config->servers[i].state);
@@ -2418,8 +2418,8 @@ general_information(prometheus_metrics_container_t* container)
       data = NULL;
    }
 
-   data = pgagroal_append(data, "#HELP pgagroal_server_streaming Whether a standby is actively streaming from its primary (-1=primary, 0=no, 1=yes)\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_server_streaming gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_server_streaming Whether a standby is actively streaming from its primary (-1=primary, 0=no, 1=yes)\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_server_streaming gauge\n");
    FOREACH_VALID_SERVER
    {
       int streaming_state = atomic_load(&config->servers[i].streaming_state);
@@ -2438,8 +2438,8 @@ general_information(prometheus_metrics_container_t* container)
       data = NULL;
    }
 
-   data = pgagroal_append(data, "#HELP pgagroal_logging_info The number of INFO logging statements\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_logging_info gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_logging_info The number of INFO logging statements\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_logging_info gauge\n");
    data = pgagroal_append(data, "pgagroal_logging_info ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_info));
    data = pgagroal_append(data, "\n");
@@ -2447,8 +2447,8 @@ general_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_logging_warn The number of WARN logging statements\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_logging_warn gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_logging_warn The number of WARN logging statements\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_logging_warn gauge\n");
    data = pgagroal_append(data, "pgagroal_logging_warn ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_warn));
    data = pgagroal_append(data, "\n");
@@ -2456,8 +2456,8 @@ general_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_logging_error The number of ERROR logging statements\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_logging_error gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_logging_error The number of ERROR logging statements\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_logging_error gauge\n");
    data = pgagroal_append(data, "pgagroal_logging_error ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_error));
    data = pgagroal_append(data, "\n");
@@ -2465,8 +2465,8 @@ general_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_logging_fatal The number of FATAL logging statements\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_logging_fatal gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_logging_fatal The number of FATAL logging statements\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_logging_fatal gauge\n");
    data = pgagroal_append(data, "pgagroal_logging_fatal ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_fatal));
    data = pgagroal_append(data, "\n");
@@ -2474,8 +2474,8 @@ general_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_failed_servers The number of failed servers\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_failed_servers gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_failed_servers The number of failed servers\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_failed_servers gauge\n");
    data = pgagroal_append(data, "pgagroal_failed_servers ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->failed_servers));
    data = pgagroal_append(data, "\n");
@@ -2484,8 +2484,8 @@ general_information(prometheus_metrics_container_t* container)
    data = NULL;
 
    pgagroal_log_debug("Prometheus: Appending server health for %d servers", config->number_of_servers);
-   data = pgagroal_append(data, "#HELP pgagroal_server_health The health state of the server (0 = DOWN, 1 = UP, 2 = UNKNOWN)\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_server_health gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_server_health The health state of the server (0 = DOWN, 1 = UP, 2 = UNKNOWN)\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_server_health gauge\n");
    FOREACH_VALID_SERVER
    {
       pgagroal_log_debug("Prometheus: Server %d", i);
@@ -2526,8 +2526,8 @@ general_information(prometheus_metrics_container_t* container)
    pgagroal_log_debug("Prometheus: Done appending server health");
    data = pgagroal_append(data, "\n");
 
-   data = pgagroal_append(data, "#HELP pgagroal_server_version The PostgreSQL major version for each server\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_server_version gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_server_version The PostgreSQL major version for each server\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_server_version gauge\n");
    FOREACH_VALID_SERVER
    {
       if (config->servers[i].version <= 0)
@@ -2543,8 +2543,8 @@ general_information(prometheus_metrics_container_t* container)
    }
    data = pgagroal_append(data, "\n");
 
-   data = pgagroal_append(data, "#HELP pgagroal_wait_time The waiting time of clients\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_wait_time gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_wait_time The waiting time of clients\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_wait_time gauge\n");
    data = pgagroal_append(data, "pgagroal_wait_time ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->client_wait_time));
    data = pgagroal_append(data, "\n");
@@ -2552,8 +2552,8 @@ general_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_query_count The number of queries\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_query_count counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_query_count The number of queries\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_query_count counter\n");
    data = pgagroal_append(data, "pgagroal_query_count ");
    data = pgagroal_append_ullong(data, atomic_load(&prometheus->query_count));
    data = pgagroal_append(data, "\n");
@@ -2561,8 +2561,8 @@ general_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_query_count The number of queries per connection\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_query_count counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_query_count The number of queries per connection\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_query_count counter\n");
    for (int i = 0; i < config->max_connections; i++)
    {
       data = pgagroal_append(data, "pgagroal_connection_query_count{");
@@ -2593,8 +2593,8 @@ general_information(prometheus_metrics_container_t* container)
       data = NULL;
    }
 
-   data = pgagroal_append(data, "#HELP pgagroal_tx_count The number of transactions\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_tx_count counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_tx_count The number of transactions\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_tx_count counter\n");
    data = pgagroal_append(data, "pgagroal_tx_count ");
    data = pgagroal_append_ullong(data, atomic_load(&prometheus->tx_count));
    data = pgagroal_append(data, "\n");
@@ -2611,8 +2611,8 @@ general_vault_information(prometheus_metrics_container_t* container)
 
    prometheus = (struct vault_prometheus*)prometheus_shmem;
 
-   data = pgagroal_append(data, "#HELP pgagroal_vault_logging_info The number of INFO logging statements\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_vault_logging_info gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_vault_logging_info The number of INFO logging statements\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_vault_logging_info gauge\n");
    data = pgagroal_append(data, "pgagroal_vault_logging_info ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_info));
    data = pgagroal_append(data, "\n");
@@ -2620,8 +2620,8 @@ general_vault_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_vault_logging_warn The number of WARN logging statements\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_vault_logging_warn gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_vault_logging_warn The number of WARN logging statements\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_vault_logging_warn gauge\n");
    data = pgagroal_append(data, "pgagroal_vault_logging_warn ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_warn));
    data = pgagroal_append(data, "\n");
@@ -2629,8 +2629,8 @@ general_vault_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_vault_logging_error The number of ERROR logging statements\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_vault_logging_error gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_vault_logging_error The number of ERROR logging statements\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_vault_logging_error gauge\n");
    data = pgagroal_append(data, "pgagroal_vault_logging_error ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_error));
    data = pgagroal_append(data, "\n");
@@ -2638,8 +2638,8 @@ general_vault_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_vault_logging_fatal The number of FATAL logging statements\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_vault_logging_fatal gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_vault_logging_fatal The number of FATAL logging statements\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_vault_logging_fatal gauge\n");
    data = pgagroal_append(data, "pgagroal_vault_logging_fatal ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->prometheus_base.logging_fatal));
    data = pgagroal_append(data, "\n");
@@ -2684,8 +2684,8 @@ connection_information(prometheus_metrics_container_t* container)
       }
    }
 
-   data = pgagroal_append(data, "#HELP pgagroal_active_connections The number of active connections\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_active_connections gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_active_connections The number of active connections\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_active_connections gauge\n");
    data = pgagroal_append(data, "pgagroal_active_connections ");
    data = pgagroal_append_int(data, active);
    data = pgagroal_append(data, "\n");
@@ -2693,8 +2693,8 @@ connection_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_total_connections The total number of connections\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_total_connections gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_total_connections The total number of connections\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_total_connections gauge\n");
    data = pgagroal_append(data, "pgagroal_total_connections ");
    data = pgagroal_append_int(data, total);
    data = pgagroal_append(data, "\n");
@@ -2702,8 +2702,8 @@ connection_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_max_connections The maximum number of connections\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_max_connections counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_max_connections The maximum number of connections\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_max_connections counter\n");
    data = pgagroal_append(data, "pgagroal_max_connections ");
    data = pgagroal_append_int(data, config->max_connections);
    data = pgagroal_append(data, "\n");
@@ -2711,8 +2711,8 @@ connection_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection The connection information\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection The connection information\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection gauge\n");
    for (int i = 0; i < config->max_connections; i++)
    {
       int state = atomic_load(&config->states[i]);
@@ -2816,8 +2816,8 @@ limit_information(prometheus_metrics_container_t* container)
 
    if (config->number_of_limits > 0)
    {
-      data = pgagroal_append(data, "#HELP pgagroal_limit The limit information\n");
-      data = pgagroal_append(data, "#TYPE pgagroal_limit gauge\n");
+      data = pgagroal_append(data, "# HELP pgagroal_limit The limit information\n");
+      data = pgagroal_append(data, "# TYPE pgagroal_limit gauge\n");
       for (int i = 0; i < config->number_of_limits; i++)
       {
          data = pgagroal_append(data, "pgagroal_limit{");
@@ -2911,8 +2911,8 @@ session_information(prometheus_metrics_container_t* container)
 
    counter = 0;
 
-   data = pgagroal_append(data, "#HELP pgagroal_session_time_seconds The session times\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_session_time_seconds histogram\n");
+   data = pgagroal_append(data, "# HELP pgagroal_session_time_seconds The session times\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_session_time_seconds histogram\n");
 
    data = pgagroal_append(data, "pgagroal_session_time_seconds_bucket{le=\"5\"} ");
    counter += atomic_load(&prometheus->session_time[0]);
@@ -3033,8 +3033,8 @@ write_os_kernel_version(prometheus_metrics_container_t* container)
       goto error;
    }
 
-   data = pgagroal_append(data, "#HELP pgagroal_os_info Operating system version information\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_os_info gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_os_info Operating system version information\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_os_info gauge\n");
    data = pgagroal_append(data, "pgagroal_os_info{os=\"");
    data = pgagroal_append(data, os);
    data = pgagroal_append(data, "\", major=\"");
@@ -3067,8 +3067,8 @@ pool_information(prometheus_metrics_container_t* container)
 
    prometheus = (struct main_prometheus*)prometheus_shmem;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_error Number of connection errors\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_error counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_error Number of connection errors\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_error counter\n");
    data = pgagroal_append(data, "pgagroal_connection_error ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_error));
    data = pgagroal_append(data, "\n");
@@ -3076,8 +3076,8 @@ pool_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_kill Number of connection kills\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_kill counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_kill Number of connection kills\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_kill counter\n");
    data = pgagroal_append(data, "pgagroal_connection_kill ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_kill));
    data = pgagroal_append(data, "\n");
@@ -3085,8 +3085,8 @@ pool_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_remove Number of connection removes\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_remove counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_remove Number of connection removes\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_remove counter\n");
    data = pgagroal_append(data, "pgagroal_connection_remove ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_remove));
    data = pgagroal_append(data, "\n");
@@ -3094,8 +3094,8 @@ pool_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_timeout Number of connection time outs\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_timeout counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_timeout Number of connection time outs\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_timeout counter\n");
    data = pgagroal_append(data, "pgagroal_connection_timeout ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_timeout));
    data = pgagroal_append(data, "\n");
@@ -3103,8 +3103,8 @@ pool_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_return Number of connection returns\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_return counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_return Number of connection returns\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_return counter\n");
    data = pgagroal_append(data, "pgagroal_connection_return ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_return));
    data = pgagroal_append(data, "\n");
@@ -3112,8 +3112,8 @@ pool_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_invalid Number of connection invalids\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_invalid counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_invalid Number of connection invalids\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_invalid counter\n");
    data = pgagroal_append(data, "pgagroal_connection_invalid ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_invalid));
    data = pgagroal_append(data, "\n");
@@ -3121,8 +3121,8 @@ pool_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_get Number of connection gets\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_get counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_get Number of connection gets\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_get counter\n");
    data = pgagroal_append(data, "pgagroal_connection_get ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_get));
    data = pgagroal_append(data, "\n");
@@ -3130,8 +3130,8 @@ pool_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_idletimeout Number of connection idle timeouts\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_idletimeout counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_idletimeout Number of connection idle timeouts\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_idletimeout counter\n");
    data = pgagroal_append(data, "pgagroal_connection_idletimeout ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_idletimeout));
    data = pgagroal_append(data, "\n");
@@ -3139,8 +3139,8 @@ pool_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_max_connection_age Number of connection max age timeouts\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_max_connection_age counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_max_connection_age Number of connection max age timeouts\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_max_connection_age counter\n");
    data = pgagroal_append(data, "pgagroal_connection_max_connection_age ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_max_connection_age));
    data = pgagroal_append(data, "\n");
@@ -3148,8 +3148,8 @@ pool_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_flush Number of connection flushes\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_flush counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_flush Number of connection flushes\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_flush counter\n");
    data = pgagroal_append(data, "pgagroal_connection_flush ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_flush));
    data = pgagroal_append(data, "\n");
@@ -3157,8 +3157,8 @@ pool_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_success Number of connection successes\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_success counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_success Number of connection successes\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_success counter\n");
    data = pgagroal_append(data, "pgagroal_connection_success ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_success));
    data = pgagroal_append(data, "\n");
@@ -3175,8 +3175,8 @@ auth_information(prometheus_metrics_container_t* container)
 
    prometheus = (struct main_prometheus*)prometheus_shmem;
 
-   data = pgagroal_append(data, "#HELP pgagroal_auth_user_success Number of successful user authentications\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_auth_user_success counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_auth_user_success Number of successful user authentications\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_auth_user_success counter\n");
    data = pgagroal_append(data, "pgagroal_auth_user_success ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->auth_user_success));
    data = pgagroal_append(data, "\n");
@@ -3184,8 +3184,8 @@ auth_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_auth_user_bad_password Number of bad passwords during user authentication\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_auth_user_bad_password counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_auth_user_bad_password Number of bad passwords during user authentication\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_auth_user_bad_password counter\n");
    data = pgagroal_append(data, "pgagroal_auth_user_bad_password ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->auth_user_bad_password));
    data = pgagroal_append(data, "\n");
@@ -3193,8 +3193,8 @@ auth_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_auth_user_error Number of errors during user authentication\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_auth_user_error counter\n");
+   data = pgagroal_append(data, "# HELP pgagroal_auth_user_error Number of errors during user authentication\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_auth_user_error counter\n");
    data = pgagroal_append(data, "pgagroal_auth_user_error ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->auth_user_error));
    data = pgagroal_append(data, "\n");
@@ -3211,8 +3211,8 @@ client_information(prometheus_metrics_container_t* container)
 
    prometheus = (struct main_prometheus*)prometheus_shmem;
 
-   data = pgagroal_append(data, "#HELP pgagroal_client_wait Number of waiting clients\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_client_wait gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_client_wait Number of waiting clients\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_client_wait gauge\n");
    data = pgagroal_append(data, "pgagroal_client_wait ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->client_wait));
    data = pgagroal_append(data, "\n");
@@ -3220,8 +3220,8 @@ client_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_client_active Number of active clients\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_client_active gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_client_active Number of active clients\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_client_active gauge\n");
    data = pgagroal_append(data, "pgagroal_client_active ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->client_active));
    data = pgagroal_append(data, "\n");
@@ -3238,8 +3238,8 @@ internal_information(prometheus_metrics_container_t* container)
 
    prometheus = (struct main_prometheus*)prometheus_shmem;
 
-   data = pgagroal_append(data, "#HELP pgagroal_network_sent Bytes sent by clients\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_network_sent gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_network_sent Bytes sent by clients\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_network_sent gauge\n");
    data = pgagroal_append(data, "pgagroal_network_sent ");
    data = pgagroal_append_ullong(data, atomic_load(&prometheus->network_sent));
    data = pgagroal_append(data, "\n");
@@ -3247,8 +3247,8 @@ internal_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_network_received Bytes received from servers\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_network_received gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_network_received Bytes received from servers\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_network_received gauge\n");
    data = pgagroal_append(data, "pgagroal_network_received ");
    data = pgagroal_append_ullong(data, atomic_load(&prometheus->network_received));
    data = pgagroal_append(data, "\n");
@@ -3256,8 +3256,8 @@ internal_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_client_sockets Number of sockets the client used\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_client_sockets gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_client_sockets Number of sockets the client used\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_client_sockets gauge\n");
    data = pgagroal_append(data, "pgagroal_client_sockets ");
    data = pgagroal_append_int(data, atomic_load(&prometheus->prometheus_base.client_sockets));
    data = pgagroal_append(data, "\n");
@@ -3265,8 +3265,8 @@ internal_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_self_sockets Number of sockets used by pgagroal itself\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_self_sockets gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_self_sockets Number of sockets used by pgagroal itself\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_self_sockets gauge\n");
    data = pgagroal_append(data, "pgagroal_self_sockets ");
    data = pgagroal_append_int(data, atomic_load(&prometheus->prometheus_base.self_sockets));
    data = pgagroal_append(data, "\n");
@@ -3283,8 +3283,8 @@ internal_vault_information(prometheus_metrics_container_t* container)
 
    prometheus = (struct vault_prometheus*)prometheus_shmem;
 
-   data = pgagroal_append(data, "#HELP pgagroal_vault_client_sockets Number of sockets the client used\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_vault_client_sockets gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_vault_client_sockets Number of sockets the client used\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_vault_client_sockets gauge\n");
    data = pgagroal_append(data, "pgagroal_client_sockets ");
    data = pgagroal_append_int(data, atomic_load(&prometheus->prometheus_base.client_sockets));
    data = pgagroal_append(data, "\n");
@@ -3292,8 +3292,8 @@ internal_vault_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_vault_self_sockets Number of sockets used by pgagroal-vault itself\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_vault_self_sockets gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_vault_self_sockets Number of sockets used by pgagroal-vault itself\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_vault_self_sockets gauge\n");
    data = pgagroal_append(data, "pgagroal_vault_self_sockets ");
    data = pgagroal_append_int(data, atomic_load(&prometheus->prometheus_base.self_sockets));
    data = pgagroal_append(data, "\n");
@@ -3318,8 +3318,8 @@ connection_awaiting_information(prometheus_metrics_container_t* container)
 
    prometheus = (struct main_prometheus*)prometheus_shmem;
 
-   data = pgagroal_append(data, "#HELP pgagroal_connection_awaiting Number of connection on-hold (awaiting)\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_connection_awaiting gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_connection_awaiting Number of connection on-hold (awaiting)\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_connection_awaiting gauge\n");
    data = pgagroal_append(data, "pgagroal_connection_awaiting ");
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connections_awaiting_total));
    data = pgagroal_append(data, "\n");
@@ -3329,8 +3329,8 @@ connection_awaiting_information(prometheus_metrics_container_t* container)
 
    if (config->number_of_limits > 0)
    {
-      data = pgagroal_append(data, "#HELP pgagroal_limit_awaiting The connections on-hold (awaiting) information\n");
-      data = pgagroal_append(data, "#TYPE pgagroal_limit_awaiting gauge\n");
+      data = pgagroal_append(data, "# HELP pgagroal_limit_awaiting The connections on-hold (awaiting) information\n");
+      data = pgagroal_append(data, "# TYPE pgagroal_limit_awaiting gauge\n");
       for (int i = 0; i < config->number_of_limits; i++)
       {
          data = pgagroal_append(data, "pgagroal_limit_awaiting{");
@@ -4120,8 +4120,8 @@ certificate_information(prometheus_metrics_container_t* container)
    cert_metrics = &prometheus->cert_metrics;
 
    // Summary metrics - always show these as they represent the total state
-   data = pgagroal_append(data, "#HELP pgagroal_certificates_total Total number of TLS certificates configured\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_certificates_total gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_certificates_total Total number of TLS certificates configured\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_certificates_total gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_total ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->configured));
    data = pgagroal_append(data, "\n");
@@ -4129,8 +4129,8 @@ certificate_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_certificates_accessible Number of accessible TLS certificates\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_certificates_accessible gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_certificates_accessible Number of accessible TLS certificates\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_certificates_accessible gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_accessible ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->total));
    data = pgagroal_append(data, "\n");
@@ -4138,8 +4138,8 @@ certificate_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_certificates_valid Number of valid TLS certificates\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_certificates_valid gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_certificates_valid Number of valid TLS certificates\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_certificates_valid gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_valid ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->valid));
    data = pgagroal_append(data, "\n");
@@ -4147,8 +4147,8 @@ certificate_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_certificates_expired Number of expired TLS certificates\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_certificates_expired gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_certificates_expired Number of expired TLS certificates\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_certificates_expired gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_expired ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->expired));
    data = pgagroal_append(data, "\n");
@@ -4156,8 +4156,8 @@ certificate_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_certificates_expiring_soon Number of TLS certificates expiring within 30 days\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_certificates_expiring_soon gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_certificates_expiring_soon Number of TLS certificates expiring within 30 days\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_certificates_expiring_soon gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_expiring_soon ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->expiring_soon));
    data = pgagroal_append(data, "\n");
@@ -4165,8 +4165,8 @@ certificate_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_certificates_inaccessible Number of inaccessible TLS certificate files\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_certificates_inaccessible gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_certificates_inaccessible Number of inaccessible TLS certificate files\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_certificates_inaccessible gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_inaccessible ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->inaccessible));
    data = pgagroal_append(data, "\n");
@@ -4174,8 +4174,8 @@ certificate_information(prometheus_metrics_container_t* container)
    free(data);
    data = NULL;
 
-   data = pgagroal_append(data, "#HELP pgagroal_certificates_parse_errors Number of TLS certificates with parsing errors\n");
-   data = pgagroal_append(data, "#TYPE pgagroal_certificates_parse_errors gauge\n");
+   data = pgagroal_append(data, "# HELP pgagroal_certificates_parse_errors Number of TLS certificates with parsing errors\n");
+   data = pgagroal_append(data, "# TYPE pgagroal_certificates_parse_errors gauge\n");
    data = pgagroal_append(data, "pgagroal_certificates_parse_errors ");
    data = pgagroal_append_ulong(data, atomic_load(&cert_metrics->parse_errors));
    data = pgagroal_append(data, "\n");
@@ -4202,8 +4202,8 @@ certificate_information(prometheus_metrics_container_t* container)
    if (cert_count > 0)
    {
       // Certificate status metric (for all certificates including invalid ones)
-      data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_status Certificate status (1=valid, 0=invalid/inaccessible)\n");
-      data = pgagroal_append(data, "#TYPE pgagroal_tls_certificate_status gauge\n");
+      data = pgagroal_append(data, "# HELP pgagroal_tls_certificate_status Certificate status (1=valid, 0=invalid/inaccessible)\n");
+      data = pgagroal_append(data, "# TYPE pgagroal_tls_certificate_status gauge\n");
       for (int i = 0; i < cert_count && i < MAX_CERTIFICATES; i++)
       {
          struct certificate_info* cert = &cert_metrics->certs[i];
@@ -4233,8 +4233,8 @@ certificate_information(prometheus_metrics_container_t* container)
    if (has_valid_certs)
    {
       // Expiration seconds (only for valid certificates)
-      data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_expiration_seconds TLS certificate expiration time\n");
-      data = pgagroal_append(data, "#TYPE pgagroal_tls_certificate_expiration_seconds gauge\n");
+      data = pgagroal_append(data, "# HELP pgagroal_tls_certificate_expiration_seconds TLS certificate expiration time\n");
+      data = pgagroal_append(data, "# TYPE pgagroal_tls_certificate_expiration_seconds gauge\n");
       for (int i = 0; i < cert_count && i < MAX_CERTIFICATES; i++)
       {
          struct certificate_info* cert = &cert_metrics->certs[i];
@@ -4255,8 +4255,8 @@ certificate_information(prometheus_metrics_container_t* container)
       }
 
       // Key size bits
-      data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_key_size_bits TLS certificate key size in bits\n");
-      data = pgagroal_append(data, "#TYPE pgagroal_tls_certificate_key_size_bits gauge\n");
+      data = pgagroal_append(data, "# HELP pgagroal_tls_certificate_key_size_bits TLS certificate key size in bits\n");
+      data = pgagroal_append(data, "# TYPE pgagroal_tls_certificate_key_size_bits gauge\n");
       for (int i = 0; i < cert_count && i < MAX_CERTIFICATES; i++)
       {
          struct certificate_info* cert = &cert_metrics->certs[i];
@@ -4277,8 +4277,8 @@ certificate_information(prometheus_metrics_container_t* container)
       }
 
       // Is CA
-      data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_is_ca Whether certificate is a CA certificate\n");
-      data = pgagroal_append(data, "#TYPE pgagroal_tls_certificate_is_ca gauge\n");
+      data = pgagroal_append(data, "# HELP pgagroal_tls_certificate_is_ca Whether certificate is a CA certificate\n");
+      data = pgagroal_append(data, "# TYPE pgagroal_tls_certificate_is_ca gauge\n");
       for (int i = 0; i < cert_count && i < MAX_CERTIFICATES; i++)
       {
          struct certificate_info* cert = &cert_metrics->certs[i];
@@ -4299,8 +4299,8 @@ certificate_information(prometheus_metrics_container_t* container)
       }
 
       // Key type
-      data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_key_type TLS certificate key type\n");
-      data = pgagroal_append(data, "#TYPE pgagroal_tls_certificate_key_type gauge\n");
+      data = pgagroal_append(data, "# HELP pgagroal_tls_certificate_key_type TLS certificate key type\n");
+      data = pgagroal_append(data, "# TYPE pgagroal_tls_certificate_key_type gauge\n");
       for (int i = 0; i < cert_count && i < MAX_CERTIFICATES; i++)
       {
          struct certificate_info* cert = &cert_metrics->certs[i];
@@ -4321,8 +4321,8 @@ certificate_information(prometheus_metrics_container_t* container)
       }
 
       // Signature algorithm
-      data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_signature_algorithm TLS certificate signature algorithm\n");
-      data = pgagroal_append(data, "#TYPE pgagroal_tls_certificate_signature_algorithm gauge\n");
+      data = pgagroal_append(data, "# HELP pgagroal_tls_certificate_signature_algorithm TLS certificate signature algorithm\n");
+      data = pgagroal_append(data, "# TYPE pgagroal_tls_certificate_signature_algorithm gauge\n");
       for (int i = 0; i < cert_count && i < MAX_CERTIFICATES; i++)
       {
          struct certificate_info* cert = &cert_metrics->certs[i];
@@ -4343,8 +4343,8 @@ certificate_information(prometheus_metrics_container_t* container)
       }
 
       // Certificate info metric with all metadata (at the end)
-      data = pgagroal_append(data, "#HELP pgagroal_tls_certificate_info TLS certificate metadata\n");
-      data = pgagroal_append(data, "#TYPE pgagroal_tls_certificate_info gauge\n");
+      data = pgagroal_append(data, "# HELP pgagroal_tls_certificate_info TLS certificate metadata\n");
+      data = pgagroal_append(data, "# TYPE pgagroal_tls_certificate_info gauge\n");
       for (int i = 0; i < cert_count && i < MAX_CERTIFICATES; i++)
       {
          struct certificate_info* cert = &cert_metrics->certs[i];
