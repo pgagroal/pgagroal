@@ -56,72 +56,82 @@ extern "C" {
 #define PGAGROAL_DEFAULT_CONFIGURATION_PATH "/etc/pgagroal/"
 #endif
 
-#define PGAGROAL_DEFAULT_CONF_FILE                     PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal.conf"
-#define PGAGROAL_DEFAULT_HBA_FILE                      PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_hba.conf"
-#define PGAGROAL_DEFAULT_LIMIT_FILE                    PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_databases.conf"
-#define PGAGROAL_DEFAULT_USERS_FILE                    PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_users.conf"
-#define PGAGROAL_DEFAULT_FRONTEND_USERS_FILE           PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_frontend_users.conf"
-#define PGAGROAL_DEFAULT_ADMINS_FILE                   PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_admins.conf"
-#define PGAGROAL_DEFAULT_SUPERUSER_FILE                PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_superuser.conf"
-#define PGAGROAL_DEFAULT_VAULT_CONF_FILE               PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_vault.conf"
-#define PGAGROAL_DEFAULT_VAULT_USERS_FILE              PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_vault_users.conf"
+#define PGAGROAL_DEFAULT_CONF_FILE               PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal.conf"
+#define PGAGROAL_DEFAULT_HBA_FILE                PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_hba.conf"
+#define PGAGROAL_DEFAULT_LIMIT_FILE              PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_databases.conf"
+#define PGAGROAL_DEFAULT_USERS_FILE              PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_users.conf"
+#define PGAGROAL_DEFAULT_FRONTEND_USERS_FILE     PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_frontend_users.conf"
+#define PGAGROAL_DEFAULT_ADMINS_FILE             PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_admins.conf"
+#define PGAGROAL_DEFAULT_SUPERUSER_FILE          PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_superuser.conf"
+#define PGAGROAL_DEFAULT_VAULT_CONF_FILE         PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_vault.conf"
+#define PGAGROAL_DEFAULT_VAULT_USERS_FILE        PGAGROAL_DEFAULT_CONFIGURATION_PATH "pgagroal_vault_users.conf"
 
-#define MAX_PROCESS_TITLE_LENGTH                       256
+#define MAX_PROCESS_TITLE_LENGTH                 256
 
-#define DEFAULT_BUFFER_SIZE                            131072
-#define RECV_BUFFER_HEADROOM                           8
-#define MESSAGE_PARSE_BUFFER_SIZE                      (DEFAULT_BUFFER_SIZE - RECV_BUFFER_HEADROOM)
-#define SECURITY_BUFFER_SIZE                           16384 /* Must hold a PasswordMessage carrying a MAX_PASSWORD_LENGTH credential (cloud IAM tokens) */
-#define HTTP_BUFFER_SIZE                               1024
+#define DEFAULT_BUFFER_SIZE                      131072
+#define RECV_BUFFER_HEADROOM                     8
+#define MESSAGE_PARSE_BUFFER_SIZE                (DEFAULT_BUFFER_SIZE - RECV_BUFFER_HEADROOM)
+#define SECURITY_BUFFER_SIZE                     16384 /* Must hold a PasswordMessage carrying a MAX_PASSWORD_LENGTH credential (cloud IAM tokens) */
+#define HTTP_BUFFER_SIZE                         1024
 
-#define DEFAULT_BLOCKING_TIMEOUT                       30
-#define DEFAULT_CONNECTION_RETRY_DELAY                 250 /* milliseconds: back-off cap on the blocking acquisition path */
-#define MIN_CONNECTION_RETRY_DELAY                     1   /* milliseconds */
-#define MAX_CONNECTION_RETRY_DELAY                     999 /* milliseconds: SLEEP() is sub-second only (nanosleep tv_nsec < 1e9) */
-#define DEFAULT_IDLE_TIMEOUT                           0
-#define DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT       0
-#define DEFAULT_MAX_CONNECTION_AGE                     0
-#define DEFAULT_FLUSH_TIMEOUT                          60
-#define DEFAULT_BACKGROUND_INTERVAL                    300
-#define DEFAULT_HEALTH_CHECK_PERIOD                    30
-#define DEFAULT_HEALTH_CHECK_TIMEOUT                   5
-#define DEFAULT_AUTHENTICATION_TIMEOUT                 5
+#define DEFAULT_BLOCKING_TIMEOUT                 30
+#define DEFAULT_CONNECTION_RETRY_DELAY           250 /* milliseconds: back-off cap on the blocking acquisition path */
+#define MIN_CONNECTION_RETRY_DELAY               1   /* milliseconds */
+#define MAX_CONNECTION_RETRY_DELAY               999 /* milliseconds: SLEEP() is sub-second only (nanosleep tv_nsec < 1e9) */
+#define DEFAULT_IDLE_TIMEOUT                     0
+#define DEFAULT_ROTATE_FRONTEND_PASSWORD_TIMEOUT 0
+#define DEFAULT_MAX_CONNECTION_AGE               0
+#define DEFAULT_FLUSH_TIMEOUT                    60
+#define DEFAULT_BACKGROUND_INTERVAL              300
+#define DEFAULT_HEALTH_CHECK_PERIOD              30
+#define DEFAULT_HEALTH_CHECK_TIMEOUT             5
+#define DEFAULT_AUTHENTICATION_TIMEOUT           5
 
-#define MAX_USERNAME_LENGTH                            128
-#define MAX_DATABASE_LENGTH                            256
-#define MAX_TYPE_LENGTH                                16
-#define MAX_ADDRESS_LENGTH                             64
-#define DEFAULT_PASSWORD_LENGTH                        64
-#define MIN_PASSWORD_LENGTH                            8
-#define MAX_PASSWORD_LENGTH                            8192 /* Bytes; the single password-length limit, sized for cloud IAM DB-auth tokens (AWS RDS/Aurora, Azure AD, GCP) */
-#define MAX_APPLICATION_NAME                           64
-#define MAX_ALIASES                                    8
-#define MAX_CERTIFICATES                               70
+#define MAX_USERNAME_LENGTH                      128
+#define MAX_DATABASE_LENGTH                      256
+#define MAX_TYPE_LENGTH                          16
+#define MAX_ADDRESS_LENGTH                       64
+#define DEFAULT_PASSWORD_LENGTH                  64
+#define MIN_PASSWORD_LENGTH                      8
+#define MAX_PASSWORD_LENGTH                      8192 /* Bytes; the single password-length limit, sized for cloud IAM DB-auth tokens (AWS RDS/Aurora, Azure AD, GCP) */
+#define MAX_APPLICATION_NAME                     64
+#define MAX_ALIASES                              8
+#define MAX_CERTIFICATES                         70
 
-#define MAX_PATH                                       1024
-#define MISC_LENGTH                                    128
-#define NUMBER_OF_SERVERS                              64
-#define MAX_NUMBER_OF_CONNECTIONS                      10000
-#define NUMBER_OF_HBAS                                 64
-#define NUMBER_OF_LIMITS                               64
-#define NUMBER_OF_USERS                                64
-#define NUMBER_OF_ADMINS                               8
-#define NUMBER_OF_DISABLED                             64
+#define MAX_PATH                                 1024
+#define MISC_LENGTH                              128
+#define NUMBER_OF_SERVERS                        64
+#define MAX_NUMBER_OF_CONNECTIONS                10000
+#define NUMBER_OF_HBAS                           64
+#define NUMBER_OF_LIMITS                         64
+#define NUMBER_OF_USERS                          64
+#define NUMBER_OF_ADMINS                         8
+#define NUMBER_OF_DISABLED                       64
 
-#define NUMBER_OF_SECURITY_MESSAGES                    5
+#define NUMBER_OF_SECURITY_MESSAGES              5
 
-#define TLS_CONTEXT_BUFFER_SIZE                        256
+#define TLS_CONTEXT_BUFFER_SIZE                  256
 
-#define STATE_NOTINIT                                  -2
-#define STATE_INIT                                     -1
-#define STATE_FREE                                     0
-#define STATE_IN_USE                                   1
-#define STATE_GRACEFULLY                               2
-#define STATE_FLUSH                                    3
-#define STATE_IDLE_CHECK                               4
-#define STATE_MAX_CONNECTION_AGE                       5
-#define STATE_VALIDATION                               6
-#define STATE_REMOVE                                   7
+#define STATE_NOTINIT                            -2
+#define STATE_INIT                               -1
+#define STATE_FREE                               0
+#define STATE_IN_USE                             1
+#define STATE_GRACEFULLY                         2
+#define STATE_FLUSH                              3
+#define STATE_IDLE_CHECK                         4
+#define STATE_MAX_CONNECTION_AGE                 5
+#define STATE_VALIDATION                         6
+#define STATE_REMOVE                             7
+
+#define WAIT_QUEUE_NULL_INDEX                    -1
+
+// Wait queue entry states
+#define WAIT_QUEUE_ENTRY_FREE                          -1
+#define WAIT_QUEUE_ENTRY_RESERVED                      0 /* Allocated, not yet initialized */
+#define WAIT_QUEUE_ENTRY_WAITING                       1 /* In queue, waiter owns it */
+#define WAIT_QUEUE_ENTRY_HANDING_OFF                   2 /* Dequeued, return worker owns it */
+#define WAIT_QUEUE_ENTRY_ACQUIRED                      3 /* Handoff complete, waiter can consume */
+#define WAIT_QUEUE_ENTRY_TIMEOUT                       4 /* Timed out, waiter will reclaim */
 
 #define SECURITY_INVALID                               -2
 #define SECURITY_REJECT                                -1
@@ -387,6 +397,11 @@ extern void* prometheus_shmem;
  */
 extern void* prometheus_cache_shmem;
 
+/**
+ * The shared memory segment for the wait queue
+ */
+extern void* wait_queue_shmem;
+
 /** @struct server
  * Defines a server
  */
@@ -616,6 +631,9 @@ struct main_prometheus
    atomic_ulong connections_awaiting[NUMBER_OF_LIMITS]; /**< The number of connection waiting per limit */
    atomic_ulong connections_awaiting_total;             /**< The number of connection waiting in total */
 
+   atomic_ulong wait_queue_timeouts; /**< Number of connections that timed out in the wait queue */
+   atomic_ulong wait_queue_handoffs; /**< Number of successful wait queue handoffs */
+
    atomic_ulong auth_user_success;      /**< The number of AUTH_SUCCESS calls */
    atomic_ulong auth_user_bad_password; /**< The number of AUTH_BAD_PASSWORD calls */
    atomic_ulong auth_user_error;        /**< The number of AUTH_ERROR calls */
@@ -694,6 +712,36 @@ struct vault_configuration
    int ev_backend;                   /**< Selected ev backend */
    int tls_cert_auth_mode;           /**< TLS certificate authentication mode: verify-ca (0) or verify-full (1) */
    struct vault_server vault_server; /**< The vault servers */
+} __attribute__((aligned(64)));
+
+/** @struct wait_queue_entry
+ * Defines a wait queue entry for connection requests
+ */
+struct wait_queue_entry
+{
+   pid_t pid;                          /**< The worker process PID waiting */
+   int best_rule;                      /**< The limit rule this worker is waiting for */
+   char username[MAX_USERNAME_LENGTH]; /**< Username for safe handoff metadata copy */
+   char database[MAX_DATABASE_LENGTH]; /**< Database for safe handoff metadata copy */
+   time_t enqueue_time;                /**< Time when the entry was enqueued */
+   int slot;                           /**< The assigned slot if acquired, -1 otherwise */
+   int prev;                           /**< Index of previous entry in the queue */
+   int next;                           /**< Index of next entry in the queue */
+   atomic_schar state;                 /**< State of the entry */
+} __attribute__((aligned(64)));
+
+/** @struct wait_queue
+ * Defines the wait queue for connection requests
+ */
+struct wait_queue
+{
+   int head;                          /**< Index of oldest entry */
+   int tail;                          /**< Index of newest entry */
+   atomic_schar lock;                 /**< Spinlock for queue modifications: 1 -> Acquired, 0 -> Released */
+   int count;                         /**< Number of entries in the queue */
+   int capacity;                      /**< Number of entries allocated */
+   atomic_int free_hint;              /**< Hint for finding a free entry in O(1) amortized time */
+   struct wait_queue_entry entries[]; /**< Flexible array - sized at runtime */
 } __attribute__((aligned(64)));
 
 /** @struct main_configuration

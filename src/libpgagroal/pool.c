@@ -38,6 +38,7 @@
 #include <prometheus.h>
 #include <security.h>
 #include <server.h>
+#include <signal.h>
 #include <tls.h>
 #include <tracker.h>
 #include <utils.h>
@@ -55,6 +56,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/time.h>
 
 static int find_best_rule(char* username, char* database);
 static bool remove_connection(char* username, char* database);
@@ -65,6 +67,227 @@ static int get_connection_count_for_limit_rule(int rule_index, char* username);
 static char* resolve_database_name(char* database, int best_rule);
 static void check_graceful_shutdown_trigger(void);
 static bool increase_connections(int best_rule);
+
+static void
+wait_queue_wakeup_handler(int signum)
+{
+   (void)signum;
+}
+static void
+wait_queue_alarm_handler(int signum)
+{
+   (void)signum;
+}
+
+static int
+wait_queue_get_free_entry(struct wait_queue* wq)
+{
+   int hint = atomic_load(&wq->free_hint);
+   for (int i = 0; i < wq->capacity; i++)
+   {
+      int idx = (hint + i) % wq->capacity;
+      signed char expected = WAIT_QUEUE_ENTRY_FREE;
+      /* FREE -> RESERVED: claim the slot without publishing it yet */
+      if (atomic_compare_exchange_strong(&wq->entries[idx].state,
+                                         &expected,
+                                         WAIT_QUEUE_ENTRY_RESERVED))
+      {
+         atomic_store(&wq->free_hint, (idx + 1) % wq->capacity);
+         return idx;
+      }
+   }
+   return WAIT_QUEUE_NULL_INDEX;
+}
+
+static void
+wait_queue_enqueue(struct wait_queue* wq, int idx, int best_rule, const char* username, const char* database)
+{
+   struct wait_queue_entry* entry = &wq->entries[idx];
+
+   /* Initialize ALL fields BEFORE making the entry visible as WAITING */
+   entry->pid = getpid();
+   entry->best_rule = best_rule;
+   memset(entry->username, 0, MAX_USERNAME_LENGTH);
+   memcpy(entry->username, username, MIN(strnlen(username, MAX_USERNAME_LENGTH - 1), MAX_USERNAME_LENGTH - 1));
+   memset(entry->database, 0, MAX_DATABASE_LENGTH);
+   memcpy(entry->database, database, MIN(strnlen(database, MAX_DATABASE_LENGTH - 1), MAX_DATABASE_LENGTH - 1));
+   entry->enqueue_time = time(NULL);
+   entry->slot = -1;
+   entry->prev = WAIT_QUEUE_NULL_INDEX;
+   entry->next = WAIT_QUEUE_NULL_INDEX;
+
+   /* Acquire lock */
+   while (atomic_exchange(&wq->lock, 1) == 1)
+   {
+      SLEEP(1000000L);
+   }
+
+   /* Link at tail */
+   entry->prev = wq->tail;
+   if (wq->tail != WAIT_QUEUE_NULL_INDEX)
+   {
+      wq->entries[wq->tail].next = idx;
+   }
+   else
+   {
+      wq->head = idx;
+   }
+   wq->tail = idx;
+   wq->count++;
+
+   /* Publish: RESERVED -> WAITING. Only NOW can other processes see it. */
+   atomic_store(&entry->state, WAIT_QUEUE_ENTRY_WAITING);
+   atomic_store(&wq->lock, 0);
+}
+
+static int
+wait_queue_claim_oldest_waiter(struct wait_queue* wq, int blocking_timeout_s)
+{
+   time_t now = time(NULL);
+   pid_t timeout_pids[MAX_NUMBER_OF_CONNECTIONS];
+   int timeout_count = 0;
+   int claimed_idx = WAIT_QUEUE_NULL_INDEX;
+
+   /* Acquire lock */
+   while (atomic_exchange(&wq->lock, 1) == 1)
+   {
+      SLEEP(1000000L);
+   }
+
+   /* Phase 1: Clean up expired entries from the head (FIFO guarantees O(1) amortized) */
+   int current_idx = wq->head;
+   while (current_idx != WAIT_QUEUE_NULL_INDEX)
+   {
+      struct wait_queue_entry* current = &wq->entries[current_idx];
+      double diff = difftime(now, current->enqueue_time);
+
+      if (diff >= (double)blocking_timeout_s)
+      {
+         int next_idx = current->next;
+
+         /* Unlink */
+         if (current->prev != WAIT_QUEUE_NULL_INDEX)
+            wq->entries[current->prev].next = next_idx;
+         else
+            wq->head = next_idx;
+
+         if (next_idx != WAIT_QUEUE_NULL_INDEX)
+         {
+            wq->entries[next_idx].prev = current->prev;
+         }
+         else
+         {
+            wq->tail = current->prev;
+         }
+         wq->count--;
+         current->prev = WAIT_QUEUE_NULL_INDEX;
+         current->next = WAIT_QUEUE_NULL_INDEX;
+
+         /* WAITING -> TIMEOUT */
+         signed char expected = WAIT_QUEUE_ENTRY_WAITING;
+         if (atomic_compare_exchange_strong(&current->state,
+                                            &expected,
+                                            WAIT_QUEUE_ENTRY_TIMEOUT))
+         {
+            if (timeout_count < MAX_NUMBER_OF_CONNECTIONS)
+            {
+               timeout_pids[timeout_count++] = current->pid;
+            }
+         }
+         current_idx = next_idx;
+      }
+      else
+      {
+         break; /* Not expired, and FIFO means nothing later is either */
+      }
+   }
+
+   /* Phase 2: Claim the oldest valid waiter */
+   if (wq->head != WAIT_QUEUE_NULL_INDEX)
+   {
+      claimed_idx = wq->head;
+      struct wait_queue_entry* claimed = &wq->entries[claimed_idx];
+
+      /* Unlink */
+      wq->head = claimed->next;
+      if (claimed->next != WAIT_QUEUE_NULL_INDEX)
+      {
+         wq->entries[claimed->next].prev = WAIT_QUEUE_NULL_INDEX;
+      }
+      else
+      {
+         wq->tail = WAIT_QUEUE_NULL_INDEX;
+      }
+      wq->count--;
+      claimed->prev = WAIT_QUEUE_NULL_INDEX;
+      claimed->next = WAIT_QUEUE_NULL_INDEX;
+
+      /* WAITING -> HANDING_OFF: return worker now owns this entry */
+      signed char expected = WAIT_QUEUE_ENTRY_WAITING;
+      if (!atomic_compare_exchange_strong(&claimed->state,
+                                          &expected,
+                                          WAIT_QUEUE_ENTRY_HANDING_OFF))
+      {
+         claimed_idx = WAIT_QUEUE_NULL_INDEX;
+      }
+   }
+
+   /* Release lock BEFORE sending signals */
+   atomic_store(&wq->lock, 0);
+
+   /* Signal timed-out workers outside the critical section */
+   for (int i = 0; i < timeout_count; i++)
+   {
+      if (timeout_pids[i] > 0)
+      {
+         /* Use SIGALRM to wake them up so they can exit immediately */
+         kill(timeout_pids[i], SIGALRM);
+         pgagroal_prometheus_wait_queue_timeout();
+      }
+   }
+   return claimed_idx;
+}
+
+static void
+wait_queue_dequeue_if_present(struct wait_queue* wq, int idx)
+{
+   while (atomic_exchange(&wq->lock, 1) == 1)
+   {
+      SLEEP(1000000L);
+   }
+
+   struct wait_queue_entry* entry = &wq->entries[idx];
+   atomic_schar state = atomic_load(&entry->state);
+
+   /* If still WAITING, we must unlink ourselves. If HANDING_OFF/ACQUIRED/TIMEOUT, 
+    * the return worker or cleanup phase already unlinked us. */
+   if (state == WAIT_QUEUE_ENTRY_WAITING &&
+       (entry->prev != WAIT_QUEUE_NULL_INDEX || entry->next != WAIT_QUEUE_NULL_INDEX || wq->head == idx))
+   {
+      if (entry->prev != WAIT_QUEUE_NULL_INDEX)
+      {
+         wq->entries[entry->prev].next = entry->next;
+      }
+      else
+      {
+         wq->head = entry->next;
+      }
+
+      if (entry->next != WAIT_QUEUE_NULL_INDEX)
+      {
+         wq->entries[entry->next].prev = entry->prev;
+      }
+      else
+      {
+         wq->tail = entry->prev;
+      }
+
+      wq->count--;
+      entry->prev = WAIT_QUEUE_NULL_INDEX;
+      entry->next = WAIT_QUEUE_NULL_INDEX;
+   }
+   atomic_store(&wq->lock, 0);
+}
 
 int
 pgagroal_get_connection(char* username, char* database, bool reuse, bool transaction_mode, int* slot, SSL** ssl)
@@ -380,28 +603,146 @@ retry:
 retry2:
       if (pgagroal_time_is_valid(config->blocking_timeout))
       {
-         /* Back-off that doubles each retry (1ms, 2ms, 4ms, ... up to the
-          * connection_retry_delay cap), in place of the former fixed 500ms poll.
-          * The total wait is still bounded by blocking_timeout, which is
-          * re-checked below each retry (#813). */
-         retry_delay = pgagroal_pool_next_retry_delay(retry_delay, config->connection_retry_delay);
-         SLEEP(retry_delay)
+         struct wait_queue* wq = (struct wait_queue*)wait_queue_shmem;
+         int entry_idx = wait_queue_get_free_entry(wq);
 
-         double diff = difftime(time(NULL), start_time);
-         if (diff >= (double)pgagroal_time_convert(config->blocking_timeout, FORMAT_TIME_S))
+         if (entry_idx != WAIT_QUEUE_NULL_INDEX)
          {
-            goto timeout;
-         }
+            int timeout_s = (int)pgagroal_time_convert(config->blocking_timeout, FORMAT_TIME_S);
 
-         if (best_rule == -1)
+            /* Set up SIGUSR2 handler (for handoff/timeout notifications) */
+            struct sigaction sa_usr2, old_usr2;
+            sa_usr2.sa_handler = wait_queue_wakeup_handler;
+            sigemptyset(&sa_usr2.sa_mask);
+            sa_usr2.sa_flags = 0;
+            sigaction(SIGUSR2, &sa_usr2, &old_usr2);
+
+            /* Set up SIGALRM handler (for self-timed wakeup) */
+            struct sigaction sa_alarm, old_alarm;
+            sa_alarm.sa_handler = wait_queue_alarm_handler;
+            sigemptyset(&sa_alarm.sa_mask);
+            sa_alarm.sa_flags = 0;
+            sigaction(SIGALRM, &sa_alarm, &old_alarm);
+
+            /* Block both signals so we can control when they're delivered */
+            sigset_t mask, old_mask;
+            sigemptyset(&mask);
+            sigaddset(&mask, SIGUSR2);
+            sigaddset(&mask, SIGALRM);
+            sigprocmask(SIG_BLOCK, &mask, &old_mask);
+
+            wait_queue_enqueue(wq, entry_idx, best_rule, username, database);
+
+            /* Wait loop: exit only on ACQUIRED or TIMEOUT */
+            signed char final_state;
+            while ((final_state = atomic_load(&wq->entries[entry_idx].state)) == WAIT_QUEUE_ENTRY_WAITING ||
+                   final_state == WAIT_QUEUE_ENTRY_HANDING_OFF)
+            {
+               /* Check our own timeout first */
+               double elapsed = difftime(time(NULL), wq->entries[entry_idx].enqueue_time);
+               if (elapsed >= (double)timeout_s)
+               {
+                  /* Try to self-transition WAITING -> TIMEOUT.
+                  * If it fails, someone else (cleanup) already did it. */
+                  signed char expected = WAIT_QUEUE_ENTRY_WAITING;
+                  if (atomic_compare_exchange_strong(&wq->entries[entry_idx].state,
+                                                     &expected,
+                                                     WAIT_QUEUE_ENTRY_TIMEOUT))
+                  {
+                     final_state = WAIT_QUEUE_ENTRY_TIMEOUT;
+                     break;
+                  }
+                  /* Otherwise re-check state (might now be HANDING_OFF or ACQUIRED) */
+                  continue;
+               }
+
+               /* Set a one-shot alarm for the remaining time */
+               double remaining = (double)timeout_s - elapsed;
+               struct itimerval itv;
+               itv.it_interval.tv_sec = 0;
+               itv.it_interval.tv_usec = 0;
+               itv.it_value.tv_sec = (time_t)remaining;
+               itv.it_value.tv_usec = (suseconds_t)((remaining - (time_t)remaining) * 1000000.0);
+               setitimer(ITIMER_REAL, &itv, NULL);
+
+               /* Sleep until signaled */
+               sigset_t suspend_mask;
+               sigfillset(&suspend_mask);
+               sigdelset(&suspend_mask, SIGUSR2);
+               sigdelset(&suspend_mask, SIGALRM);
+               sigsuspend(&suspend_mask);
+            }
+
+            /* Cancel any pending alarm */
+            struct itimerval itv_zero = {{0, 0}, {0, 0}};
+            setitimer(ITIMER_REAL, &itv_zero, NULL);
+
+            /* Read the slot BEFORE releasing the entry (defensive) */
+            int acquired_slot = wq->entries[entry_idx].slot;
+
+            /* Try to dequeue (no-op if already dequeued by claim_oldest_waiter) */
+            wait_queue_dequeue_if_present(wq, entry_idx);
+
+            /* Return entry to FREE pool */
+            atomic_store(&wq->entries[entry_idx].state, WAIT_QUEUE_ENTRY_FREE);
+
+            /* Restore signal handlers */
+            sigaction(SIGUSR2, &old_usr2, NULL);
+            sigaction(SIGALRM, &old_alarm, NULL);
+            sigprocmask(SIG_SETMASK, &old_mask, NULL);
+
+            if (final_state == WAIT_QUEUE_ENTRY_ACQUIRED)
+            {
+               /* Validate slot bounds */
+               if (acquired_slot < 0 || acquired_slot >= config->max_connections)
+               {
+                  pgagroal_log_error("wait_queue: invalid slot %d from handoff", acquired_slot);
+                  goto timeout;
+               }
+
+               *slot = acquired_slot;
+               /* The return worker already updated slot metadata and rule counters.
+               * Just mark it IN_USE for this worker. */
+               atomic_store(&config->states[*slot], STATE_IN_USE);
+
+               pgagroal_prometheus_connection_success();
+               pgagroal_tracking_event_slot(TRACKER_GET_CONNECTION_SUCCESS, *slot);
+               pgagroal_prometheus_connection_unawaiting(best_rule);
+               return 0;
+            }
+            else
+            {
+               /* TIMEOUT (or unexpected state) */
+               goto timeout;
+            }
+         }
+         else
          {
-            remove_connection(username, database);
-         }
+            /* FALLBACK: wait queue is full - use original spin-wait
+             *
+             * Back-off that doubles each retry (1ms, 2ms, 4ms, ... up to the
+             * connection_retry_delay cap), in place of the former fixed 500ms poll.
+             * The total wait is still bounded by blocking_timeout, which is
+             * re-checked below each retry (#813). */
+            retry_delay = pgagroal_pool_next_retry_delay(retry_delay, config->connection_retry_delay);
+            SLEEP(retry_delay);
 
-         goto start;
+            double diff = difftime(time(NULL), start_time);
+            if (diff >= (double)pgagroal_time_convert(config->blocking_timeout, FORMAT_TIME_S))
+            {
+               goto timeout;
+            }
+
+            if (best_rule == -1)
+            {
+               remove_connection(username, database);
+            }
+            goto start;
+         }
       }
       else
       {
+         /* FALLBACK: blocking_timeout disabled - original logic */
          if (!transaction_mode)
          {
             if (best_rule == -1)
@@ -578,6 +919,103 @@ pgagroal_return_connection(int slot, SSL* ssl, bool transaction_mode)
                          * connection; any unrecognised future value also falls here safely. */
                         goto kill_connection;
                   }
+               }
+            }
+         }
+
+         /* Wait queue handoff */
+         {
+            struct wait_queue* wq = (struct wait_queue*)wait_queue_shmem;
+            int timeout_s = (int)pgagroal_time_convert(config->blocking_timeout, FORMAT_TIME_S);
+            int waiting_idx = wait_queue_claim_oldest_waiter(wq, timeout_s);
+
+            if (waiting_idx != WAIT_QUEUE_NULL_INDEX)
+            {
+               struct wait_queue_entry* waiting_entry = &wq->entries[waiting_idx];
+               int old_rule = config->connections[slot].limit_rule;
+               int new_rule = waiting_entry->best_rule;
+               pid_t waiter_pid = waiting_entry->pid;
+
+               /* Balance per-rule counters if the rule changes */
+               if (old_rule >= 0 && old_rule != new_rule)
+               {
+                  atomic_fetch_sub(&config->limits[old_rule].active_connections, 1);
+               }
+               if (new_rule >= 0 && old_rule != new_rule)
+               {
+                  atomic_fetch_add(&config->limits[new_rule].active_connections, 1);
+               }
+               /* Global active_connections is unchanged: connection is still in use */
+
+               /* Update slot metadata to match the new client */
+               config->connections[slot].limit_rule = new_rule;
+               config->connections[slot].pid = waiter_pid;
+               config->connections[slot].timestamp = time(NULL);
+
+               memset(config->connections[slot].username, 0, MAX_USERNAME_LENGTH);
+               size_t ulen = strnlen(waiting_entry->username, MAX_USERNAME_LENGTH - 1);
+               memcpy(config->connections[slot].username, waiting_entry->username, ulen);
+
+               memset(config->connections[slot].database, 0, MAX_DATABASE_LENGTH);
+               size_t dlen = strnlen(waiting_entry->database, MAX_DATABASE_LENGTH - 1);
+               memcpy(config->connections[slot].database, waiting_entry->database, dlen);
+
+               memset(config->connections[slot].appname, 0, sizeof(config->connections[slot].appname));
+
+               /* Publish slot and state BEFORE signaling */
+               waiting_entry->slot = slot;
+               atomic_store(&waiting_entry->state, WAIT_QUEUE_ENTRY_ACQUIRED);
+
+               /* Attempt to wake the waiter */
+               bool wakeup_ok = false;
+               if (waiter_pid > 0)
+               {
+                  if (kill(waiter_pid, SIGUSR2) == 0)
+                  {
+                     wakeup_ok = true;
+                  }
+                  else if (errno == ESRCH)
+                  {
+                     pgagroal_log_warn("wait_queue: waiter PID %d no longer exists, rolling back handoff",
+                                       waiter_pid);
+                  }
+                  else
+                  {
+                     pgagroal_log_warn("wait_queue: kill(%d, SIGUSR2) failed: %s",
+                                       waiter_pid, strerror(errno));
+                  }
+               }
+
+               if (wakeup_ok)
+               {
+                  pgagroal_prometheus_wait_queue_handoff();
+                  pgagroal_tracking_event_slot(TRACKER_RETURN_CONNECTION_SUCCESS, slot);
+                  pgagroal_prometheus_connection_return();
+                  check_graceful_shutdown_trigger();
+                  return 0; /* Handoff successful */
+               }
+               else
+               {
+                  /* ROLLBACK: waiter is dead, recover the connection.
+                  * Undo rule counter changes. */
+                  if (new_rule >= 0 && old_rule != new_rule)
+                  {
+                     atomic_fetch_sub(&config->limits[new_rule].active_connections, 1);
+                  }
+                  if (old_rule >= 0 && old_rule != new_rule)
+                  {
+                     atomic_fetch_add(&config->limits[old_rule].active_connections, 1);
+                  }
+
+                  /* Restore slot metadata */
+                  config->connections[slot].limit_rule = old_rule;
+                  config->connections[slot].pid = -1;
+
+                  /* Release the entry back to FREE */
+                  atomic_store(&waiting_entry->state, WAIT_QUEUE_ENTRY_FREE);
+
+                  /* Fall through to normal return path below */
+                  pgagroal_log_debug("wait_queue: handoff rolled back, returning connection normally");
                }
             }
          }

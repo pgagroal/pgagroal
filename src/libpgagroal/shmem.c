@@ -39,6 +39,7 @@ void* shmem = NULL;
 void* pipeline_shmem = NULL;
 void* prometheus_shmem = NULL;
 void* prometheus_cache_shmem = NULL;
+void* wait_queue_shmem = NULL;
 
 int
 pgagroal_create_shared_memory(size_t size, unsigned char hp, void** shmem)

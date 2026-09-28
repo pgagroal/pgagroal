@@ -207,6 +207,16 @@ void
 pgagroal_prometheus_connection_success(void);
 
 /**
+ * Increments the wait queue timeout metric counter
+ */
+void pgagroal_prometheus_wait_queue_timeout(void);
+
+/**
+ * Increments the wait queue successful handoff metric counter
+ */
+void pgagroal_prometheus_wait_queue_handoff(void);
+
+/**
  * Increase AUTH_SUCCESS for a user
  */
 void
