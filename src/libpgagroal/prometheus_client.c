@@ -1409,12 +1409,19 @@ parse_body_to_bridge(time_t timestamp, char* body, struct prometheus_bridge* bri
 
       if (line[0] == '#')
       {
-         if (!strncmp(&line[1], "HELP", 4))
+         char* rest = line + 1;
+
+         while (*rest == ' ')
+         {
+            rest++;
+         }
+
+         if (!strncmp(rest, "HELP", 4))
          {
             memset(name, 0, sizeof(name));
             memset(help, 0, sizeof(help));
 
-            if (sscanf(line + 6, "%127s %1023[^\n]", name, help) == 2)
+            if (sscanf(rest + 4, "%127s %1023[^\n]", name, help) == 2)
             {
                if (metric_find_create(bridge, name, &metric))
                {
@@ -1427,12 +1434,12 @@ parse_body_to_bridge(time_t timestamp, char* body, struct prometheus_bridge* bri
                }
             }
          }
-         else if (!strncmp(&line[1], "TYPE", 4))
+         else if (!strncmp(rest, "TYPE", 4))
          {
             memset(name, 0, sizeof(name));
             memset(type, 0, sizeof(type));
 
-            if (sscanf(line + 6, "%127s %127[^\n]", name, type) == 2)
+            if (sscanf(rest + 4, "%127s %127[^\n]", name, type) == 2)
             {
                if (metric_find_create(bridge, name, &metric))
                {
