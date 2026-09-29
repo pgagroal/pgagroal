@@ -255,11 +255,17 @@ status_details(bool details, struct json* response)
          if (wal_result == 0)
          {
             bool is_streaming = pgagroal_strcmp(rep_status, "streaming");
+            bool is_replication_ok;
             pgagroal_json_put(standby_js, MANAGEMENT_ARGUMENT_STREAMING, (uintptr_t)is_streaming, ValueBool);
             pgagroal_json_put(standby_js, MANAGEMENT_ARGUMENT_WAL_RECEIVER_STATUS, (uintptr_t)rep_status, ValueString);
-            pgagroal_json_put(standby_js, MANAGEMENT_ARGUMENT_SLOT_NAME, (uintptr_t)slot_name, ValueString);
+            pgagroal_json_put(standby_js, MANAGEMENT_ARGUMENT_REPLICATION_SLOT_NAME, (uintptr_t)slot_name, ValueString);
             pgagroal_json_put(standby_js, MANAGEMENT_ARGUMENT_PRIMARY_HOST, (uintptr_t)sender_host, ValueString);
             pgagroal_json_put(standby_js, MANAGEMENT_ARGUMENT_PRIMARY_PORT, (uintptr_t)sender_port, ValueString);
+            if (strlen(slot_name) > 0)
+            {
+               is_replication_ok = atomic_load(&config->servers[i].replication_ok);
+               pgagroal_json_put(standby_js, MANAGEMENT_ARGUMENT_REPLICATION_VALID, (uintptr_t)is_replication_ok, ValueBool);
+            }
          }
          pgagroal_json_put(standbys, config->servers[i].name, (uintptr_t)standby_js, ValueJSON);
       }

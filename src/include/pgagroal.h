@@ -159,6 +159,10 @@ extern "C" {
 #define HEALTH_CHECK_AUTH_SCRAM                        3
 #define HEALTH_CHECK_AUTH_ERROR                        4
 
+#define HEALTH_CHECK_REPLICATION_VERIFY_OK             0
+#define HEALTH_CHECK_REPLICATION_VERIFY_FAILED         1
+#define HEALTH_CHECK_REPLICATION_VERIFY_SKIPPED        2
+
 #define HEALTH_CHECK_MAX_RETRIES                       3
 #define HEALTH_CHECK_MIN_INTERVAL                      1
 
@@ -392,24 +396,26 @@ extern void* prometheus_cache_shmem;
  */
 struct server
 {
-   char name[MISC_LENGTH];        /**< The name of the server */
-   char host[MISC_LENGTH];        /**< The host name of the server */
-   int port;                      /**< The port of the server */
-   int version;                   /**< The major version of the server */
-   int minor_version;             /**< The minor version of the server */
-   char system_identifier[64];    /**< The system identifier of the server */
-   bool tls;                      /**< Use TLS if possible */
-   bool valid;                    /**< Is the server valid */
-   char tls_cert_file[MAX_PATH];  /**< TLS certificate path */
-   char tls_key_file[MAX_PATH];   /**< TLS key path */
-   char tls_ca_file[MAX_PATH];    /**< TLS CA certificate path */
-   unsigned char channel_binding; /**< SCRAM channel binding (CHANNEL_BINDING_*) */
-   atomic_schar state;            /**< The state of the server */
-   atomic_schar health_state;     /**< The health state of the server */
-   atomic_int streaming_state;    /**< The streaming state of the server SERVER_STREAMING_PRIMARY/NO/YES */
-   unsigned int failures;         /**< The number of failures */
-   atomic_schar auth_type;        /**< The authentication type used for health check */
-   int lineno;                    /**< The line number within the configuration file */
+   char name[MISC_LENGTH];                  /**< The name of the server */
+   char host[MISC_LENGTH];                  /**< The host name of the server */
+   int port;                                /**< The port of the server */
+   int version;                             /**< The major version of the server */
+   int minor_version;                       /**< The minor version of the server */
+   char system_identifier[64];              /**< The system identifier of the server */
+   bool tls;                                /**< Use TLS if possible */
+   bool valid;                              /**< Is the server valid */
+   char tls_cert_file[MAX_PATH];            /**< TLS certificate path */
+   char tls_key_file[MAX_PATH];             /**< TLS key path */
+   char tls_ca_file[MAX_PATH];              /**< TLS CA certificate path */
+   unsigned char channel_binding;           /**< SCRAM channel binding (CHANNEL_BINDING_*) */
+   atomic_schar state;                      /**< The state of the server */
+   atomic_schar health_state;               /**< The health state of the server */
+   atomic_int streaming_state;              /**< The streaming state of the server SERVER_STREAMING_PRIMARY/NO/YES */
+   char replication_slot_name[MISC_LENGTH]; /**< The replication slot name for this standby */
+   atomic_bool replication_ok;              /**< Tracks if the standby is replicating correctly (slot included in the primary) */
+   unsigned int failures;                   /**< The number of failures */
+   atomic_schar auth_type;                  /**< The authentication type used for health check */
+   int lineno;                              /**< The line number within the configuration file */
 } __attribute__((aligned(64)));
 
 #define FOREACH_SERVER for (int i = 0; i < config->number_of_servers; i++)

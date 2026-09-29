@@ -27,23 +27,26 @@
  */
 
 /* pgagroal */
-#include <pgagroal.h>
 #include <health.h>
 #include <logging.h>
+#include <message.h>
 #include <network.h>
+#include <pgagroal.h>
 #include <server.h>
 #include <shmem.h>
 #include <utils.h>
-#include <message.h>
 
 /* system */
-#include <stdlib.h>
-#include <unistd.h>
 #include <signal.h>
 #include <stdatomic.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 static void health_check_loop(void);
+static int verify_standby_replication(char previous_warned_slots[][MISC_LENGTH],
+                                      int* previous_warned_count);
 static int server_probe(int server_idx, bool* up, int* auth_type);
 
 /**
@@ -131,6 +134,8 @@ health_check_loop(void)
    bool up;
    int status;
    int previous_state[NUMBER_OF_SERVERS];
+   char previous_warned_slots[NUMBER_OF_SERVERS][MISC_LENGTH];
+   int previous_warned_count = 0;
    int32_t t;
 
    config = (struct main_configuration*)shmem;
@@ -142,6 +147,7 @@ health_check_loop(void)
    for (int i = 0; i < NUMBER_OF_SERVERS; i++)
    {
       previous_state[i] = -2; /* Initial value representing 'never checked' */
+      atomic_store(&config->servers[i].replication_ok, true);
    }
 
    while (config->keep_running && config->health_check)
@@ -231,6 +237,20 @@ health_check_loop(void)
                {
                   atomic_store(&config->servers[i].streaming_state, SERVER_STREAMING_NO);
                }
+               if (!pgagroal_strcmp(slot_name, ""))
+               {
+                  if (!pgagroal_strcmp(config->servers[i].replication_slot_name, slot_name))
+                  {
+                     memcpy(config->servers[i].replication_slot_name, slot_name, strlen(slot_name) + 1);
+                  }
+               }
+               else
+               {
+                  if (config->servers[i].replication_slot_name[0] != '\0')
+                  {
+                     memset(config->servers[i].replication_slot_name, 0, MISC_LENGTH);
+                  }
+               }
             }
             else
             {
@@ -244,6 +264,8 @@ health_check_loop(void)
             atomic_store(&config->servers[i].streaming_state, SERVER_STREAMING_NO);
          }
       }
+
+      verify_standby_replication(previous_warned_slots, &previous_warned_count);
    }
 
    pgagroal_log_info("Health check stopped");
@@ -347,4 +369,150 @@ error:
       pgagroal_disconnect(fd);
    }
    return 1;
+}
+
+static int
+verify_standby_replication(char previous_warned_slots[][MISC_LENGTH],
+                           int* previous_warned_count)
+{
+   struct main_configuration* config = (struct main_configuration*)shmem;
+   char primary_slot_names[NUMBER_OF_SERVERS][MISC_LENGTH];
+   char primary_client_addrs[NUMBER_OF_SERVERS][MISC_LENGTH];
+   int primary_rows = 0;
+   int primary = -1;
+   bool all_ok = true;
+   char new_warned_slots[NUMBER_OF_SERVERS][MISC_LENGTH];
+   int new_warned_count = 0;
+   int row_idx = 0;
+   bool already_warned = false;
+   int warned_idx = 0;
+   int new_warned_idx = 0;
+
+   if (pgagroal_get_primary(&primary))
+   {
+      pgagroal_log_debug("Could not determine primary server, skipping replication verification");
+      return HEALTH_CHECK_REPLICATION_VERIFY_SKIPPED;
+   }
+
+   if (pgagroal_server_get_replication_slots_status(primary, primary_slot_names, primary_client_addrs,
+                                                    NUMBER_OF_SERVERS, &primary_rows))
+   {
+      pgagroal_log_debug("Failed to get replication slots status from primary '%s', skipping replication verification", config->servers[primary].name);
+      return HEALTH_CHECK_REPLICATION_VERIFY_SKIPPED;
+   }
+
+   for (int i = 0; i < config->number_of_servers; i++)
+   {
+      if (config->servers[i].valid)
+      {
+         bool matched = false;
+         if (i == primary || config->servers[i].replication_slot_name[0] == '\0')
+         {
+            continue;
+         }
+
+         for (row_idx = 0; row_idx < primary_rows; row_idx++)
+         {
+            if (pgagroal_strcmp(primary_slot_names[row_idx], config->servers[i].replication_slot_name))
+            {
+               matched = true;
+               break;
+            }
+         }
+
+         if (!matched)
+         {
+            all_ok = false;
+            if (atomic_load(&config->servers[i].replication_ok))
+            {
+               pgagroal_log_error("Standby '%s' reports replication slot '%s', but primary '%s' has no matching active connection for that slot; possible misconfiguration",
+                                  config->servers[i].name, config->servers[i].replication_slot_name, config->servers[primary].name);
+            }
+         }
+         else if (!atomic_load(&config->servers[i].replication_ok))
+         {
+            pgagroal_log_info("Standby '%s' replication slot '%s' now matches primary '%s'; previously reported error has cleared",
+                              config->servers[i].name, config->servers[i].replication_slot_name, config->servers[primary].name);
+         }
+         atomic_store(&config->servers[i].replication_ok, matched);
+      }
+   }
+
+   for (row_idx = 0; row_idx < primary_rows; row_idx++)
+   {
+      bool known = false;
+
+      if (pgagroal_strcmp(primary_slot_names[row_idx], ""))
+      {
+         continue;
+      }
+
+      for (int i = 0; i < config->number_of_servers; i++)
+      {
+         if (config->servers[i].valid)
+         {
+            if (i == primary || pgagroal_strcmp(config->servers[i].replication_slot_name, ""))
+            {
+               continue;
+            }
+            if (pgagroal_strcmp(config->servers[i].replication_slot_name, primary_slot_names[row_idx]))
+            {
+               known = true;
+               break;
+            }
+         }
+      }
+
+      if (!known)
+      {
+         already_warned = false;
+         for (warned_idx = 0; warned_idx < *previous_warned_count; warned_idx++)
+         {
+            if (pgagroal_strcmp(previous_warned_slots[warned_idx], primary_slot_names[row_idx]))
+            {
+               already_warned = true;
+               break;
+            }
+         }
+
+         if (!already_warned)
+         {
+            pgagroal_log_warn("Primary '%s' has an active replication connection using slot '%s' from %s that does not match any configured standby",
+                              config->servers[primary].name, primary_slot_names[row_idx], primary_client_addrs[row_idx]);
+         }
+
+         if (new_warned_count < NUMBER_OF_SERVERS)
+         {
+            memcpy(new_warned_slots[new_warned_count], primary_slot_names[row_idx], strlen(primary_slot_names[row_idx]) + 1);
+            new_warned_count++;
+         }
+      }
+   }
+
+   for (warned_idx = 0; warned_idx < *previous_warned_count; warned_idx++)
+   {
+      bool still_unmatched = false;
+      for (new_warned_idx = 0; new_warned_idx < new_warned_count; new_warned_idx++)
+      {
+         if (pgagroal_strcmp(previous_warned_slots[warned_idx], new_warned_slots[new_warned_idx]))
+         {
+            still_unmatched = true;
+            break;
+         }
+      }
+
+      if (!still_unmatched)
+      {
+         pgagroal_log_info("Primary '%s' no longer has an unrecognized replication connection using slot '%s'",
+                           config->servers[primary].name, previous_warned_slots[warned_idx]);
+      }
+   }
+
+   for (new_warned_idx = 0; new_warned_idx < new_warned_count; new_warned_idx++)
+   {
+      memcpy(previous_warned_slots[new_warned_idx], new_warned_slots[new_warned_idx], strlen(new_warned_slots[new_warned_idx]) + 1);
+   }
+   *previous_warned_count = new_warned_count;
+
+   return all_ok ? HEALTH_CHECK_REPLICATION_VERIFY_OK : HEALTH_CHECK_REPLICATION_VERIFY_FAILED;
 }
