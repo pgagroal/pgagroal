@@ -534,22 +534,53 @@ query_system_identifier(int server_idx, char* identifier, size_t id_size, int* p
       }
 
       offset_q = 0;
-      while (offset_q < msg->length)
+      while (offset_q + 5 <= msg->length)
       {
          char type_q = pgagroal_read_byte(msg->data + offset_q);
          int len_q = pgagroal_read_int32(msg->data + offset_q + 1);
 
+         /* The length covers itself, so anything below 4 is malformed. It is
+          * also what advances offset_q, so a non-positive value would loop.
+          * Compared by subtraction: offset_q + 1 + len_q would overflow for a
+          * large len_q, and signed overflow is undefined. */
+         if (len_q < 4 || len_q > msg->length - offset_q - 1)
+         {
+            pgagroal_log_error("invalid message length %d from server %d", len_q, server_idx);
+            goto error;
+         }
+
          if (type_q == 'D')
          {
             /* DataRow: 'D' | int32 len | int16 num_cols | int32 col_len | data */
+            int dr_end = offset_q + 1 + len_q;
             int dr_offset = offset_q + 5; /* skip 'D' + len */
-            int num_cols = pgagroal_read_int16(msg->data + dr_offset);
+            int num_cols;
+
+            if (dr_offset + 2 > dr_end)
+            {
+               goto error;
+            }
+
+            num_cols = pgagroal_read_int16(msg->data + dr_offset);
             dr_offset += 2;
 
             if (num_cols >= 1)
             {
-               int col_len = pgagroal_read_int32(msg->data + dr_offset);
+               int col_len;
+
+               if (dr_offset + 4 > dr_end)
+               {
+                  goto error;
+               }
+
+               col_len = pgagroal_read_int32(msg->data + dr_offset);
                dr_offset += 4;
+
+               /* -1 is the protocol's NULL, and carries no data bytes. */
+               if (col_len < -1 || col_len > dr_end - dr_offset)
+               {
+                  goto error;
+               }
 
                if (col_len > 0 && (size_t)col_len < id_size)
                {
@@ -566,8 +597,20 @@ query_system_identifier(int server_idx, char* identifier, size_t id_size, int* p
             /* Parse 'server_version_num' (second column) */
             if (num_cols >= 2 && pg_version != NULL)
             {
-               int col_len2 = pgagroal_read_int32(msg->data + dr_offset);
+               int col_len2;
+
+               if (dr_offset + 4 > dr_end)
+               {
+                  goto error;
+               }
+
+               col_len2 = pgagroal_read_int32(msg->data + dr_offset);
                dr_offset += 4;
+
+               if (col_len2 < -1 || col_len2 > dr_end - dr_offset)
+               {
+                  goto error;
+               }
 
                if (col_len2 > 0)
                {
@@ -595,10 +638,6 @@ query_system_identifier(int server_idx, char* identifier, size_t id_size, int* p
          }
 
          offset_q += 1 + len_q;
-         if (offset_q >= msg->length)
-         {
-            break;
-         }
       }
 
       pgagroal_clear_message(msg);
