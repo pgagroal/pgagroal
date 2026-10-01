@@ -54,6 +54,7 @@ Esraa Yehia <yehiae996@gmail.com>
 Yousuf Mahmoud <yusufmahmoud.dev@gmail.com>
 Youssef Sherief <youssefsherief2718@gmail.com>
 Abdulrahman Nader <a0xnader.oss@outlook.com>
+Ameya Gupta <ameya7072@gmail.com>
 ```
 
 ## Committers

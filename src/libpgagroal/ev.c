@@ -1781,16 +1781,23 @@ ev_kqueue_io_start(struct io_watcher* watcher)
    enum event_type type = watcher->event_watcher.type;
    struct kevent kev;
    int filter;
+   int flags;
    int fd;
 
    switch (type)
    {
       case PGAGROAL_EVENT_TYPE_MAIN:
          filter = EVFILT_READ;
+         flags = EV_ADD | EV_ENABLE | EV_CLEAR;
          fd = watcher->fds.main.listen_fd;
          break;
       case PGAGROAL_EVENT_TYPE_WORKER:
+         /* Level-triggered, like epoll: the worker callbacks read one buffer
+          * per event, so with EV_CLEAR any data left in the socket is never
+          * reported again unless new data arrives, and a client blocked on a
+          * full socket buffer (e.g. a large COPY) stalls forever. */
          filter = EVFILT_READ;
+         flags = EV_ADD | EV_ENABLE;
          fd = watcher->fds.worker.rcv_fd;
          break;
       default:
@@ -1799,7 +1806,7 @@ ev_kqueue_io_start(struct io_watcher* watcher)
          return PGAGROAL_EVENT_RC_FATAL;
    }
 
-   EV_SET(&kev, fd, filter, EV_ADD | EV_ENABLE | EV_CLEAR, 0, 0, watcher);
+   EV_SET(&kev, fd, filter, flags, 0, 0, watcher);
 
    if (kevent(loop->kqueuefd, &kev, 1, NULL, 0, NULL) == -1)
    {
