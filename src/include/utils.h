@@ -598,6 +598,19 @@ bool
 pgagroal_strcasecmp(const char* str1, const char* str2);
 
 /**
+ * Compare two strings in constant time, to avoid leaking their content
+ * through comparison timing. NULL and NULL is considered equal, the
+ * same as pgagroal_strcmp(). Intended for comparing secrets such as
+ * passwords against attacker-supplied input -- for ordinary string
+ * comparisons, use pgagroal_strcmp() instead.
+ * @param str1 The first string
+ * @param str2 The second string
+ * @return true if the strings are the same, otherwise false
+ */
+bool
+pgagroal_secure_strcmp(const char* str1, const char* str2);
+
+/**
  * Escape a string
  * @param str The original string
  * @return The escaped string
