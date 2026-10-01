@@ -451,7 +451,13 @@ fetch_metrics_body(const char* host, int port, bool secure, char** body)
          goto done;
       }
 
-      SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_NONE, NULL);
+      if (SSL_CTX_set_default_verify_paths(ssl_ctx) != 1)
+      {
+         pgagroal_log_error("Unable to load the default CA trust store for metrics scraping");
+         goto done;
+      }
+
+      SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER, NULL);
 
       ssl = SSL_new(ssl_ctx);
       if (ssl == NULL)
