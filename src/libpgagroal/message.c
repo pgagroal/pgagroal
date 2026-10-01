@@ -37,6 +37,7 @@
 #include <tls.h>
 #include <utils.h>
 #include <worker.h>
+#include <prometheus.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -389,6 +390,138 @@ pgagroal_free_message(struct message* msg)
 
       free(msg);
       msg = NULL;
+   }
+}
+
+void
+pgagroal_parse_message(struct pgagroal_message_state* state,
+                       char* data,
+                       int length,
+                       pgagroal_message_callback callback,
+                       void* arg)
+{
+   int offset = 0;
+
+   while (offset < length)
+   {
+      /* 1. Accumulate header */
+      if (state->header_len < 5)
+      {
+         int n = MIN(5 - state->header_len, length - offset);
+         memcpy(state->header + state->header_len, data + offset, n);
+         state->header_len += n;
+         offset += n;
+
+         if (state->header_len < 5)
+         {
+            break; /* Need more data */
+         }
+
+         /* Header is now complete */
+         int msglen = pgagroal_read_int32(state->header + 1) + 1;
+         state->payload_remaining = msglen - 5;
+         state->msg_target_len = msglen;
+         state->first_payload_byte = 0;
+
+         if (msglen <= PARSE_BUFFER_LIMIT)
+         {
+            memcpy(state->msg_buffer, state->header, 5);
+            state->msg_buffer_len = 5;
+         }
+         else
+         {
+            state->msg_buffer_len = 0; /* Too large to buffer, callbacks won't see it */
+         }
+      }
+
+      /* 2. Consume payload */
+      if (state->payload_remaining > 0)
+      {
+         int to_consume = MIN(state->payload_remaining, length - offset);
+
+         if (state->msg_buffer_len > 0 && (state->msg_buffer_len + to_consume) <= PARSE_BUFFER_LIMIT)
+         {
+            memcpy(state->msg_buffer + state->msg_buffer_len, data + offset, to_consume);
+            state->msg_buffer_len += to_consume;
+         }
+
+         if (state->first_payload_byte == 0 && to_consume > 0)
+         {
+            state->first_payload_byte = data[offset];
+         }
+
+         offset += to_consume;
+         state->payload_remaining -= to_consume;
+      }
+
+      /* 3. Check if message is complete */
+      if (state->payload_remaining == 0 && state->header_len == 5)
+      {
+         if (callback != NULL && state->msg_buffer_len > 0)
+         {
+            char kind = pgagroal_read_byte(state->header);
+            callback(kind, state->msg_buffer, state->msg_target_len, arg);
+         }
+
+         /* Reset for next message */
+         state->header_len = 0;
+         state->msg_buffer_len = 0;
+         state->msg_target_len = 0;
+      }
+   }
+}
+
+void
+pgagroal_pipeline_server_rfq(char kind, char* msg,
+                             int msglen __attribute__((unused)),
+                             void* arg)
+{
+   /*
+    * arg is NULL when the callback is invoked without a caller-supplied
+    * pipeline_server_state (e.g. from a test or a future caller that does
+    * not need saw_rfq or fatal tracking). This is a valid use case for a
+    * general-purpose callback, so return silently rather than crashing.
+    */
+   if (arg == NULL)
+      return;
+
+   struct pipeline_server_state* state = (struct pipeline_server_state*)arg;
+   assert(state->in_tx != NULL);
+
+   /*
+    * if 'Z' need to read the first payload byte
+    * to get the transaction status
+    */
+   if (kind == 'Z')
+   {
+      char tx_state = pgagroal_read_byte(msg + 5);
+
+      if (tx_state != 'I' && !*(state->in_tx))
+      {
+         pgagroal_prometheus_tx_count_add();
+      }
+
+      *(state->in_tx) = (tx_state != 'I');
+
+      if (state->saw_rfq != NULL && !*(state->in_tx))
+      {
+         *(state->saw_rfq) = true;
+      }
+   }
+   else if (kind == 'E')
+   {
+      if (state->fatal != NULL)
+      {
+         /* msg+6 is valid here because pgagroal_parse_message only fires
+          * the callback once the first payload byte has arrived */
+         if (msg[5] == 'S' && msglen >= 12)
+         {
+            if (!strncmp(msg + 6, "FATAL", 5) || !strncmp(msg + 6, "PANIC", 5))
+            {
+               *(state->fatal) = true;
+            }
+         }
+      }
    }
 }
 
