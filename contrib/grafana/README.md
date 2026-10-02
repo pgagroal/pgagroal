@@ -90,6 +90,8 @@ The dashboards visualize these pgagroal Prometheus metrics:
 - `pgagroal_client_wait` - Number of waiting clients
 - `pgagroal_client_active` - Number of active clients
 - `pgagroal_wait_time` - Client wait time
+- `pgagroal_max_wait_time` - Maximum client wait time
+- `pgagroal_total_wait_time` - Total accumulated client wait time
 
 ### Performance
 - `pgagroal_query_count` - Total query count

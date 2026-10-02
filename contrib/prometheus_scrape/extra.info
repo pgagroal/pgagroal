@@ -35,6 +35,12 @@ pgagroal_failed_servers
 pgagroal_wait_time
 + Measures the current waiting time in seconds for clients waiting for available connections from the pool.
 
+pgagroal_max_wait_time
++ Measures the maximum time in seconds that a client has waited for an available connection.
+
+pgagroal_total_wait_time
++ Measures the total accumulated client wait time in seconds.
+
 pgagroal_query_count
 + Tracks the total cumulative number of SQL queries that have been processed through pgagroal since startup.
 

@@ -235,6 +235,17 @@ pgagroal_prometheus_client_wait_add(void);
  */
 void
 pgagroal_prometheus_client_wait_sub(void);
+/**
+ * Set the maximum client wait time
+ */
+void
+pgagroal_prometheus_client_max_wait_time_set(unsigned long wait_time);
+
+/**
+ * Add to the total client wait time
+ */
+void
+pgagroal_prometheus_client_total_wait_time_add(unsigned long wait_time);
 
 /**
  * Increase client_active by 1
