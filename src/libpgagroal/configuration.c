@@ -149,6 +149,56 @@ ev_backend_t pgagroal_to_backend_type(char* str);
 /**
  *
  */
+#if HAVE_LINUX && HAVE_IO_URING
+int
+pgagroal_check_io_uring_enabled(bool tls, int* ev_backend)
+{
+   int fd;
+   char rval;
+
+   if (ev_backend != NULL && *ev_backend == PGAGROAL_EVENT_BACKEND_IO_URING)
+   {
+      /* Check if io_uring is enabled or works for supported configuration, else fallback to next backend */
+      fd = open("/proc/sys/kernel/io_uring_disabled", O_RDONLY);
+      if (fd < 0)
+      {
+         pgagroal_log_debug("Failed to open file /proc/sys/kernel/io_uring_disabled: %s", strerror(errno));
+         goto fallback;
+      }
+      if (read(fd, &rval, 1) <= 0)
+      {
+         pgagroal_log_fatal("Failed to read file /proc/sys/kernel/io_uring_disabled");
+         return 1;
+      }
+      if (close(fd) < 0)
+      {
+         pgagroal_log_fatal("Failed to close file descriptor for /proc/sys/kernel/io_uring_disabled: %s", strerror(errno));
+         return 1;
+      }
+
+      /* See doc: https://docs.kernel.org/admin-guide/sysctl/kernel.html#io-uring-disabled */
+      if (tls || (rval == '1') || (rval == '2'))
+      {
+         if (tls)
+         {
+            pgagroal_log_warn("io_uring not supported with tls on");
+         }
+         else
+         {
+            pgagroal_log_warn("io_uring supported but not enabled. Enable io_uring by setting /proc/sys/kernel/io_uring_disabled to '0'");
+         }
+fallback:
+         *ev_backend = PGAGROAL_EVENT_BACKEND_EPOLL;
+      }
+   }
+
+   return 0;
+}
+#endif /* HAVE_LINUX && HAVE_IO_URING */
+
+/**
+ *
+ */
 int
 pgagroal_init_configuration(void* shm)
 {
@@ -449,11 +499,6 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
    bool tls;
    struct stat st;
    struct main_configuration* config;
-#if HAVE_LINUX && HAVE_IO_URING
-   int fd;
-   char rval;
-#endif /* HAVE_LINUX && HAVE_IO_URING */
-
    tls = false;
 
    config = (struct main_configuration*)shm;
@@ -891,42 +936,11 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
    }
 
 #if HAVE_LINUX && HAVE_IO_URING
-   if (config->ev_backend == PGAGROAL_EVENT_BACKEND_IO_URING)
+   if(pgagroal_check_io_uring_enabled(config->common.tls, &config->ev_backend))
    {
-      /* check if io_uring is enabled or works for supported configuration, else fallback to next backend */
-      fd = open("/proc/sys/kernel/io_uring_disabled", O_RDONLY);
-      if (fd < 0)
-      {
-         pgagroal_log_debug("Failed to open file /proc/sys/kernel/io_uring_disabled: %s", strerror(errno));
-         goto fallback;
-      }
-      if (read(fd, &rval, 1) <= 0)
-      {
-         pgagroal_log_fatal("Failed to read file /proc/sys/kernel/io_uring_disabled");
-         return 1;
-      }
-      if (close(fd) < 0)
-      {
-         pgagroal_log_fatal("Failed to close file descriptor for /proc/sys/kernel/io_uring_disabled: %s", strerror(errno));
-         return 1;
-      }
-
-      /* see doc: https://docs.kernel.org/admin-guide/sysctl/kernel.html#io-uring-disabled */
-      if (config->common.tls || (rval == '1') || (rval == '2'))
-      {
-         if (config->common.tls)
-         {
-            pgagroal_log_warn("io_uring not supported with tls on");
-         }
-         else
-         {
-            pgagroal_log_warn("io_uring supported but not enabled. Enable io_uring by setting /proc/sys/kernel/io_uring_disabled to '0'");
-         }
-fallback:
-         config->ev_backend = PGAGROAL_EVENT_BACKEND_EPOLL;
-      }
+      return 1;
    }
-#endif /* HAVE_LINUX && HAVE_IO_URING */
+#endif
    pgagroal_log_debug("Selected backend '%s'", to_backend_str(config->ev_backend));
 
    // do some last initialization here, since the configuration
@@ -1202,45 +1216,11 @@ pgagroal_vault_validate_configuration(void* shm)
    }
 
 #if HAVE_LINUX && HAVE_IO_URING
-   if (config->ev_backend == PGAGROAL_EVENT_BACKEND_IO_URING)
+   if(pgagroal_check_io_uring_enabled(config->common.tls, &config->ev_backend))
    {
-      int fd;
-      char rval;
-
-      /* check if io_uring is enabled or works for supported configuration, else fallback to next backend */
-      fd = open("/proc/sys/kernel/io_uring_disabled", O_RDONLY);
-      if (fd < 0)
-      {
-         pgagroal_log_debug("pgagroal-vault: Failed to open file /proc/sys/kernel/io_uring_disabled: %s", strerror(errno));
-         goto fallback;
-      }
-      if (read(fd, &rval, 1) <= 0)
-      {
-         pgagroal_log_fatal("pgagroal-vault: Failed to read file /proc/sys/kernel/io_uring_disabled");
-         return 1;
-      }
-      if (close(fd) < 0)
-      {
-         pgagroal_log_fatal("pgagroal-vault: Failed to close file descriptor for /proc/sys/kernel/io_uring_disabled: %s", strerror(errno));
-         return 1;
-      }
-
-      /* see doc: https://docs.kernel.org/admin-guide/sysctl/kernel.html#io-uring-disabled */
-      if (config->common.tls || (rval == '1') || (rval == '2'))
-      {
-         if (config->common.tls)
-         {
-            pgagroal_log_warn("pgagroal-vault: io_uring not supported with tls on");
-         }
-         else
-         {
-            pgagroal_log_warn("pgagroal-vault: io_uring supported but not enabled. Enable io_uring by setting /proc/sys/kernel/io_uring_disabled to '0'");
-         }
-fallback:
-         config->ev_backend = PGAGROAL_EVENT_BACKEND_EPOLL;
-      }
+      return 1;
    }
-#endif /* HAVE_LINUX && HAVE_IO_URING */
+#endif
 
    pgagroal_log_debug("pgagroal-vault: Selected backend '%s'", to_backend_str(config->ev_backend));
 
