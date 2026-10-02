@@ -43,6 +43,7 @@
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
+#include <openssl/crypto.h>
 #include <openssl/pem.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
@@ -1436,6 +1437,27 @@ pgagroal_strcasecmp(const char* str1, const char* str2)
    }
 
    return strcasecmp(str1, str2) == 0;
+}
+
+bool
+pgagroal_secure_strcmp(const char* str1, const char* str2)
+{
+   if (str1 == NULL && str2 == NULL)
+   {
+      return true;
+   }
+
+   if ((str1 == NULL && str2 != NULL) || (str1 != NULL && str2 == NULL))
+   {
+      return false;
+   }
+
+   if (strlen(str1) != strlen(str2))
+   {
+      return false;
+   }
+
+   return CRYPTO_memcmp(str1, str2, strlen(str1)) == 0;
 }
 
 char*
