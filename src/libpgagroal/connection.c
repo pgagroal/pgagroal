@@ -47,6 +47,9 @@
 
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+#ifdef __NetBSD__
+typedef unsigned char u_char;
+#endif
 
 static int read_complete(SSL* ssl, int socket, void* buf, size_t size);
 static int write_complete(SSL* ssl, int socket, void* buf, size_t size);

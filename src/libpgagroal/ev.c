@@ -27,6 +27,9 @@
  */
 
 /* pgagroal */
+#define EV_USE_KQUEUE 1
+#define EV_USE_EPOLL 0
+#define _NETBSD_SOURCE
 #include <ev.h>
 #include <logging.h>
 #include <message.h>

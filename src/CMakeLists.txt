@@ -522,6 +522,7 @@ install(TARGETS pgagroal DESTINATION ${CMAKE_INSTALL_LIBDIR}/)
 # Build pgagroal
 #
 add_executable(pgagroal-bin main.c ${RESOURCE_OBJECT})
+target_link_libraries(pgagroal execinfo)
 if (CMAKE_C_LINK_PIE_SUPPORTED)
   set_target_properties(pgagroal-bin PROPERTIES LINKER_LANGUAGE C POSITION_INDEPENDENT_CODE TRUE OUTPUT_NAME pgagroal)
 else()
