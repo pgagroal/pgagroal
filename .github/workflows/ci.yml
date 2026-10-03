@@ -195,6 +195,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@2026.09.28.1
+
       - name: Install dependencies
         run: |
           brew update
@@ -245,6 +249,24 @@ jobs:
 
           cat /tmp/pgagroal-macos-test/pgagroal.log
           exit $ping_status
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: macos-build-logs
+          path: |
+            ${{ env.BUILD_DIR }}/log/
+            /tmp/pgagroal-macos-test/
+            /tmp/*.log
+          retention-days: 7
+
+      - name: Upload Generated Documentation Artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: macos-generated-docs
+          path: ${{ env.BUILD_DIR }}/doc/
+          retention-days: 7
 
   build-freebsd:
     needs: [format-check]
