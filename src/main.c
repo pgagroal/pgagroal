@@ -110,6 +110,27 @@ static void reload_set_configuration(SSL* ssl, int client_fd, uint8_t compressio
 static void create_pidfile_or_exit(void);
 static void remove_pidfile(void);
 static void shutdown_ports(bool remove);
+static void http_child_serve(int client_fd,
+                             const char* title,
+                             const char* cert_file,
+                             const char* key_file,
+                             const char* ca_file,
+                             void (*serve_fn)(SSL* ssl, int fd));
+
+static void accept_http_cb(struct io_watcher* watcher,
+                           void (*serve_fn)(SSL* ssl, int fd),
+                           const char* title,
+                           const char* cert_file,
+                           const char* key_file,
+                           const char* ca_file,
+                           int fork_error_code,
+                           void (*restart_fn)(void));
+
+static void restart_metrics(void);
+static void restart_console(void);
+static void restart_management(void);
+
+static void serve_management(SSL* ssl, int client_fd);
 
 static char** argv_ptr;
 static int main_argc;
@@ -2490,17 +2511,64 @@ error:
 }
 
 static void
-accept_metrics_cb(struct io_watcher* watcher)
+http_child_serve(int client_fd,
+                 const char* title,
+                 const char* cert_file,
+                 const char* key_file,
+                 const char* ca_file,
+                 void (*serve_fn)(SSL* ssl, int fd))
 {
-   int client_fd;
-   struct main_configuration* config;
    SSL_CTX* ctx = NULL;
    SSL* client_ssl = NULL;
 
-   config = (struct main_configuration*)shmem;
+   pgagroal_event_loop_fork();
+   shutdown_ports(false);
+
+   if (cert_file != NULL && key_file != NULL &&
+       strlen(cert_file) > 0 && strlen(key_file) > 0)
+   {
+      if (pgagroal_create_ssl_ctx(false, &ctx))
+      {
+         pgagroal_log_error("Could not create %s SSL context", title);
+         pgagroal_disconnect(client_fd);
+         exit(1);
+      }
+
+      if (pgagroal_create_ssl_server(ctx, (char*)key_file, (char*)cert_file, (char*)ca_file, client_fd, &client_ssl))
+      {
+         pgagroal_log_error("Could not create %s SSL server", title);
+         SSL_CTX_free(ctx);
+         pgagroal_disconnect(client_fd);
+         exit(1);
+      }
+   }
+
+   serve_fn(client_ssl, client_fd);
+
+   pgagroal_close_ssl(client_ssl);
+   pgagroal_disconnect(client_fd);
+   if (ctx != NULL)
+   {
+      SSL_CTX_free(ctx);
+   }
+   exit(0);
+}
+
+static void
+accept_http_cb(struct io_watcher* watcher,
+               void (*serve_fn)(SSL* ssl, int fd),
+               const char* title,
+               const char* cert_file,
+               const char* key_file,
+               const char* ca_file,
+               int fork_error_code,
+               void (*restart_fn)(void))
+{
+   int client_fd;
+   pid_t pid;
+   struct main_configuration* config = (struct main_configuration*)shmem;
 
    errno = 0;
-
    client_fd = watcher->fds.main.client_fd;
 
    pgagroal_prometheus_self_sockets_add();
@@ -2509,227 +2577,203 @@ accept_metrics_cb(struct io_watcher* watcher)
    {
       if (accept_fatal(errno) && config->keep_running)
       {
-         pgagroal_log_warn("Restarting listening port due to: %s (%d)", strerror(errno), client_fd);
-
-         for (int i = 0; i < metrics_fds_length; i++)
+         pgagroal_log_warn("Restarting %s listening port due to: %s (%d)", title, strerror(errno), client_fd);
+         if (restart_fn != NULL)
          {
-            pgagroal_io_stop(&io_metrics[i].watcher);
-         }
-         shutdown_metrics();
-
-         free(metrics_fds);
-         metrics_fds = NULL;
-         metrics_fds_length = 0;
-
-         if (pgagroal_bind(config->common.host, config->common.metrics, &metrics_fds, &metrics_fds_length, config->nodelay, config->backlog))
-         {
-            pgagroal_log_fatal("pgagroal: Could not bind to %s:%d", config->common.host, config->common.metrics);
-            exit(1);
-         }
-
-         if (metrics_fds_length > MAX_FDS)
-         {
-            pgagroal_log_fatal("pgagroal: Too many descriptors %d", metrics_fds_length);
-            exit(1);
-         }
-
-         start_metrics();
-
-         for (int i = 0; i < metrics_fds_length; i++)
-         {
-            pgagroal_log_debug("Metrics: %d", *(metrics_fds + i));
+            restart_fn();
          }
       }
       else
       {
          pgagroal_log_debug("accept: %s (%d)", strerror(errno), client_fd);
       }
+      pgagroal_prometheus_self_sockets_sub();
       errno = 0;
       return;
    }
 
-   if (!fork())
+   pid = fork();
+   if (pid == -1)
    {
-      pgagroal_event_loop_fork();
-      shutdown_ports(false);
-      if (strlen(config->common.metrics_cert_file) > 0 && strlen(config->common.metrics_key_file) > 0)
-      {
-         if (pgagroal_create_ssl_ctx(false, &ctx))
-         {
-            pgagroal_log_error("Could not create metrics SSL context");
-            pgagroal_disconnect(client_fd);
-            exit(1);
-         }
-
-         if (pgagroal_create_ssl_server(ctx, config->common.metrics_key_file, config->common.metrics_cert_file, config->common.metrics_ca_file, client_fd, &client_ssl))
-         {
-            pgagroal_log_error("Could not create metrics SSL server");
-            pgagroal_disconnect(client_fd);
-            exit(1);
-         }
-      }
-      /* We are leaving the socket descriptor valid such that the client won't reuse it */
-      pgagroal_prometheus(client_ssl, client_fd);
+      pgagroal_log_error("%s: No fork (%d)", title, fork_error_code);
+      pgagroal_disconnect(client_fd);
+      pgagroal_prometheus_self_sockets_sub();
+      return;
+   }
+   else if (pid == 0)
+   {
+      http_child_serve(client_fd, title, cert_file, key_file, ca_file, serve_fn);
    }
 
-   pgagroal_close_ssl(client_ssl);
    pgagroal_disconnect(client_fd);
    pgagroal_prometheus_self_sockets_sub();
 }
 
 static void
-accept_management_cb(struct io_watcher* watcher)
+restart_metrics(void)
+{
+   struct main_configuration* config = (struct main_configuration*)shmem;
+
+   for (int i = 0; i < metrics_fds_length; i++)
+   {
+      pgagroal_io_stop(&io_metrics[i].watcher);
+   }
+   shutdown_metrics();
+
+   free(metrics_fds);
+   metrics_fds = NULL;
+   metrics_fds_length = 0;
+
+   if (pgagroal_bind(config->common.host, config->common.metrics, &metrics_fds, &metrics_fds_length, config->nodelay, config->backlog))
+   {
+      pgagroal_log_fatal("pgagroal: Could not bind to %s:%d", config->common.host, config->common.metrics);
+      exit(1);
+   }
+
+   if (metrics_fds_length > MAX_FDS)
+   {
+      pgagroal_log_fatal("pgagroal: Too many descriptors %d", metrics_fds_length);
+      exit(1);
+   }
+
+   start_metrics();
+
+   for (int i = 0; i < metrics_fds_length; i++)
+   {
+      pgagroal_log_debug("Metrics: %d", *(metrics_fds + i));
+   }
+}
+
+static void
+restart_console(void)
+{
+   struct main_configuration* config = (struct main_configuration*)shmem;
+
+   for (int i = 0; i < console_fds_length; i++)
+   {
+      pgagroal_io_stop(&io_console[i].watcher);
+   }
+   shutdown_console();
+
+   free(console_fds);
+   console_fds = NULL;
+   console_fds_length = 0;
+
+   if (pgagroal_bind(config->common.host, config->console, &console_fds, &console_fds_length, config->nodelay, config->backlog))
+   {
+      pgagroal_log_fatal("pgagroal: Could not bind to %s:%d", config->common.host, config->console);
+      exit(1);
+   }
+
+   if (console_fds_length > MAX_FDS)
+   {
+      pgagroal_log_fatal("pgagroal: Too many descriptors %d", console_fds_length);
+      exit(1);
+   }
+
+   start_console();
+
+   for (int i = 0; i < console_fds_length; i++)
+   {
+      pgagroal_log_debug("Console: %d", *(console_fds + i));
+   }
+}
+
+static void
+restart_management(void)
+{
+   struct main_configuration* config = (struct main_configuration*)shmem;
+
+   for (int i = 0; i < management_fds_length; i++)
+   {
+      pgagroal_io_stop(&io_management[i].watcher);
+   }
+   shutdown_management(false);
+
+   free(management_fds);
+   management_fds = NULL;
+   management_fds_length = 0;
+
+   if (pgagroal_bind(config->common.host, config->management, &management_fds, &management_fds_length, config->nodelay, config->backlog))
+   {
+      pgagroal_log_fatal("pgagroal: Could not bind to %s:%d", config->common.host, config->management);
+      exit(1);
+   }
+
+   if (management_fds_length > MAX_FDS)
+   {
+      pgagroal_log_fatal("pgagroal: Too many descriptors %d", management_fds_length);
+      exit(1);
+   }
+
+   start_management();
+
+   for (int i = 0; i < management_fds_length; i++)
+   {
+      pgagroal_log_debug("Remote management: %d", *(management_fds + i));
+   }
+}
+
+static void
+serve_management(SSL* ssl, int client_fd)
 {
    struct sockaddr_in6 client_addr;
-   int client_fd;
    char address[INET6_ADDRSTRLEN];
-   struct main_configuration* config;
+   socklen_t client_addr_length = sizeof(struct sockaddr_in6);
 
    memset(&address, 0, sizeof(address));
-
-   config = (struct main_configuration*)shmem;
-
-   client_fd = watcher->fds.main.client_fd;
-
-   pgagroal_prometheus_self_sockets_add();
-
-   if (client_fd == -1)
-   {
-      if (accept_fatal(errno) && config->keep_running)
-      {
-         pgagroal_log_warn("Restarting listening port due to: %s (%d)", strerror(errno), client_fd);
-
-         for (int i = 0; i < management_fds_length; i++)
-         {
-            pgagroal_io_stop(&io_management[i].watcher);
-         }
-         shutdown_management(false);
-
-         free(management_fds);
-         management_fds = NULL;
-         management_fds_length = 0;
-
-         if (pgagroal_bind(config->common.host, config->management, &management_fds, &management_fds_length, config->nodelay, config->backlog))
-         {
-            pgagroal_log_fatal("pgagroal: Could not bind to %s:%d", config->common.host, config->management);
-            exit(1);
-         }
-
-         if (management_fds_length > MAX_FDS)
-         {
-            pgagroal_log_fatal("pgagroal: Too many descriptors %d", management_fds_length);
-            exit(1);
-         }
-
-         start_management();
-
-         for (int i = 0; i < management_fds_length; i++)
-         {
-            pgagroal_log_debug("Remote management: %d", *(management_fds + i));
-         }
-      }
-      else
-      {
-         pgagroal_log_debug("accept: %s (%d)", strerror(errno), client_fd);
-      }
-      errno = 0;
-      return;
-   }
-
    memset(&client_addr, 0, sizeof(struct sockaddr_in6));
-   socklen_t client_addr_length = sizeof(struct sockaddr_in6);
-   getpeername(client_fd, (struct sockaddr*)&client_addr, &client_addr_length);
 
+   getpeername(client_fd, (struct sockaddr*)&client_addr, &client_addr_length);
    pgagroal_get_address((struct sockaddr*)&client_addr, (char*)&address, sizeof(address));
 
-   if (!fork())
+   char* addr = calloc(1, strlen(address) + 1);
+   if (addr == NULL)
    {
-      char* addr = calloc(1, strlen(address) + 1);
-      if (addr == NULL)
-      {
-         pgagroal_log_fatal("Couldn't allocate address");
-         return;
-      }
-      memcpy(addr, address, strlen(address));
-
-      pgagroal_event_loop_fork();
-      shutdown_ports(false);
-      /* We are leaving the socket descriptor valid such that the client won't reuse it */
-      pgagroal_remote_management(client_fd, addr);
-      exit(0);
+      pgagroal_log_fatal("Couldn't allocate address");
+      exit(1);
    }
+   memcpy(addr, address, strlen(address));
 
-   pgagroal_disconnect(client_fd);
-   pgagroal_prometheus_self_sockets_sub();
+   pgagroal_remote_management(client_fd, addr);
+   free(addr);
+}
+
+static void
+accept_metrics_cb(struct io_watcher* watcher)
+{
+   struct main_configuration* config = (struct main_configuration*)shmem;
+
+   accept_http_cb(watcher,
+                  pgagroal_prometheus,
+                  "metrics",
+                  config->common.metrics_cert_file,
+                  config->common.metrics_key_file,
+                  config->common.metrics_ca_file,
+                  MANAGEMENT_ERROR_METRICS_NOFORK,
+                  restart_metrics);
 }
 
 static void
 accept_console_cb(struct io_watcher* watcher)
 {
-   int client_fd;
-   struct main_configuration* config;
+   accept_http_cb(watcher,
+                  (void (*)(SSL*, int))pgagroal_console,
+                  "console",
+                  NULL, NULL, NULL,
+                  MANAGEMENT_ERROR_CONSOLE_NOFORK,
+                  restart_console);
+}
 
-   config = (struct main_configuration*)shmem;
-
-   errno = 0;
-
-   client_fd = watcher->fds.main.client_fd;
-
-   pgagroal_prometheus_self_sockets_add();
-
-   if (client_fd == -1)
-   {
-      if (accept_fatal(errno) && config->keep_running)
-      {
-         pgagroal_log_warn("Restarting listening port due to: %s (%d)", strerror(errno), client_fd);
-
-         for (int i = 0; i < console_fds_length; i++)
-         {
-            pgagroal_io_stop(&io_console[i].watcher);
-         }
-         shutdown_console();
-
-         free(console_fds);
-         console_fds = NULL;
-         console_fds_length = 0;
-
-         if (pgagroal_bind(config->common.host, config->console, &console_fds, &console_fds_length, config->nodelay, config->backlog))
-         {
-            pgagroal_log_fatal("pgagroal: Could not bind to %s:%d", config->common.host, config->console);
-            exit(1);
-         }
-
-         if (console_fds_length > MAX_FDS)
-         {
-            pgagroal_log_fatal("pgagroal: Too many descriptors %d", console_fds_length);
-            exit(1);
-         }
-
-         start_console();
-
-         for (int i = 0; i < console_fds_length; i++)
-         {
-            pgagroal_log_debug("Console: %d", *(console_fds + i));
-         }
-      }
-      else
-      {
-         pgagroal_log_debug("accept: %s (%d)", strerror(errno), client_fd);
-      }
-      errno = 0;
-      return;
-   }
-
-   if (!fork())
-   {
-      pgagroal_event_loop_fork();
-      shutdown_ports(false);
-      /* We are leaving the socket descriptor valid such that the client won't reuse it */
-      pgagroal_console(NULL, client_fd);
-   }
-
-   pgagroal_disconnect(client_fd);
-   pgagroal_prometheus_self_sockets_sub();
+static void
+accept_management_cb(struct io_watcher* watcher)
+{
+   accept_http_cb(watcher,
+                  serve_management,
+                  "remote management",
+                  NULL, NULL, NULL,
+                  MANAGEMENT_ERROR_MANAGEMENT_NOFORK,
+                  restart_management);
 }
 
 static void
