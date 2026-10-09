@@ -47,6 +47,7 @@ extern "C" {
 #define CONNECTION_CLIENT_FD   3
 #define CONNECTION_REMOVE_FD   4
 #define CONNECTION_CLIENT_DONE 5
+#define CONNECTION_GET_FD      6
 
 /**
  * Connection: Get a connection
@@ -118,20 +119,20 @@ int
 pgagroal_connection_slot_read(int client_fd, int32_t* slot);
 
 /**
- * Connection: Socket write
- * @param socket The socket
+ * Connection: Generation write
+ * @param generation The descriptor generation of the slot
  * @return 0 upon success, otherwise 1
  */
 int
-pgagroal_connection_socket_write(int client_fd, int socket);
+pgagroal_connection_generation_write(int client_fd, long long generation);
 
 /**
- * Connection: Socket read
- * @param socket The socket
+ * Connection: Generation read
+ * @param generation The descriptor generation of the slot
  * @return 0 upon success, otherwise 1
  */
 int
-pgagroal_connection_socket_read(int client_fd, int* socket);
+pgagroal_connection_generation_read(int client_fd, long long* generation);
 
 /**
  * Connection: PID write

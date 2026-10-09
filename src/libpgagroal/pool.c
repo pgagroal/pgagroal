@@ -46,6 +46,7 @@
 /* system */
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdatomic.h>
 #include <stdbool.h>
@@ -65,6 +66,12 @@ static int get_connection_count_for_limit_rule(int rule_index, char* username);
 static char* resolve_database_name(char* database, int best_rule);
 static void check_graceful_shutdown_trigger(void);
 static bool increase_connections(int best_rule);
+static bool fetch_descriptor(int slot);
+static bool holds_descriptor(int slot);
+
+int pgagroal_known_fds[MAX_NUMBER_OF_CONNECTIONS];
+long long pgagroal_fd_generation = 0;
+int pgagroal_fd_base = -1;
 
 int
 pgagroal_get_connection(char* username, char* database, bool reuse, bool transaction_mode, int* slot, SSL** ssl)
@@ -136,6 +143,12 @@ start:
                   can_reuse = true;
                }
                // Check if both are aliases of the same real database
+            }
+
+            /* We don't hold the descriptor if main received it after we were forked */
+            if (can_reuse && !transaction_mode && !holds_descriptor(i) && !fetch_descriptor(i))
+            {
+               can_reuse = false;
             }
 
             if (can_reuse)
@@ -607,6 +620,9 @@ pgagroal_return_connection(int slot, SSL* ssl, bool transaction_mode)
 
          if (config->connections[slot].new)
          {
+            /* The slot can't be reused until main has the descriptor */
+            atomic_store(&config->connections[slot].generation, FD_GENERATION_PENDING);
+
             if (pgagroal_connection_get(&transfer_fd))
             {
                goto kill_connection;
@@ -720,7 +736,8 @@ pgagroal_kill_connection(int slot, SSL* ssl)
          result = 1;
       }
 
-      if (pgagroal_connection_socket_write(transfer_fd, fd))
+      /* Tells main which of its descriptors for the slot to close */
+      if (pgagroal_connection_generation_write(transfer_fd, atomic_load(&config->connections[slot].generation)))
       {
          result = 1;
       }
@@ -817,12 +834,32 @@ pgagroal_kill_connection(int slot, SSL* ssl)
    config->connections[slot].timestamp = -1;
    config->connections[slot].fd = -1;
    config->connections[slot].pid = -1;
+   atomic_store(&config->connections[slot].generation, 0);
 
    atomic_store(&config->states[slot], STATE_NOTINIT);
 
    pgagroal_prometheus_connection_kill();
 
    return result;
+}
+
+void
+pgagroal_pool_close_inherited(int server_fd)
+{
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
+
+   /* connections[i].fd can be another process' descriptor number, so only
+    * close what main held when this process was forked */
+   for (int i = 0; i < config->max_connections; i++)
+   {
+      if (pgagroal_known_fds[i] > 0 && pgagroal_known_fds[i] != server_fd)
+      {
+         pgagroal_disconnect(pgagroal_known_fds[i]);
+      }
+      pgagroal_known_fds[i] = 0;
+   }
 }
 
 void
@@ -851,6 +888,12 @@ pgagroal_idle_timeout(void)
 
       if (atomic_compare_exchange_strong(&config->states[i], &free, idle_check))
       {
+         if (!holds_descriptor(i))
+         {
+            atomic_store(&config->states[i], STATE_FREE);
+            continue;
+         }
+
          double diff = difftime(now, config->connections[i].timestamp);
          if (diff >= (double)pgagroal_time_convert(config->idle_timeout, FORMAT_TIME_S) && !config->connections[i].tx_mode)
          {
@@ -910,6 +953,12 @@ pgagroal_max_connection_age(void)
 
       if (atomic_compare_exchange_strong(&config->states[i], &free, age_check))
       {
+         if (!holds_descriptor(i))
+         {
+            atomic_store(&config->states[i], STATE_FREE);
+            continue;
+         }
+
          double age = difftime(now, config->connections[i].start_time);
          if (age >= (double)pgagroal_time_convert(config->max_connection_age, FORMAT_TIME_S) && !config->connections[i].tx_mode)
          {
@@ -968,6 +1017,12 @@ pgagroal_validation(void)
 
       if (atomic_compare_exchange_strong(&config->states[i], &free, validation))
       {
+         if (!holds_descriptor(i))
+         {
+            atomic_store(&config->states[i], STATE_FREE);
+            continue;
+         }
+
          bool kill = false;
          double diff, age;
 
@@ -1081,6 +1136,12 @@ pgagroal_flush(int mode, char* database)
          {
             if (atomic_compare_exchange_strong(&config->states[i], &free, STATE_FLUSH))
             {
+               if (!holds_descriptor(i))
+               {
+                  atomic_store(&config->states[i], STATE_FREE);
+                  continue;
+               }
+
                if (pgagroal_socket_isvalid(config->connections[i].fd))
                {
                   pgagroal_write_terminate(NULL, config->connections[i].fd);
@@ -1131,6 +1192,10 @@ pgagroal_flush(int mode, char* database)
                /* Do nothing */
                break;
             case STATE_FREE:
+               if (!holds_descriptor(i))
+               {
+                  break;
+               }
                atomic_store(&config->states[i], STATE_GRACEFULLY);
                pgagroal_prometheus_connection_flush();
                pgagroal_tracking_event_slot(TRACKER_FLUSH, i);
@@ -1187,6 +1252,10 @@ pgagroal_flush_server(signed char server)
                /* Do nothing */
                break;
             case STATE_FREE:
+               if (!holds_descriptor(i))
+               {
+                  break;
+               }
                atomic_store(&config->states[i], STATE_GRACEFULLY);
                if (pgagroal_socket_isvalid(config->connections[i].fd))
                {
@@ -1416,6 +1485,7 @@ pgagroal_pool_init(void)
       config->connections[i].timestamp = -1;
       config->connections[i].fd = -1;
       config->connections[i].pid = -1;
+      atomic_store(&config->connections[i].generation, 0);
    }
 
    return 0;
@@ -1672,6 +1742,12 @@ remove_connection(char* username, char* database)
 
       if (atomic_compare_exchange_strong(&config->states[i], &free, remove))
       {
+         if (!holds_descriptor(i))
+         {
+            atomic_store(&config->states[i], STATE_FREE);
+            continue;
+         }
+
          if (pgagroal_strcmp(username, config->connections[i].username) && pgagroal_strcmp(database, config->connections[i].database))
          {
             if (!atomic_compare_exchange_strong(&config->states[i], &remove, STATE_FREE))
@@ -2072,4 +2148,83 @@ resolve_database_name(char* database, int best_rule)
 
    // Not an alias, return original name
    return database;
+}
+
+static bool
+fetch_descriptor(int slot)
+{
+   int transfer_fd = -1;
+   int32_t s = -1;
+   int fd = -1;
+   int target;
+   long long expected;
+   long long generation = 0;
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
+
+   target = config->connections[slot].fd;
+   expected = atomic_load(&config->connections[slot].generation);
+
+   if (target < 0 || expected == FD_GENERATION_PENDING)
+   {
+      goto error;
+   }
+
+   /* Ask main for its descriptor of the slot */
+   if (pgagroal_connection_get(&transfer_fd) ||
+       pgagroal_connection_id_write(transfer_fd, CONNECTION_GET_FD) ||
+       pgagroal_connection_slot_write(transfer_fd, slot) ||
+       pgagroal_connection_generation_read(transfer_fd, &generation))
+   {
+      goto error;
+   }
+
+   if (generation != expected || pgagroal_connection_transfer_read(transfer_fd, &s, &fd) || s != slot || fd < 0)
+   {
+      goto error;
+   }
+
+   pgagroal_disconnect(transfer_fd);
+   transfer_fd = -1;
+
+   /* Everything uses connections[slot].fd, so the descriptor must have that
+    * number here too. An open target is our inherited copy of the slot's
+    * previous backend, which dup2() replaces; anything else must not be touched. */
+   if (fd != target)
+   {
+      if ((fcntl(target, F_GETFD) != -1 && pgagroal_known_fds[slot] != target) || dup2(fd, target) == -1)
+      {
+         goto error;
+      }
+      pgagroal_disconnect(fd);
+   }
+
+   pgagroal_log_debug("fetch_descriptor: Slot %d FD %d Generation %lld", slot, target, generation);
+
+   return true;
+
+error:
+
+   pgagroal_log_debug("fetch_descriptor: Slot %d not available (FD %d Generation %lld)", slot, target, expected);
+
+   if (fd >= 0 && fd != target)
+   {
+      pgagroal_disconnect(fd);
+   }
+   pgagroal_disconnect(transfer_fd);
+   errno = 0;
+
+   return false;
+}
+
+static bool
+holds_descriptor(int slot)
+{
+   struct main_configuration* config;
+
+   config = (struct main_configuration*)shmem;
+
+   /* connections[slot].fd is ours only if main received it before we were forked */
+   return atomic_load(&config->connections[slot].generation) <= pgagroal_fd_generation;
 }

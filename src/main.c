@@ -133,7 +133,7 @@ static struct accept_io io_management[MAX_FDS];
 static int* management_fds = NULL;
 static int management_fds_length = -1;
 static struct pipeline main_pipeline;
-static int known_fds[MAX_NUMBER_OF_CONNECTIONS];
+static long long known_generations[MAX_NUMBER_OF_CONNECTIONS];
 static struct client* clients = NULL;
 static struct accept_io io_transfer;
 static struct periodic_watcher idle_timeout_watcher;
@@ -517,7 +517,8 @@ main(int argc, char** argv)
    pgagroal_init_configuration(shmem);
    config = (struct main_configuration*)shmem;
 
-   memset(&known_fds, 0, sizeof(known_fds));
+   memset(&pgagroal_known_fds, 0, sizeof(pgagroal_known_fds));
+   memset(&known_generations, 0, sizeof(known_generations));
    memset(message, 0, MISC_LENGTH);
 
    if (directory_path == NULL)
@@ -1090,6 +1091,18 @@ read_superuser_path:
                  (long)(flimit.rlim_cur - 30));
 #endif
       errx(1, "max_connections is larger than the file descriptor limit (%ld available)", (long)(flimit.rlim_cur - 30));
+   }
+
+   /* Pooled backends live at pgagroal_fd_base + slot; keep that range low enough
+    * that a process' descriptor table stays small */
+   {
+      rlim_t top = flimit.rlim_cur;
+
+      if (top > (rlim_t)config->max_connections + 1024)
+      {
+         top = (rlim_t)config->max_connections + 1024;
+      }
+      pgagroal_fd_base = (int)(top - config->max_connections);
    }
 
    if (daemon)
@@ -2373,8 +2386,38 @@ accept_transfer_cb(struct io_watcher* watcher)
          goto error;
       }
 
+      if (slot < 0 || slot >= config->max_connections)
+      {
+         pgagroal_log_error("pgagroal: Transfer connection: Invalid slot %d", slot);
+         pgagroal_disconnect(fd);
+         goto error;
+      }
+
+      /* The kill for the slot's previous descriptor may not have arrived yet */
+      if (pgagroal_known_fds[slot] > 0 && pgagroal_known_fds[slot] != pgagroal_fd_base + slot)
+      {
+         pgagroal_disconnect(pgagroal_known_fds[slot]);
+      }
+
+      /* Keep the backend at its slot's number; this also replaces an older copy */
+      if (pgagroal_fd_base > 0 && fd != pgagroal_fd_base + slot)
+      {
+         if (dup2(fd, pgagroal_fd_base + slot) == -1)
+         {
+            pgagroal_log_error("pgagroal: Transfer connection: Slot %d FD %d to %d: %s", slot, fd, pgagroal_fd_base + slot, strerror(errno));
+            pgagroal_disconnect(fd);
+            errno = 0;
+            goto error;
+         }
+         pgagroal_disconnect(fd);
+         fd = pgagroal_fd_base + slot;
+      }
+
       config->connections[slot].fd = fd;
-      known_fds[slot] = config->connections[slot].fd;
+      pgagroal_known_fds[slot] = config->connections[slot].fd;
+      /* Processes forked from now on hold fd; set after fd so they see it */
+      atomic_store(&config->connections[slot].generation, ++pgagroal_fd_generation);
+      known_generations[slot] = pgagroal_fd_generation;
 
       if (config->pipeline == PIPELINE_TRANSACTION)
       {
@@ -2420,15 +2463,35 @@ accept_transfer_cb(struct io_watcher* watcher)
    }
    else if (id == CONNECTION_KILL)
    {
+      long long generation = 0;
+
       pgagroal_log_trace("pgagroal: Transfer kill connection");
 
-      if (pgagroal_connection_transfer_read(client_fd, &slot, &fd))
+      if (pgagroal_connection_slot_read(client_fd, &slot) ||
+          pgagroal_connection_generation_read(client_fd, &generation))
       {
-         pgagroal_log_error("pgagroal: Transfer kill connection: Slot %d FD %d", slot, fd);
+         pgagroal_log_error("pgagroal: Transfer kill connection: Slot %d Generation %lld", slot, generation);
          goto error;
       }
 
-      if (known_fds[slot] == fd)
+      if (slot < 0 || slot >= config->max_connections)
+      {
+         pgagroal_log_error("pgagroal: Transfer kill connection: Invalid slot %d", slot);
+         goto error;
+      }
+
+      /* The kill can arrive after the slot got a new descriptor, so only
+       * close ours if it is the one that was killed */
+      fd = -1;
+      if (generation > 0 && known_generations[slot] == generation)
+      {
+         fd = pgagroal_known_fds[slot];
+         pgagroal_disconnect(fd);
+         pgagroal_known_fds[slot] = 0;
+         known_generations[slot] = 0;
+      }
+
+      if (fd != -1 && config->pipeline == PIPELINE_TRANSACTION)
       {
          struct client* c = clients;
          while (c != NULL)
@@ -2454,12 +2517,48 @@ accept_transfer_cb(struct io_watcher* watcher)
 
             c = c->next;
          }
-
-         pgagroal_disconnect(fd);
-         known_fds[slot] = 0;
       }
 
-      pgagroal_log_debug("pgagroal: Transfer kill connection: Slot %d FD %d", slot, fd);
+      pgagroal_log_debug("pgagroal: Transfer kill connection: Slot %d Generation %lld FD %d", slot, generation, fd);
+   }
+   else if (id == CONNECTION_GET_FD)
+   {
+      long long generation = 0;
+
+      pgagroal_log_trace("pgagroal: Transfer get fd");
+
+      if (pgagroal_connection_slot_read(client_fd, &slot))
+      {
+         pgagroal_log_error("pgagroal: Transfer get fd: Slot %d", slot);
+         goto error;
+      }
+
+      if (slot < 0 || slot >= config->max_connections)
+      {
+         pgagroal_log_error("pgagroal: Transfer get fd: Invalid slot %d", slot);
+         goto error;
+      }
+
+      /* The process was forked before we received the slot's descriptor.
+       * Send our generation, and the descriptor if we hold the one in the
+       * slot: pgagroal_connection_transfer_write() sends connections[slot].fd */
+      generation = known_generations[slot];
+      if (config->connections[slot].fd != pgagroal_known_fds[slot])
+      {
+         generation = 0;
+      }
+
+      if (pgagroal_connection_generation_write(client_fd, generation))
+      {
+         goto error;
+      }
+
+      if (generation > 0 && pgagroal_connection_transfer_write(client_fd, slot))
+      {
+         goto error;
+      }
+
+      pgagroal_log_debug("pgagroal: Transfer get fd: Slot %d FD %d Generation %lld", slot, pgagroal_known_fds[slot], generation);
    }
    else if (id == CONNECTION_CLIENT_DONE)
    {

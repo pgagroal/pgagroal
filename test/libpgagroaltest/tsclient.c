@@ -63,6 +63,7 @@ static char* get_log_file_path();
 static void* hold_thread_main(void* arg);
 static int scrape_limit_backend(int metrics_port, char* host, char* user, char* database);
 static int compute_client_watchdog(struct main_configuration* config, int hold_seconds);
+static int execute_pgbench(char* user, char* database, bool select_only, bool reconnect, int client_count, int thread_count, int transaction_count);
 
 int
 pgagroal_tsclient_init(char* base_dir)
@@ -130,6 +131,18 @@ pgagroal_tsclient_destroy()
 int
 pgagroal_tsclient_execute_pgbench(char* user, char* database, bool select_only, int client_count, int thread_count, int transaction_count)
 {
+   return execute_pgbench(user, database, select_only, false, client_count, thread_count, transaction_count);
+}
+
+int
+pgagroal_tsclient_execute_pgbench_connect(char* user, char* database, bool select_only, int client_count, int thread_count, int transaction_count)
+{
+   return execute_pgbench(user, database, select_only, true, client_count, thread_count, transaction_count);
+}
+
+static int
+execute_pgbench(char* user, char* database, bool select_only, bool reconnect, int client_count, int thread_count, int transaction_count)
+{
    char* command = NULL;
    char* log_file_path = NULL;
    struct main_configuration* config = NULL;
@@ -158,6 +171,11 @@ pgagroal_tsclient_execute_pgbench(char* user, char* database, bool select_only, 
    if (select_only)
    {
       command = pgagroal_append(command, "-S ");
+   }
+
+   if (reconnect)
+   {
+      command = pgagroal_append(command, "-C ");
    }
 
    if (client_count)

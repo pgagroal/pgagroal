@@ -337,16 +337,17 @@ error:
 }
 
 int
-pgagroal_connection_socket_write(int client_fd, int socket)
+pgagroal_connection_generation_write(int client_fd, long long generation)
 {
-   char buf4[4];
+   char buf8[8];
 
-   memset(&buf4[0], 0, sizeof(buf4));
-   pgagroal_write_int32(&buf4, socket);
+   memset(&buf8[0], 0, sizeof(buf8));
+   pgagroal_write_int32(&buf8[0], (int32_t)((uint64_t)generation >> 32));
+   pgagroal_write_int32(&buf8[4], (int32_t)((uint64_t)generation & 0xFFFFFFFF));
 
-   if (write_complete(NULL, client_fd, &buf4, sizeof(buf4)))
+   if (write_complete(NULL, client_fd, &buf8, sizeof(buf8)))
    {
-      pgagroal_log_warn("pgagroal_connection_socket_write: %d %s", client_fd, strerror(errno));
+      pgagroal_log_warn("pgagroal_connection_generation_write: %d %s", client_fd, strerror(errno));
       errno = 0;
       goto error;
    }
@@ -359,21 +360,22 @@ error:
 }
 
 int
-pgagroal_connection_socket_read(int client_fd, int* socket)
+pgagroal_connection_generation_read(int client_fd, long long* generation)
 {
-   char buf4[4];
+   char buf8[8];
 
-   *socket = -1;
+   *generation = 0;
 
-   memset(&buf4[0], 0, sizeof(buf4));
-   if (read_complete(NULL, client_fd, &buf4, sizeof(buf4)))
+   memset(&buf8[0], 0, sizeof(buf8));
+   if (read_complete(NULL, client_fd, &buf8, sizeof(buf8)))
    {
-      pgagroal_log_warn("pgagroal_connection_id_read: %d %s", client_fd, strerror(errno));
+      pgagroal_log_warn("pgagroal_connection_generation_read: %d %s", client_fd, strerror(errno));
       errno = 0;
       goto error;
    }
 
-   *socket = pgagroal_read_int32(&buf4);
+   *generation = (long long)(((uint64_t)(uint32_t)pgagroal_read_int32(&buf8[0]) << 32) |
+                             (uint64_t)(uint32_t)pgagroal_read_int32(&buf8[4]));
 
    return 0;
 

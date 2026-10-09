@@ -34,6 +34,7 @@
 #include <message.h>
 #include <network.h>
 #include <pipeline.h>
+#include <pool.h>
 #include <worker.h>
 
 /* system */
@@ -80,17 +81,7 @@ performance_initialize(void* shmem __attribute__((unused)), void** pipeline_shme
 static void
 performance_start(struct event_loop* loop __attribute__((unused)), struct worker_io* w)
 {
-   struct main_configuration* config;
-
-   config = (struct main_configuration*)shmem;
-
-   for (int i = 0; i < config->max_connections; i++)
-   {
-      if (i != w->slot && !config->connections[i].new && config->connections[i].fd > 0)
-      {
-         pgagroal_disconnect(config->connections[i].fd);
-      }
-   }
+   pgagroal_pool_close_inherited(w->server_fd);
 
    return;
 }

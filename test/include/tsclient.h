@@ -78,6 +78,19 @@ int
 pgagroal_tsclient_execute_pgbench(char* user, char* database, bool select_only, int client_count, int thread_count, int transaction_count);
 
 /**
+ * Like pgagroal_tsclient_execute_pgbench, but with '-C': a new connection for every transaction
+ * @param user name of the user
+ * @param database name of the database
+ * @param select_only true if we are only doing selects
+ * @param client_count number of clients
+ * @param thread_count number of threads
+ * @param transaction_count number of transactions
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_tsclient_execute_pgbench_connect(char* user, char* database, bool select_only, int client_count, int thread_count, int transaction_count);
+
+/**
  * Initialize a database using pgbench
  * @param user name of the user
  * @param database name of the database

@@ -440,11 +440,12 @@ struct connection
    int backend_pid;    /**< The backend process id */
    int backend_secret; /**< The backend secret */
 
-   signed char limit_rule; /**< The limit rule used */
-   time_t start_time;      /**< The start timestamp */
-   time_t timestamp;       /**< The last used timestamp */
-   pid_t pid;              /**< The associated process id */
-   int fd;                 /**< The descriptor */
+   signed char limit_rule;  /**< The limit rule used */
+   time_t start_time;       /**< The start timestamp */
+   time_t timestamp;        /**< The last used timestamp */
+   pid_t pid;               /**< The associated process id */
+   int fd;                  /**< The descriptor */
+   atomic_llong generation; /**< When main received fd (pgagroal_fd_generation), 0 = never */
 
    size_t tls_context_length;                 /**< Length of the parked backend TLS context, 0 if none */
    char tls_context[TLS_CONTEXT_BUFFER_SIZE]; /**< Serialized backend TLS context for pool resumption */

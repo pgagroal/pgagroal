@@ -36,9 +36,36 @@ extern "C" {
 #include <pgagroal.h>
 #include <json.h>
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <openssl/ssl.h>
+
+/**
+ * The server descriptors main holds, indexed by slot (0 = none).
+ * Process memory, not shared memory: a forked process holds exactly
+ * the descriptors in its own copy of this array.
+ */
+extern int pgagroal_known_fds[MAX_NUMBER_OF_CONNECTIONS];
+
+/**
+ * Counts the descriptors main has received. Process memory, so a forked
+ * process keeps the value it had at fork time, and only holds the
+ * descriptors of slots with a generation up to that value.
+ */
+extern long long pgagroal_fd_generation;
+
+/**
+ * Slot generation while its descriptor is on the way to main
+ */
+#define FD_GENERATION_PENDING LLONG_MAX
+
+/**
+ * Main keeps the backend of slot i at descriptor pgagroal_fd_base + i, above
+ * anything a process opens itself, so a process forked before main received it
+ * can take it over at that number. Set by main before it forks, -1 = not used.
+ */
+extern int pgagroal_fd_base;
 
 /**
  * Get a connection
@@ -85,6 +112,13 @@ pgagroal_return_connection(int slot, SSL* ssl, bool transaction_mode);
  */
 int
 pgagroal_kill_connection(int slot, SSL* ssl);
+
+/**
+ * Close the server descriptors inherited from main, except our own
+ * @param server_fd The server descriptor to keep
+ */
+void
+pgagroal_pool_close_inherited(int server_fd);
 
 /**
  * Perform idle timeout
