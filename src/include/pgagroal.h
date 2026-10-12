@@ -83,6 +83,7 @@ extern "C" {
 #define DEFAULT_MAX_CONNECTION_AGE                     0
 #define DEFAULT_FLUSH_TIMEOUT                          60
 #define DEFAULT_BACKGROUND_INTERVAL                    300
+#define DEFAULT_TLS_CERT_MONITOR_INTERVAL              3600
 #define DEFAULT_HEALTH_CHECK_PERIOD                    30
 #define DEFAULT_HEALTH_CHECK_TIMEOUT                   5
 #define DEFAULT_AUTHENTICATION_TIMEOUT                 5
@@ -533,6 +534,7 @@ struct certificate_info
  */
 struct certificate_metrics
 {
+   atomic_schar lock;                               /**< Lock to protect concurrent access */
    atomic_ulong total;                              /**< Total certificates configured */
    atomic_ulong valid;                              /**< Number of valid certificates */
    atomic_ulong expired;                            /**< Number of expired certificates */
@@ -740,6 +742,7 @@ struct main_configuration
    pgagroal_time_t flush_timeout;                    /**< Default timeout (seconds) for 'flush timeout' / 'shutdown timeout' when no value is passed on the CLI (0 = no default) */
    int validation;                                   /**< Validation mode */
    pgagroal_time_t background_interval;              /**< The duration of background validation interval (Default seconds) */
+   pgagroal_time_t tls_cert_monitor_interval;        /**< Interval between TLS certificate metric refreshes (0 disables, Default seconds) */
    int max_retries;                                  /**< The maximum number of retries */
    bool health_check;                                /**< Is health check enabled */
    pgagroal_time_t health_check_period;              /**< The duration of health check period (Default seconds) */

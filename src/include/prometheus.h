@@ -370,6 +370,14 @@ pgagroal_init_prometheus_cache(size_t* p_size, void** p_shmem);
 int
 pgagroal_update_main_certificate_metrics(struct main_configuration* config);
 
+/**
+ * Monitor certificate expiry and log messages
+ * @param config The main configuration
+ * @return 0 on success, 1 on error
+ */
+int
+pgagroal_monitor_certificate_expiry(struct main_configuration* config);
+
 #ifdef __cplusplus
 }
 #endif
