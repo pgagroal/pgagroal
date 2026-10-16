@@ -129,5 +129,6 @@ Every test runs under a wall-clock timeout of 300 seconds by default. A test tha
 - PostgreSQL container logs are available with debug5 level for troubleshooting.
 - The script automatically detects and uses either Docker or Podman.
 - It is recommended to **ALWAYS** run tests before raising a PR.
+- To measure performance rather than correctness, see the Benchmarks chapter.
 - Coverage reports are generated using LLVM tooling (clang, llvm-cov, llvm-profdata).
 - For local development, use only the `run-configs` and default (no sub-command) modes. Other modes (`ci`, `run-configs-ci`, etc.) are intended for CI and may interfere with your local PostgreSQL setup if used locally.
