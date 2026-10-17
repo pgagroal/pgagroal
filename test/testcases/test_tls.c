@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include <openssl/evp.h>
+#include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <openssl/x509.h>
 
@@ -905,6 +906,174 @@ cleanup:
    if (key != NULL)
    {
       EVP_PKEY_free(key);
+   }
+   MCTF_FINISH();
+}
+
+// A certificate whose subject has the given Common Name, or none when cn is NULL
+static X509*
+tls_test_cert_with_cn(const char* cn, int length)
+{
+   X509* crt = X509_new();
+   X509_NAME* name = X509_NAME_new();
+
+   if (crt == NULL || name == NULL)
+   {
+      goto error;
+   }
+
+   if (cn != NULL &&
+       X509_NAME_add_entry_by_NID(name, NID_commonName, V_ASN1_UTF8STRING,
+                                  (const unsigned char*)cn, length, -1, 0) != 1)
+   {
+      goto error;
+   }
+
+   if (X509_set_subject_name(crt, name) != 1)
+   {
+      goto error;
+   }
+
+   X509_NAME_free(name);
+   return crt;
+
+error:
+   X509_NAME_free(name);
+   X509_free(crt);
+   return NULL;
+}
+
+// Write an empty CRL, signed by a throwaway CA, to a new temporary file
+static int
+tls_test_crl_file(char* path, size_t size)
+{
+   EVP_PKEY* key = NULL;
+   X509* ca = NULL;
+   X509_CRL* crl = NULL;
+   ASN1_TIME* now = NULL;
+   ASN1_TIME* next = NULL;
+   FILE* file = NULL;
+   int fd = -1;
+   int ret = 1;
+
+   if (tls_test_self_signed(&key, &ca))
+   {
+      goto done;
+   }
+
+   crl = X509_CRL_new();
+   now = X509_gmtime_adj(NULL, 0);
+   next = X509_gmtime_adj(NULL, 60L * 60L * 24L);
+   if (crl == NULL || now == NULL || next == NULL ||
+       X509_CRL_set_version(crl, 1) != 1 ||
+       X509_CRL_set_issuer_name(crl, X509_get_subject_name(ca)) != 1 ||
+       X509_CRL_set1_lastUpdate(crl, now) != 1 ||
+       X509_CRL_set1_nextUpdate(crl, next) != 1 ||
+       X509_CRL_sign(crl, key, EVP_sha256()) == 0)
+   {
+      goto done;
+   }
+
+   snprintf(path, size, "/tmp/pgagroal_test_crl.XXXXXX");
+   fd = mkstemp(path);
+   if (fd == -1)
+   {
+      goto done;
+   }
+
+   file = fdopen(fd, "w");
+   if (file == NULL)
+   {
+      close(fd);
+      goto done;
+   }
+
+   if (PEM_write_X509_CRL(file, crl) == 1)
+   {
+      ret = 0;
+   }
+   fclose(file);
+
+done:
+   ASN1_TIME_free(now);
+   ASN1_TIME_free(next);
+   X509_CRL_free(crl);
+   X509_free(ca);
+   EVP_PKEY_free(key);
+   return ret;
+}
+
+MCTF_TEST(test_pgagroal_tls_cert_common_name)
+{
+   X509* crt = NULL;
+   char* cn = NULL;
+
+   crt = tls_test_cert_with_cn("alice", 5);
+   MCTF_ASSERT(crt != NULL, cleanup, "certificate with CN");
+   MCTF_ASSERT_INT_EQ(pgagroal_tls_cert_common_name(crt, &cn), PGAGROAL_TLS_OK, cleanup, "CN extracted");
+   MCTF_ASSERT(cn != NULL && strcmp(cn, "alice") == 0, cleanup, "CN is alice");
+   free(cn);
+   cn = NULL;
+   X509_free(crt);
+
+   /* an embedded NUL must not let "alice\0.example.com" pass as "alice" */
+   crt = tls_test_cert_with_cn("alice\0.example.com", 18);
+   MCTF_ASSERT(crt != NULL, cleanup, "certificate with a NUL in the CN");
+   MCTF_ASSERT_INT_EQ(pgagroal_tls_cert_common_name(crt, &cn), PGAGROAL_TLS_ERROR, cleanup, "NUL in CN rejected");
+   MCTF_ASSERT(cn == NULL, cleanup, "no CN returned");
+   X509_free(crt);
+
+   crt = tls_test_cert_with_cn(NULL, 0);
+   MCTF_ASSERT(crt != NULL, cleanup, "certificate without CN");
+   MCTF_ASSERT_INT_EQ(pgagroal_tls_cert_common_name(crt, &cn), PGAGROAL_TLS_ERROR, cleanup, "missing CN rejected");
+   MCTF_ASSERT(cn == NULL, cleanup, "no CN returned");
+
+   MCTF_ASSERT_INT_EQ(pgagroal_tls_cert_common_name(NULL, &cn), PGAGROAL_TLS_ERROR, cleanup, "null certificate rejected");
+   MCTF_ASSERT_INT_EQ(pgagroal_tls_cert_common_name(crt, NULL), PGAGROAL_TLS_ERROR, cleanup, "null result rejected");
+
+cleanup:
+   free(cn);
+   X509_free(crt);
+   MCTF_FINISH();
+}
+
+MCTF_TEST_NEGATIVE(test_pgagroal_tls_load_crl)
+{
+   SSL_CTX* ctx = NULL;
+   X509_STORE* store = NULL;
+   char path[64];
+   unsigned long flags = 0;
+   unsigned long chain = X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL;
+
+   memset(path, 0, sizeof(path));
+
+   ctx = SSL_CTX_new(TLS_server_method());
+   MCTF_ASSERT(ctx != NULL, cleanup, "server ctx");
+   store = SSL_CTX_get_cert_store(ctx);
+
+   /* no CRL configured is fine, and leaves checking off */
+   MCTF_ASSERT_INT_EQ(pgagroal_tls_load_crl(ctx, ""), PGAGROAL_TLS_OK, cleanup, "empty path");
+   flags = X509_VERIFY_PARAM_get_flags(X509_STORE_get0_param(store));
+   MCTF_ASSERT((flags & chain) == 0, cleanup, "no CRL checking without a CRL");
+
+   MCTF_ASSERT_INT_EQ(pgagroal_tls_load_crl(ctx, "/nonexistent/pgagroal/crl.pem"), PGAGROAL_TLS_ERROR, cleanup, "missing file rejected");
+
+   /* a CRL turns on checking for the whole chain */
+   MCTF_ASSERT_INT_EQ(tls_test_crl_file(path, sizeof(path)), 0, cleanup, "write CRL");
+   MCTF_ASSERT_INT_EQ(pgagroal_tls_load_crl(ctx, path), PGAGROAL_TLS_OK, cleanup, "load CRL");
+   flags = X509_VERIFY_PARAM_get_flags(X509_STORE_get0_param(store));
+   MCTF_ASSERT((flags & chain) == chain, cleanup, "CRL checking for the whole chain");
+
+   MCTF_ASSERT_INT_EQ(pgagroal_tls_load_crl(NULL, path), PGAGROAL_TLS_ERROR, cleanup, "null ctx rejected");
+
+cleanup:
+   if (strlen(path) > 0)
+   {
+      unlink(path);
+   }
+   if (ctx != NULL)
+   {
+      SSL_CTX_free(ctx);
    }
    MCTF_FINISH();
 }
