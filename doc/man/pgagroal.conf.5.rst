@@ -180,6 +180,9 @@ tls_key_file
 tls_ca_file
   Certificate Authority (CA) file for TLS. Changes require restart in the server section.
 
+tls_crl_file
+  Certificate Revocation List (CRL) file in PEM format for TLS. Requires tls_ca_file. Changes require restart in the server section.
+
 metrics_cert_file
   Certificate file for TLS for Prometheus metrics
 

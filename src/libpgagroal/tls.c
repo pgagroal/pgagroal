@@ -1602,3 +1602,102 @@ error:
 
    return result;
 }
+
+int
+pgagroal_tls_cert_common_name(X509* cert, char** cn)
+{
+   const X509_NAME* subject = NULL;
+   int length = 0;
+   char* name = NULL;
+
+   if (cn == NULL)
+   {
+      return PGAGROAL_TLS_ERROR;
+   }
+
+   *cn = NULL;
+
+   if (cert == NULL)
+   {
+      return PGAGROAL_TLS_ERROR;
+   }
+
+   subject = X509_get_subject_name(cert);
+   if (subject == NULL)
+   {
+      goto error;
+   }
+
+   length = X509_NAME_get_text_by_NID(subject, NID_commonName, NULL, 0);
+   if (length <= 0)
+   {
+      goto error;
+   }
+
+   name = (char*)calloc(1, length + 1);
+   if (name == NULL)
+   {
+      goto error;
+   }
+
+   if (X509_NAME_get_text_by_NID(subject, NID_commonName, name, length + 1) != length)
+   {
+      goto error;
+   }
+
+   /* An embedded NUL would let "alice\0.example.com" pass as "alice" */
+   if (strlen(name) != (size_t)length)
+   {
+      pgagroal_log_warn("TLS certificate Common Name contains a NUL byte");
+      goto error;
+   }
+
+   *cn = name;
+
+   return PGAGROAL_TLS_OK;
+
+error:
+
+   free(name);
+
+   return PGAGROAL_TLS_ERROR;
+}
+
+int
+pgagroal_tls_load_crl(SSL_CTX* ctx, char* crl_file)
+{
+   X509_STORE* store = NULL;
+
+   if (ctx == NULL)
+   {
+      return PGAGROAL_TLS_ERROR;
+   }
+
+   if (crl_file == NULL || strlen(crl_file) == 0)
+   {
+      return PGAGROAL_TLS_OK;
+   }
+
+   store = SSL_CTX_get_cert_store(ctx);
+   if (store == NULL || X509_STORE_load_file(store, crl_file) != 1)
+   {
+      unsigned long err;
+
+      err = ERR_get_error();
+      pgagroal_log_error("Couldn't load TLS CRL: %s", crl_file);
+      if (ERR_reason_error_string(err) != NULL)
+      {
+         pgagroal_log_error("Reason: %s", ERR_reason_error_string(err));
+      }
+      return PGAGROAL_TLS_ERROR;
+   }
+
+   /* Check the whole chain, so a revoked intermediate CA is rejected as well */
+   if (X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL) != 1)
+   {
+      pgagroal_log_error("Couldn't enable TLS CRL checking: %s", crl_file);
+      return PGAGROAL_TLS_ERROR;
+   }
+
+   return PGAGROAL_TLS_OK;
+}

@@ -64,3 +64,29 @@ tls_ca_file = </path/to/client_root_ca.crt>
 ```
 PGSSLMODE=verify-full PGSSLCERT=</path/to/client.crt> PGSSLKEY=</path/to/client.key> PGSSLROOTCERT=</path/to/server_root_ca.crt> psql -h localhost -p 2345 -U <postgres_user> <postgres_database>
 ```
+
+**Client Certificate Authentication**
+
+Use the `cert` method in `pgagroal_hba.conf` to authenticate a client by its certificate instead of a password.
+Like PostgreSQL's `cert` method, the client must present a certificate signed by the CA in `tls_ca_file`, and
+the Common Name (CN) of the certificate must be the requested user name. It is only allowed on `hostssl` entries.
+
+```
+hostssl  all  myuser  all  cert
+```
+
+pgagroal then authenticates to PostgreSQL with the password of the user in `pgagroal_users.conf`. A user without
+an entry there still needs a matching certificate, and then authenticates to PostgreSQL directly.
+
+**Certificate Revocation**
+
+Add `tls_crl_file` to reject revoked certificates. In the `[pgagroal]` section it applies to client certificates,
+and in a server section to the certificate of that PostgreSQL server. It requires `tls_ca_file` in the same section.
+
+```
+tls_ca_file = </path/to/client_root_ca.crt>
+tls_crl_file = </path/to/client_root_ca.crl>
+```
+
+The CRL must be in PEM format. Every certificate in the chain is checked, so the file must hold the CRL of each CA
+in the chain. Verification fails once a CRL is past its next update time, so renew the CRL before then.

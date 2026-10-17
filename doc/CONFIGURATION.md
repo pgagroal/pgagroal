@@ -80,6 +80,7 @@ The available keys and their accepted values are reported in the table below.
 | tls_cert_file | | String | No | Certificate file for TLS. This file must be owned by either the user running pgagroal or root. Can interpolate environment variables (e.g., `$HOME`) |
 | tls_key_file | | String | No | Private key file for TLS. This file must be owned by either the user running pgagroal or root. Additionally permissions must be at least `0640` when owned by root or `0600` otherwise. Can interpolate environment variables (e.g., `$HOME`) |
 | tls_ca_file | | String | No | Certificate Authority (CA) file for TLS. This file must be owned by either the user running pgagroal or root. Can interpolate environment variables (e.g., `$HOME`) |
+| tls_crl_file | | String | No | Certificate Revocation List (CRL) file in PEM format, checked against client certificates. Requires `tls_ca_file`. This file must be owned by either the user running pgagroal or root. Can interpolate environment variables (e.g., `$HOME`) |
 | metrics_cert_file | | String | No | Certificate file for TLS for Prometheus metrics. This file must be owned by either the user running pgagroal or root. |
 | metrics_key_file | | String | No | Private key file for TLS for Prometheus metrics. This file must be owned by either the user running pgagroal or root. Additionally permissions must be at least `0640` when owned by root or `0600` otherwise. |
 | metrics_ca_file | | String | No | Certificate Authority (CA) file for TLS for Prometheus metrics. This file must be owned by either the user running pgagroal or root.  |
@@ -123,6 +124,7 @@ There can be up to `64` host sections, each with an unique name and different co
 | tls_cert_file | | String | No | Certificate file for TLS. This file must be owned by either the user running pgagroal or root. Changes require restart. |
 | tls_key_file | | String | No | Private key file for TLS. This file must be owned by either the user running pgagroal or root. Additionally permissions must be at least `0640` when owned by root or `0600` otherwise.Changes require restart. |
 | tls_ca_file | | String | No | Certificate Authority (CA) file for TLS. This file must be owned by either the user running pgagroal or root. Changes require restart. |
+| tls_crl_file | | String | No | Certificate Revocation List (CRL) file in PEM format, checked against the server certificate. Requires `tls_ca_file`. Changes require restart. |
 
 Note, that if `host` starts with a `/` it represents a path and [**pgagroal**](https://github.com/pgagroal/pgagroal) will connect using a Unix Domain Socket.
 
@@ -161,7 +163,7 @@ host    all      all   all      all
 | DATABASE | Yes      | Specifies the database for the rule. Either specific name or `all` for all databases |
 | USER | Yes      | Specifies the user for the rule. Either specific name or `all` for all users |
 | ADDRESS | Yes      | Specifies the network for the rule. `all` for all networks, or IPv4 address with a mask (`0.0.0.0/0`) or IPv6 address with a mask (`::0/0`) |
-| METHOD | Yes      | Specifies the authentication mode for the user. `all` for all methods, otherwise `trust`, `reject`, `password`, or `scram-sha-256` |
+| METHOD | Yes      | Specifies the authentication mode for the user. `all` for all methods, otherwise `trust`, `reject`, `password`, `scram-sha-256`, or `cert`. `cert` requires a client certificate whose Common Name (CN) is the user, and is only allowed on `hostssl` |
 
 Remote management users needs to have their database set to `admin` in order for the entry to be considered.
 
