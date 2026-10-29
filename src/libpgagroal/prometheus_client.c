@@ -37,6 +37,7 @@
 #include <utils.h>
 #include <value.h>
 
+#include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -46,6 +47,7 @@
 #include <string.h>
 #include <strings.h>
 #include <time.h>
+#include <openssl/x509v3.h>
 
 #define PROMETHEUS_LABEL_LENGTH 1024
 
@@ -61,6 +63,7 @@ static int add_value(struct deque* values, time_t timestamp, char* value);
 static int add_line(struct main_configuration* config, struct prometheus_metric* metric, char* line, time_t timestamp);
 static int parse_metric_name_from_line(char* line, char* metric_name, size_t size);
 static int fetch_metrics_body(const char* host, int port, bool secure, char** body);
+static bool is_ip_address(const char* host);
 static int write_all(SSL* ssl, int fd, const char* buffer, size_t size);
 static int read_all(SSL* ssl, int fd, char** response, size_t* response_size);
 static int decode_http_response_body(const char* response, size_t response_size, char** body);
@@ -451,12 +454,33 @@ fetch_metrics_body(const char* host, int port, bool secure, char** body)
          goto done;
       }
 
-      SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_NONE, NULL);
+      if (SSL_CTX_set_default_verify_paths(ssl_ctx) != 1)
+      {
+         pgagroal_log_error("Unable to load the default CA trust store for metrics scraping");
+         goto done;
+      }
+
+      SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER, NULL);
 
       ssl = SSL_new(ssl_ctx);
       if (ssl == NULL)
       {
          pgagroal_log_error("Unable to create SSL object for metrics scraping");
+         goto done;
+      }
+
+      /* the certificate must be for this host, not just signed by a trusted CA */
+      if (is_ip_address(host))
+      {
+         if (X509_VERIFY_PARAM_set1_ip_asc(SSL_get0_param(ssl), host) != 1)
+         {
+            pgagroal_log_error("Unable to set the expected address %s for metrics scraping", host);
+            goto done;
+         }
+      }
+      else if (SSL_set_tlsext_host_name(ssl, host) != 1 || SSL_set1_host(ssl, host) != 1)
+      {
+         pgagroal_log_error("Unable to set the expected host name %s for metrics scraping", host);
          goto done;
       }
 
@@ -1477,4 +1501,13 @@ error:
    bridge->metrics = NULL;
 
    return 1;
+}
+
+static bool
+is_ip_address(const char* host)
+{
+   struct in_addr a4;
+   struct in6_addr a6;
+
+   return inet_pton(AF_INET, host, &a4) == 1 || inet_pton(AF_INET6, host, &a6) == 1;
 }
