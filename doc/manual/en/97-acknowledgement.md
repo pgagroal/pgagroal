@@ -55,6 +55,7 @@ Yousuf Mahmoud <yusufmahmoud.dev@gmail.com>
 Youssef Sherief <youssefsherief2718@gmail.com>
 Abdulrahman Nader <a0xnader.oss@outlook.com>
 Ameya Gupta <ameya7072@gmail.com>
+Ahmed Mordi <ahmed.m.hamada2003@gmail.com>
 ```
 
 ## Committers
