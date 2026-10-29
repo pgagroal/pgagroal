@@ -295,10 +295,20 @@ server_probe(int server_idx, bool* up, int* auth_type)
       }
 
       offset_q = 0;
-      while (offset_q < msg->length)
+      while (offset_q + 5 <= msg->length)
       {
          type_q = pgagroal_read_byte(msg->data + offset_q);
          len_q = pgagroal_read_int32(msg->data + offset_q + 1);
+
+         /* The length covers itself, so anything below 4 is malformed. It is
+          * also what advances offset_q, so a non-positive value would loop.
+          * Compared by subtraction: offset_q + 1 + len_q would overflow for a
+          * large len_q, and signed overflow is undefined. */
+         if (len_q < 4 || len_q > msg->length - offset_q - 1)
+         {
+            pgagroal_log_debug("Health: invalid message length %d", len_q);
+            goto error;
+         }
 
          if (type_q == 'T' || type_q == 'C' || type_q == 'D')
          {
@@ -315,10 +325,6 @@ server_probe(int server_idx, bool* up, int* auth_type)
          }
 
          offset_q += 1 + len_q;
-         if (offset_q >= msg->length)
-         {
-            break;
-         }
       }
 
       pgagroal_clear_message(msg);

@@ -90,26 +90,43 @@ pgagroal_read_query_multiple_columns_text(int fd, int expected_cols, char** valu
       }
 
       offset = 0;
-      while (offset < msg->length)
+      while (offset + 5 <= msg->length)
       {
          char kind = pgagroal_read_byte(msg->data + offset);
          int len = pgagroal_read_int32(msg->data + offset + 1);
 
-         if (len <= 0)
+         /* The length covers itself, and is compared by subtraction because
+          * offset + 1 + len would overflow for a large len. */
+         if (len < 4 || len > msg->length - offset - 1)
             goto error;
 
          if (kind == 'D')
          {
+            int dr_end = offset + 1 + len;
             int dr_offset = offset + 5;
-            int num_cols = pgagroal_read_int16(msg->data + dr_offset);
+            int num_cols;
+
+            if (dr_offset + 2 > dr_end)
+               goto error;
+
+            num_cols = pgagroal_read_int16(msg->data + dr_offset);
             dr_offset += 2;
 
             if (num_cols == expected_cols)
             {
                for (int i = 0; i < num_cols; i++)
                {
-                  int col_len = pgagroal_read_int32(msg->data + dr_offset);
+                  int col_len;
+
+                  if (dr_offset + 4 > dr_end)
+                     goto error;
+
+                  col_len = pgagroal_read_int32(msg->data + dr_offset);
                   dr_offset += 4;
+
+                  /* -1 is the protocol's NULL, and carries no data bytes. */
+                  if (col_len < -1 || col_len > dr_end - dr_offset)
+                     goto error;
 
                   if (col_len <= 0)
                   {
@@ -184,26 +201,49 @@ pgagroal_read_query_first_column_text(int fd, char* value, size_t value_size)
       }
 
       offset = 0;
-      while (offset < msg->length)
+      while (offset + 5 <= msg->length)
       {
          char kind = pgagroal_read_byte(msg->data + offset);
          int len = pgagroal_read_int32(msg->data + offset + 1);
 
-         if (len <= 0)
+         /* The length covers itself, and is compared by subtraction because
+          * offset + 1 + len would overflow for a large len. */
+         if (len < 4 || len > msg->length - offset - 1)
          {
             goto error;
          }
 
          if (kind == 'D')
          {
+            int dr_end = offset + 1 + len;
             int dr_offset = offset + 5;
-            int num_cols = pgagroal_read_int16(msg->data + dr_offset);
+            int num_cols;
+
+            if (dr_offset + 2 > dr_end)
+            {
+               goto error;
+            }
+
+            num_cols = pgagroal_read_int16(msg->data + dr_offset);
             dr_offset += 2;
 
             if (num_cols >= 1)
             {
-               int col_len = pgagroal_read_int32(msg->data + dr_offset);
+               int col_len;
+
+               if (dr_offset + 4 > dr_end)
+               {
+                  goto error;
+               }
+
+               col_len = pgagroal_read_int32(msg->data + dr_offset);
                dr_offset += 4;
+
+               /* -1 is the protocol's NULL, and carries no data bytes. */
+               if (col_len < -1 || col_len > dr_end - dr_offset)
+               {
+                  goto error;
+               }
 
                if (col_len == -1)
                {
