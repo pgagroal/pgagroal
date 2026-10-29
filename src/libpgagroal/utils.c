@@ -174,16 +174,39 @@ pgagroal_extract_message(char type, struct message* msg, struct message** extrac
    offset = 0;
    *extracted = NULL;
 
-   while (result == NULL && offset < msg->length)
+   /* Every message is a kind byte followed by a four byte length that
+      covers itself, so anything shorter cannot hold a header. */
+   while (result == NULL && offset + 5 <= msg->length)
    {
       char t = (char)pgagroal_read_byte(msg->data + offset);
 
+      m_length = pgagroal_read_int32(msg->data + offset + 1);
+
+      /* The length is read off the wire. Compared by subtraction because
+         offset + 1 + m_length would overflow for a large m_length, and it
+         is also what advances offset, so a value below 4 would not make
+         progress. */
+      if (m_length < 4 || m_length > msg->length - offset - 1)
+      {
+         return 1;
+      }
+
       if (type == t)
       {
-         m_length = pgagroal_read_int32(msg->data + offset + 1);
-
          result = (struct message*)malloc(sizeof(struct message));
+
+         if (result == NULL)
+         {
+            return 1;
+         }
+
          data = (void*)malloc(1 + m_length);
+
+         if (data == NULL)
+         {
+            free(result);
+            return 1;
+         }
 
          memcpy(data, msg->data + offset, 1 + m_length);
 
@@ -197,8 +220,7 @@ pgagroal_extract_message(char type, struct message* msg, struct message** extrac
       }
       else
       {
-         offset += 1;
-         offset += pgagroal_read_int32(msg->data + offset);
+         offset += 1 + m_length;
       }
    }
 
