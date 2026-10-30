@@ -162,6 +162,8 @@ pgagroal_init_configuration(void* shm)
    {
       atomic_init(&config->servers[i].state, SERVER_NOTINIT);
       atomic_init(&config->servers[i].health_state, SERVER_HEALTH_UNKNOWN);
+      atomic_init(&config->servers[i].replication_ok, true);
+      memset(config->servers[i].replication_slot_name, 0, MISC_LENGTH);
       config->servers[i].failures = 0;
    }
 

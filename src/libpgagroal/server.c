@@ -731,6 +731,68 @@ done:
 }
 
 int
+pgagroal_server_get_replication_slots_status(int server,
+                                             char slot_names[][MISC_LENGTH],
+                                             char client_addrs[][MISC_LENGTH],
+                                             int max_rows, int* num_rows)
+{
+   int fd = -1;
+   struct main_configuration* config = (struct main_configuration*)shmem;
+   char* values[NUMBER_OF_SERVERS * 2];
+   size_t sizes[NUMBER_OF_SERVERS * 2];
+
+   *num_rows = 0;
+
+   if (server < 0 || server >= config->number_of_servers || max_rows > NUMBER_OF_SERVERS)
+   {
+      return 1;
+   }
+
+   if (strlen(config->health_check_user) == 0)
+   {
+      pgagroal_log_debug("ping/status: health_check_user is not configured, cannot check replication slots");
+      return 1;
+   }
+
+   for (int row_idx = 0; row_idx < max_rows; row_idx++)
+   {
+      values[row_idx * 2 + 0] = slot_names[row_idx];
+      sizes[row_idx * 2 + 0] = MISC_LENGTH;
+      values[row_idx * 2 + 1] = client_addrs[row_idx];
+      sizes[row_idx * 2 + 1] = MISC_LENGTH;
+   }
+
+   if (pgagroal_server_query_execute(server,
+                                     config->health_check_user,
+                                     config->health_check_user,
+                                     (char*)pgagroal_queries_replication_slots_status(),
+                                     MAX(1, (int)pgagroal_time_convert(config->health_check_timeout, FORMAT_TIME_S)),
+                                     NULL, &fd))
+   {
+      pgagroal_log_debug("Failed to execute replication slots query for server %d", server);
+      goto error;
+   }
+
+   if (pgagroal_read_query_multiple_rows_text(fd, 2, max_rows, values, sizes, num_rows))
+   {
+      pgagroal_log_debug("Failed to read replication slots status for server %d", server);
+      goto error;
+   }
+
+   (void)pgagroal_write_terminate(NULL, fd);
+   pgagroal_disconnect(fd);
+   return 0;
+
+error:
+   if (fd != -1)
+   {
+      (void)pgagroal_write_terminate(NULL, fd);
+      pgagroal_disconnect(fd);
+   }
+   return 1;
+}
+
+int
 pgagroal_server_get_wal_receiver_status(int server,
                                         char* rep_status, size_t status_size,
                                         char* slot_name, size_t slot_size,
