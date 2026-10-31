@@ -134,6 +134,7 @@ static void connection_information(prometheus_metrics_container_t* container);
 static void limit_information(prometheus_metrics_container_t* container);
 static void session_information(prometheus_metrics_container_t* container);
 static void pool_information(prometheus_metrics_container_t* container);
+static void wait_queue_information(prometheus_metrics_container_t* container);
 static void auth_information(prometheus_metrics_container_t* container);
 static void client_information(prometheus_metrics_container_t* container);
 static void internal_information(prometheus_metrics_container_t* container);
@@ -385,6 +386,9 @@ pgagroal_init_prometheus(size_t* p_size, void** p_shmem)
    {
       atomic_init(&prometheus->connections_awaiting[i], 0);
    }
+
+   atomic_init(&prometheus->wait_queue_timeouts, 0);
+   atomic_init(&prometheus->wait_queue_handoffs, 0);
 
    atomic_init(&prometheus->auth_user_success, 0);
    atomic_init(&prometheus->auth_user_bad_password, 0);
@@ -769,6 +773,36 @@ pgagroal_prometheus_connection_success(void)
 }
 
 void
+pgagroal_prometheus_wait_queue_timeout(void)
+{
+   struct main_prometheus* prometheus;
+
+   if (!is_prometheus_enabled())
+   {
+      return;
+   }
+
+   prometheus = (struct main_prometheus*)prometheus_shmem;
+
+   atomic_fetch_add(&prometheus->wait_queue_timeouts, 1);
+}
+
+void
+pgagroal_prometheus_wait_queue_handoff(void)
+{
+   struct main_prometheus* prometheus;
+
+   if (!is_prometheus_enabled())
+   {
+      return;
+   }
+
+   prometheus = (struct main_prometheus*)prometheus_shmem;
+
+   atomic_fetch_add(&prometheus->wait_queue_handoffs, 1);
+}
+
+void
 pgagroal_prometheus_auth_user_success(void)
 {
    struct main_prometheus* prometheus;
@@ -1069,6 +1103,9 @@ pgagroal_prometheus_clear(void)
    {
       atomic_store(&prometheus->connections_awaiting[i], 0);
    }
+
+   atomic_store(&prometheus->wait_queue_timeouts, 0);
+   atomic_store(&prometheus->wait_queue_handoffs, 0);
 
    atomic_store(&prometheus->auth_user_success, 0);
    atomic_store(&prometheus->auth_user_bad_password, 0);
@@ -1704,6 +1741,20 @@ home_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "  <p>\n");
    data = pgagroal_append(data, "   Number of connection suspended due to <i>blocking_timeout</i>\n");
    data = pgagroal_append(data, "  </p>\n");
+   data = pgagroal_append(data, "   <h2 >pgagroal_wait_queue_size </h2 >\n ");
+   data = pgagroal_append(data, "   <p >\n ");
+   data = pgagroal_append(data, "   Current number of connections in the wait queue\n ");
+   data = pgagroal_append(data, "   </p >\n ");
+
+   data = pgagroal_append(data, "   <h2 >pgagroal_wait_queue_timeouts </h2 >\n ");
+   data = pgagroal_append(data, "   <p >\n ");
+   data = pgagroal_append(data, "   Number of connections that timed out in the wait queue\n ");
+   data = pgagroal_append(data, "   </p >\n ");
+
+   data = pgagroal_append(data, "   <h2 >pgagroal_wait_queue_handoffs </h2 >\n ");
+   data = pgagroal_append(data, "   <p >\n ");
+   data = pgagroal_append(data, "   Number of successful wait queue handoffs\n ");
+   data = pgagroal_append(data, "   </p >\n ");
    data = pgagroal_append(data, "  <h2>pgagroal_auth_user_success</h2>\n");
    data = pgagroal_append(data, "  <p>\n");
    data = pgagroal_append(data, "   Number of successful user authentications\n");
@@ -2115,6 +2166,7 @@ retry_cache_locking:
          limit_information(container);
          session_information(container);
          pool_information(container);
+         wait_queue_information(container);
          auth_information(container);
          client_information(container);
          internal_information(container);
@@ -3163,6 +3215,47 @@ pool_information(prometheus_metrics_container_t* container)
    data = pgagroal_append_ulong(data, atomic_load(&prometheus->connection_success));
    data = pgagroal_append(data, "\n");
    add_metric_to_art(container->pool_metrics, "pgagroal_connection_success", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+}
+
+static void
+wait_queue_information(prometheus_metrics_container_t* container)
+{
+   char* data = NULL;
+   struct main_prometheus* prometheus;
+   struct wait_queue* wq;
+
+   prometheus = (struct main_prometheus*)prometheus_shmem;
+   wq = (struct wait_queue*)wait_queue_shmem;
+
+   /* 1. Current Queue Size (Gauge) */
+   data = pgagroal_append(data, "#HELP pgagroal_wait_queue_size Current number of connections in the wait queue\n");
+   data = pgagroal_append(data, "#TYPE pgagroal_wait_queue_size gauge\n");
+   data = pgagroal_append(data, "pgagroal_wait_queue_size ");
+   data = pgagroal_append_int(data, wq->count);
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_wait_queue_size", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
+   /* 2. Queue Timeouts (Counter) */
+   data = pgagroal_append(data, "#HELP pgagroal_wait_queue_timeouts Number of connections that timed out in the wait queue\n");
+   data = pgagroal_append(data, "#TYPE pgagroal_wait_queue_timeouts counter\n");
+   data = pgagroal_append(data, "pgagroal_wait_queue_timeouts ");
+   data = pgagroal_append_ulong(data, atomic_load(&prometheus->wait_queue_timeouts));
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_wait_queue_timeouts", data, NULL, NULL, 0);
+   free(data);
+   data = NULL;
+
+   /* 3. Queue Handoffs (Counter) */
+   data = pgagroal_append(data, "#HELP pgagroal_wait_queue_handoffs Number of successful wait queue handoffs\n");
+   data = pgagroal_append(data, "#TYPE pgagroal_wait_queue_handoffs counter\n");
+   data = pgagroal_append(data, "pgagroal_wait_queue_handoffs ");
+   data = pgagroal_append_ulong(data, atomic_load(&prometheus->wait_queue_handoffs));
+   data = pgagroal_append(data, "\n");
+   add_metric_to_art(container->pool_metrics, "pgagroal_wait_queue_handoffs", data, NULL, NULL, 0);
    free(data);
    data = NULL;
 }
