@@ -157,6 +157,12 @@ extern "C" {
 #define MANAGEMENT_ERROR_FLUSH_NOFORK                       200
 #define MANAGEMENT_ERROR_FLUSH_NETWORK                      201
 
+#define MANAGEMENT_ERROR_CONSOLE_NOFORK                     300
+#define MANAGEMENT_ERROR_CONSOLE_NETWORK                    301
+
+#define MANAGEMENT_ERROR_MANAGEMENT_NOFORK                  400
+#define MANAGEMENT_ERROR_MANAGEMENT_NETWORK                 401
+
 #define MANAGEMENT_ERROR_STATUS_NOFORK                      700
 #define MANAGEMENT_ERROR_STATUS_NETWORK                     701
 
