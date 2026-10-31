@@ -323,6 +323,11 @@ the `pgagroal_log_XYZ()` API
 You may find [core APIs](https://github.com/pgagroal/pgagroal/blob/master/doc/manual/dev-07-core_api.md) quite useful. Try
 not to reinvent the wheels, unless for a good reason.
 
+### Benchmarks
+
+If your change can affect performance, run the benchmarks and add the `compare` output to the pull request.
+See [BENCHMARK.md](./BENCHMARK.md).
+
 ## Basic git guide
 
 Here are some links that will help you
