@@ -337,6 +337,25 @@ int
 pgagroal_tls_cert_endpoint_hash(SSL* ssl, bool peer, unsigned char* out, size_t cap, size_t* out_len);
 
 /**
+ * Get the Common Name (CN) from the subject of a certificate
+ * @param cert The certificate
+ * @param cn The resulting Common Name, which must be freed by the caller
+ * @return PGAGROAL_TLS_OK upon success, otherwise PGAGROAL_TLS_ERROR
+ */
+int
+pgagroal_tls_cert_common_name(X509* cert, char** cn);
+
+/**
+ * Load a certificate revocation list (CRL) into a context, so a revoked
+ * certificate fails verification
+ * @param ctx The OpenSSL context
+ * @param crl_file The path of the CRL in PEM format, or an empty string for none
+ * @return PGAGROAL_TLS_OK upon success, otherwise PGAGROAL_TLS_ERROR
+ */
+int
+pgagroal_tls_load_crl(SSL_CTX* ctx, char* crl_file);
+
+/**
  * Initialize one record direction from its TLS 1.3 application traffic secret
  * @param dir The direction
  * @param aead The AEAD suite (PGAGROAL_TLS_AEAD_*)

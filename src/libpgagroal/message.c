@@ -577,6 +577,40 @@ pgagroal_write_bad_password(SSL* ssl, int socket, char* username)
 }
 
 int
+pgagroal_write_bad_certificate(SSL* ssl, int socket, char* username)
+{
+   int size = strlen(username);
+   size += 87;
+
+   char badcertificate[size];
+   struct message msg;
+
+   memset(&msg, 0, sizeof(struct message));
+   memset(&badcertificate, 0, sizeof(badcertificate));
+
+   pgagroal_write_byte(&badcertificate, 'E');
+   pgagroal_write_int32(&(badcertificate[1]), size - 1);
+   pgagroal_write_string(&(badcertificate[5]), "SFATAL");
+   pgagroal_write_string(&(badcertificate[12]), "VFATAL");
+   pgagroal_write_string(&(badcertificate[19]), "C28000");
+   pgagroal_write_string(&(badcertificate[26]), "Mcertificate authentication failed for user \"");
+   pgagroal_write_string(&(badcertificate[71]), username);
+   pgagroal_write_string(&(badcertificate[71 + strlen(username)]), "\"");
+   pgagroal_write_string(&(badcertificate[71 + strlen(username) + 2]), "Rauth_failed");
+
+   msg.kind = 'E';
+   msg.length = size;
+   msg.data = &badcertificate;
+
+   if (ssl == NULL)
+   {
+      return write_message(socket, &msg);
+   }
+
+   return ssl_write_message(ssl, &msg);
+}
+
+int
 pgagroal_write_unsupported_security_model(SSL* ssl, int socket, char* username)
 {
    int size = strlen(username);

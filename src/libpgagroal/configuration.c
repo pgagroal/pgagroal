@@ -331,7 +331,7 @@ pgagroal_read_configuration(void* shm, char* filename, bool emit_warnings)
          }
          else
          {
-            if (pgagroal_starts_with(line, "log_path") || pgagroal_starts_with(line, "unix_socket_dir") || pgagroal_starts_with(line, "tls_cert_file") || pgagroal_starts_with(line, "tls_key_file") || pgagroal_starts_with(line, "tls_ca_file") || pgagroal_starts_with(line, "pidfile"))
+            if (pgagroal_starts_with(line, "log_path") || pgagroal_starts_with(line, "unix_socket_dir") || pgagroal_starts_with(line, "tls_cert_file") || pgagroal_starts_with(line, "tls_key_file") || pgagroal_starts_with(line, "tls_ca_file") || pgagroal_starts_with(line, "tls_crl_file") || pgagroal_starts_with(line, "pidfile"))
             {
                extract_syskey_value(line, &key, &value);
             }
@@ -692,6 +692,21 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
                             config->servers[i].lineno);
          return 1;
       }
+
+      if (strlen(config->servers[i].tls_crl_file) > 0 && strlen(config->servers[i].tls_ca_file) == 0)
+      {
+         pgagroal_log_fatal("pgagroal: tls_crl_file requires tls_ca_file for server [%s] (%s:%d)",
+                            config->servers[i].name,
+                            config->common.configuration_path,
+                            config->servers[i].lineno);
+         return 1;
+      }
+   }
+
+   if (strlen(config->common.tls_crl_file) > 0 && strlen(config->common.tls_ca_file) == 0)
+   {
+      pgagroal_log_fatal("pgagroal: tls_crl_file requires tls_ca_file");
+      return 1;
    }
 
    // check for duplicated servers
@@ -1388,6 +1403,7 @@ pgagroal_validate_hba_configuration(void* shm)
           pgagroal_strcasecmp("reject", config->hbas[i].method) ||
           pgagroal_strcasecmp("password", config->hbas[i].method) ||
           pgagroal_strcasecmp("scram-sha-256", config->hbas[i].method) ||
+          pgagroal_strcasecmp("cert", config->hbas[i].method) ||
           pgagroal_strcasecmp("all", config->hbas[i].method))
       {
          /* Ok */
@@ -1396,6 +1412,21 @@ pgagroal_validate_hba_configuration(void* shm)
       {
          pgagroal_log_fatal("Unknown HBA method: %s (%s:%d)", config->hbas[i].method, config->hba_path, config->hbas[i].lineno);
          return 1;
+      }
+
+      if (pgagroal_strcasecmp("cert", config->hbas[i].method))
+      {
+         if (!pgagroal_strcasecmp("hostssl", config->hbas[i].type))
+         {
+            pgagroal_log_fatal("HBA method cert requires hostssl (%s:%d)", config->hba_path, config->hbas[i].lineno);
+            return 1;
+         }
+
+         if (!config->common.tls || strlen(config->common.tls_ca_file) == 0)
+         {
+            pgagroal_log_fatal("HBA method cert requires tls and tls_ca_file (%s:%d)", config->hba_path, config->hbas[i].lineno);
+            return 1;
+         }
       }
    }
 
@@ -3790,6 +3821,7 @@ transfer_configuration(struct main_configuration* config, struct main_configurat
    memcpy(config->common.tls_cert_file, reload->common.tls_cert_file, MAX_PATH);
    memcpy(config->common.tls_key_file, reload->common.tls_key_file, MAX_PATH);
    memcpy(config->common.tls_ca_file, reload->common.tls_ca_file, MAX_PATH);
+   memcpy(config->common.tls_crl_file, reload->common.tls_crl_file, MAX_PATH);
 
    if (config->common.tls && (config->pipeline == PIPELINE_SESSION || config->pipeline == PIPELINE_TRANSACTION))
    {
@@ -3982,7 +4014,8 @@ is_same_tls(struct server* src, struct server* dst)
        src->channel_binding == dst->channel_binding &&
        !strncmp(src->tls_cert_file, dst->tls_cert_file, MAX_PATH) &&
        !strncmp(src->tls_key_file, dst->tls_key_file, MAX_PATH) &&
-       !strncmp(src->tls_ca_file, dst->tls_ca_file, MAX_PATH))
+       !strncmp(src->tls_ca_file, dst->tls_ca_file, MAX_PATH) &&
+       !strncmp(src->tls_crl_file, dst->tls_crl_file, MAX_PATH))
    {
       return true;
    }
@@ -4094,6 +4127,7 @@ copy_server(struct server* dst, struct server* src)
    memcpy(&dst->tls_cert_file[0], &src->tls_cert_file[0], MAX_PATH);
    memcpy(&dst->tls_key_file[0], &src->tls_key_file[0], MAX_PATH);
    memcpy(&dst->tls_ca_file[0], &src->tls_ca_file[0], MAX_PATH);
+   memcpy(&dst->tls_crl_file[0], &src->tls_crl_file[0], MAX_PATH);
    memcpy(&dst->system_identifier[0], &src->system_identifier[0], 64);
    dst->valid = src->valid;
 
@@ -4890,6 +4924,10 @@ pgagroal_write_config_value(char* buffer, char* config_key, size_t buffer_size)
       {
          return to_string(buffer, config->common.tls_ca_file, buffer_size);
       }
+      else if (!strncmp(key, "tls_crl_file", MAX_PATH))
+      {
+         return to_string(buffer, config->common.tls_crl_file, buffer_size);
+      }
       else if (!strncmp(key, "tls_cert_file", MAX_PATH))
       {
          return to_string(buffer, config->common.tls_cert_file, buffer_size);
@@ -5107,6 +5145,10 @@ pgagroal_write_server_config_value(char* buffer, char* server_name, char* config
    else if (!strncmp(config_key, "tls_ca_file", MAX_PATH))
    {
       return to_string(buffer, config->servers[server_index].tls_ca_file, buffer_size);
+   }
+   else if (!strncmp(config_key, "tls_crl_file", MAX_PATH))
+   {
+      return to_string(buffer, config->servers[server_index].tls_crl_file, buffer_size);
    }
    else
    {
@@ -5988,6 +6030,26 @@ pgagroal_apply_main_configuration(struct main_configuration* config,
          max = MAX_PATH - 1;
       }
       memcpy(srv->tls_ca_file, value, max);
+   }
+   else if (key_in_section("tls_crl_file", section, key, true, NULL))
+   {
+      memset(config->common.tls_crl_file, 0, MAX_PATH);
+      max = strlen(value);
+      if (max > MAX_PATH - 1)
+      {
+         max = MAX_PATH - 1;
+      }
+      memcpy(config->common.tls_crl_file, value, max);
+   }
+   else if (key_in_section("tls_crl_file", section, key, false, &unknown))
+   {
+      memset(srv->tls_crl_file, 0, MAX_PATH);
+      max = strlen(value);
+      if (max > MAX_PATH - 1)
+      {
+         max = MAX_PATH - 1;
+      }
+      memcpy(srv->tls_crl_file, value, max);
    }
    else if (key_in_section("tls_cert_file", section, key, true, NULL))
    {
@@ -6965,6 +7027,7 @@ add_configuration_response(struct json* res)
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TLS_CERT_FILE, (uintptr_t)config->common.tls_cert_file, ValueString);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TLS_KEY_FILE, (uintptr_t)config->common.tls_key_file, ValueString);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TLS_CA_FILE, (uintptr_t)config->common.tls_ca_file, ValueString);
+   pgagroal_json_put(res, CONFIGURATION_ARGUMENT_TLS_CRL_FILE, (uintptr_t)config->common.tls_crl_file, ValueString);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS_CERT_FILE, (uintptr_t)config->common.metrics_cert_file, ValueString);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS_KEY_FILE, (uintptr_t)config->common.metrics_key_file, ValueString);
    pgagroal_json_put(res, CONFIGURATION_ARGUMENT_METRICS_CA_FILE, (uintptr_t)config->common.metrics_ca_file, ValueString);
@@ -7010,6 +7073,7 @@ add_servers_configuration_response(struct json* res)
       pgagroal_json_put(server_conf, CONFIGURATION_ARGUMENT_TLS_CERT_FILE, (uintptr_t)config->servers[i].tls_cert_file, ValueString);
       pgagroal_json_put(server_conf, CONFIGURATION_ARGUMENT_TLS_KEY_FILE, (uintptr_t)config->servers[i].tls_key_file, ValueString);
       pgagroal_json_put(server_conf, CONFIGURATION_ARGUMENT_TLS_CA_FILE, (uintptr_t)config->servers[i].tls_ca_file, ValueString);
+      pgagroal_json_put(server_conf, CONFIGURATION_ARGUMENT_TLS_CRL_FILE, (uintptr_t)config->servers[i].tls_crl_file, ValueString);
 
       // Add this server to the server section using server name as key
       pgagroal_json_put(server_section, config->servers[i].name, (uintptr_t)server_conf, ValueJSON);

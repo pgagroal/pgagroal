@@ -84,6 +84,7 @@ static int resume_backend_tls(int slot, SSL** server_ssl);
 static int use_unpooled_connection(struct message* msg, SSL* c_ssl, int client_fd, int slot,
                                    char* username, int hba_method, SSL** server_ssl);
 static int client_trust(SSL* c_ssl, int client_fd, char* username, char* password, int slot);
+static int client_cert(SSL* c_ssl, int client_fd, char* username, int slot);
 static int client_password(SSL* c_ssl, int client_fd, char* username, char* password, int slot);
 static int client_scram256(SSL* c_ssl, int client_fd, char* username, char* password, int slot);
 static int client_ok(SSL* c_ssl, int client_fd, int slot);
@@ -139,7 +140,7 @@ static int server_signature(char* password, char* salt, int salt_length, int ite
 
 static bool is_tls_user(char* username, char* database);
 static int establish_client_tls_connection(int server, int fd, SSL** ssl);
-static int create_client_tls_connection(int fd, SSL** ssl, char* tls_key_file, char* tls_cert_file, char* tls_ca_file);
+static int create_client_tls_connection(int fd, SSL** ssl, char* tls_key_file, char* tls_cert_file, char* tls_ca_file, char* tls_crl_file);
 
 static int auth_query(SSL* c_ssl, int client_fd, int slot, char* username, char* database, int hba_method);
 static int auth_query_get_connection(char* username, char* password, char* database, int* server_fd, SSL** server_ssl);
@@ -261,6 +262,14 @@ pgagroal_authenticate(int client_fd, char* address, int* slot, SSL** client_ssl,
             goto error;
          }
 
+         if (pgagroal_tls_load_crl(ctx, config->common.tls_crl_file))
+         {
+            SSL_CTX_free(ctx);
+            pgagroal_write_connection_refused(NULL, client_fd);
+            pgagroal_write_empty(NULL, client_fd);
+            goto error;
+         }
+
          struct tls* c_tls = NULL;
 
          if (pgagroal_tls_create_server(ctx, config->common.tls_key_file, config->common.tls_cert_file, config->common.tls_ca_file, &c_tls))
@@ -290,6 +299,10 @@ pgagroal_authenticate(int client_fd, char* address, int* slot, SSL** client_ssl,
 
             err = ERR_get_error();
             pgagroal_log_error("SSL failed: %s", ERR_reason_error_string(err));
+            if (SSL_get_verify_result(c_ssl) != X509_V_OK)
+            {
+               pgagroal_log_error("Certificate verification failed: %s", X509_verify_cert_error_string(SSL_get_verify_result(c_ssl)));
+            }
             goto error;
          }
 
@@ -691,6 +704,12 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
             goto error;
          }
 
+         if (pgagroal_tls_load_crl(ctx, config->common.tls_crl_file))
+         {
+            SSL_CTX_free(ctx);
+            goto error;
+         }
+
          if (pgagroal_create_ssl_server(ctx, config->common.tls_key_file, config->common.tls_cert_file, config->common.tls_ca_file, client_fd, &c_ssl))
          {
             goto error;
@@ -713,6 +732,10 @@ pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
 
             err = ERR_get_error();
             pgagroal_log_error("SSL failed: %s", ERR_reason_error_string(err));
+            if (SSL_get_verify_result(c_ssl) != X509_V_OK)
+            {
+               pgagroal_log_error("Certificate verification failed: %s", X509_verify_cert_error_string(SSL_get_verify_result(c_ssl)));
+            }
             goto error;
          }
 
@@ -1444,6 +1467,17 @@ use_pooled_connection(SSL* c_ssl, int client_fd, int slot, char* username, char*
 
    config = (struct main_configuration*)shmem;
 
+   /* A cert entry always requires a matching certificate, even when the user
+    * then authenticates against the server */
+   if (hba_method == SECURITY_CERT)
+   {
+      status = client_cert(c_ssl, client_fd, username, slot);
+      if (status != AUTH_SUCCESS)
+      {
+         goto bad_password;
+      }
+   }
+
    /* Resume the parked backend TLS session, if one was stored on return. Without
     * this the proxy would speak plaintext into an encrypted backend socket. */
    if (config->connections[slot].tls_context_length > 0)
@@ -1564,6 +1598,10 @@ use_pooled_connection(SSL* c_ssl, int client_fd, int slot, char* username, char*
             goto error;
          }
       }
+      else if (hba_method == SECURITY_CERT)
+      {
+         /* Verified above */
+      }
       else
       {
          goto error;
@@ -1627,6 +1665,17 @@ use_unpooled_connection(struct message* request_msg, SSL* c_ssl, int client_fd, 
       pgagroal_write_connection_refused(c_ssl, client_fd);
       pgagroal_write_empty(c_ssl, client_fd);
       goto error;
+   }
+
+   /* A cert entry always requires a matching certificate, even when the user
+    * then authenticates against the server */
+   if (hba_method == SECURITY_CERT)
+   {
+      status = client_cert(c_ssl, client_fd, username, slot);
+      if (status != AUTH_SUCCESS)
+      {
+         goto bad_password;
+      }
    }
 
    /* TLS support */
@@ -1749,6 +1798,10 @@ use_unpooled_connection(struct message* request_msg, SSL* c_ssl, int client_fd, 
             goto error;
          }
       }
+      else if (hba_method == SECURITY_CERT)
+      {
+         /* Verified before connecting to the server */
+      }
       else
       {
          pgagroal_write_connection_refused(c_ssl, client_fd);
@@ -1834,7 +1887,8 @@ bad_password:
 
    pgagroal_free_message(auth_msg);
 
-   if (pgagroal_socket_isvalid(client_fd))
+   /* client_cert() already reported a failed certificate */
+   if (hba_method != SECURITY_CERT && pgagroal_socket_isvalid(client_fd))
    {
       pgagroal_write_bad_password(c_ssl, client_fd, username);
       if (hba_method == SECURITY_SCRAM256)
@@ -1870,6 +1924,61 @@ client_trust(SSL* c_ssl __attribute__((unused)), int client_fd, char* username _
    pgagroal_log_debug("client_trust %d %d", client_fd, slot);
 
    return AUTH_SUCCESS;
+}
+
+static int
+client_cert(SSL* c_ssl, int client_fd, char* username, int slot)
+{
+   X509* cert = NULL;
+   char* cn = NULL;
+
+   pgagroal_log_debug("client_cert %d %d", client_fd, slot);
+
+   if (c_ssl == NULL)
+   {
+      pgagroal_log_info("Certificate authentication requires TLS: %s", username);
+      goto bad_certificate;
+   }
+
+   cert = SSL_get1_peer_certificate(c_ssl);
+   if (cert == NULL)
+   {
+      pgagroal_log_info("No client certificate: %s", username);
+      goto bad_certificate;
+   }
+
+   if (SSL_get_verify_result(c_ssl) != X509_V_OK)
+   {
+      pgagroal_log_info("Client certificate not verified: %s", username);
+      goto bad_certificate;
+   }
+
+   if (pgagroal_tls_cert_common_name(cert, &cn) != PGAGROAL_TLS_OK)
+   {
+      pgagroal_log_info("No Common Name in client certificate: %s", username);
+      goto bad_certificate;
+   }
+
+   if (!pgagroal_strcmp(cn, username))
+   {
+      pgagroal_log_info("Client certificate Common Name \"%s\" does not match user \"%s\"", cn, username);
+      goto bad_certificate;
+   }
+
+   X509_free(cert);
+   free(cn);
+
+   return AUTH_SUCCESS;
+
+bad_certificate:
+
+   pgagroal_write_bad_certificate(c_ssl, client_fd, username);
+   pgagroal_write_empty(c_ssl, client_fd);
+
+   X509_free(cert);
+   free(cn);
+
+   return AUTH_BAD_PASSWORD;
 }
 
 static int
@@ -3451,6 +3560,11 @@ get_hba_method(int index)
       return SECURITY_SCRAM256;
    }
 
+   if (pgagroal_strcasecmp(config->hbas[index].method, "cert"))
+   {
+      return SECURITY_CERT;
+   }
+
    if (pgagroal_strcasecmp(config->hbas[index].method, "all"))
    {
       return SECURITY_ALL;
@@ -3766,6 +3880,29 @@ pgagroal_tls_valid(void)
       else
       {
          pgagroal_log_debug("No TLS CA file");
+      }
+
+      if (strlen(config->common.tls_crl_file) > 0)
+      {
+         memset(&st, 0, sizeof(struct stat));
+
+         if (stat(config->common.tls_crl_file, &st) == -1)
+         {
+            pgagroal_log_error("Can't locate TLS CRL file: %s", config->common.tls_crl_file);
+            goto error;
+         }
+
+         if (!S_ISREG(st.st_mode))
+         {
+            pgagroal_log_error("TLS CRL file is not a regular file: %s", config->common.tls_crl_file);
+            goto error;
+         }
+
+         if (st.st_uid && st.st_uid != geteuid())
+         {
+            pgagroal_log_error("TLS CRL file not owned by user or root: %s", config->common.tls_crl_file);
+            goto error;
+         }
       }
    }
 
@@ -5632,7 +5769,7 @@ establish_client_tls_connection(int server, int fd, SSL** ssl)
 
       if (msg->kind == 'S')
       {
-         create_client_tls_connection(fd, ssl, config->servers[server].tls_key_file, config->servers[server].tls_cert_file, config->servers[server].tls_ca_file);
+         create_client_tls_connection(fd, ssl, config->servers[server].tls_key_file, config->servers[server].tls_cert_file, config->servers[server].tls_ca_file, config->servers[server].tls_crl_file);
       }
    }
 
@@ -5650,7 +5787,7 @@ error:
 }
 
 static int
-create_client_tls_connection(int fd, SSL** ssl, char* tls_key_file, char* tls_cert_file, char* tls_ca_file)
+create_client_tls_connection(int fd, SSL** ssl, char* tls_key_file, char* tls_cert_file, char* tls_ca_file, char* tls_crl_file)
 {
    SSL_CTX* ctx = NULL;
    struct tls* t = NULL;
@@ -5671,6 +5808,11 @@ create_client_tls_connection(int fd, SSL** ssl, char* tls_key_file, char* tls_ce
       goto error;
    }
 
+   if (pgagroal_tls_load_crl(ctx, tls_crl_file))
+   {
+      goto error;
+   }
+
    /* Create a socket-decoupled client context */
    if (pgagroal_tls_create_client(ctx, tls_key_file, tls_cert_file, tls_ca_file, &t))
    {
@@ -5688,6 +5830,10 @@ create_client_tls_connection(int fd, SSL** ssl, char* tls_key_file, char* tls_ce
 
       err = ERR_get_error();
       pgagroal_log_error("Backend TLS handshake failed on FD %d: %s", fd, ERR_reason_error_string(err));
+      if (SSL_get_verify_result(t->ssl) != X509_V_OK)
+      {
+         pgagroal_log_error("Certificate verification failed: %s", X509_verify_cert_error_string(SSL_get_verify_result(t->ssl)));
+      }
       goto error;
    }
 
@@ -5866,11 +6012,8 @@ char*
 pgagroal_extract_cert_identity(SSL* ssl)
 {
    X509* cert = NULL;
-   const X509_NAME* subject_name = NULL;
    GENERAL_NAMES* san_names = NULL;
    char* identity = NULL;
-   char cn_buf[256];
-   int cn_len;
    int critical = 0;
 
    if (ssl == NULL)
@@ -5967,36 +6110,9 @@ pgagroal_extract_cert_identity(SSL* ssl)
    // Only if no suitable SAN was found (legacy compatibility)
    if (identity == NULL)
    {
-      subject_name = X509_get_subject_name(cert);
-      if (subject_name != NULL)
+      if (pgagroal_tls_cert_common_name(cert, &identity) == PGAGROAL_TLS_OK)
       {
-         // X509_NAME_get_text_by_NID returns -1 on error, otherwise length written (excluding null terminator)
-         // Buffer must have space for null terminator
-         memset(cn_buf, 0, sizeof(cn_buf));
-         cn_len = X509_NAME_get_text_by_NID(subject_name, NID_commonName, cn_buf, sizeof(cn_buf) - 1);
-
-         if (cn_len > 0 && cn_len < (int)(sizeof(cn_buf) - 1))
-         {
-            // Validate CN doesn't contain null bytes (security)
-            if (memchr(cn_buf, '\0', cn_len) == NULL)
-            {
-               cn_buf[cn_len] = '\0'; // Ensure null termination
-               identity = strdup(cn_buf);
-               if (identity != NULL)
-               {
-                  pgagroal_log_debug("pgagroal_extract_cert_identity: Extracted from CN: %s", identity);
-               }
-            }
-            else
-            {
-               pgagroal_log_warn("pgagroal_extract_cert_identity: CN contains null bytes");
-            }
-         }
-         else if (cn_len > 0)
-         {
-            pgagroal_log_warn("pgagroal_extract_cert_identity: CN too long (%d bytes, max %zu)",
-                              cn_len, sizeof(cn_buf) - 1);
-         }
+         pgagroal_log_debug("pgagroal_extract_cert_identity: Extracted from CN: %s", identity);
       }
    }
 

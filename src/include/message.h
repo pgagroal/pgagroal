@@ -189,6 +189,16 @@ int
 pgagroal_write_bad_password(SSL* ssl, int socket, char* username);
 
 /**
+ * Write a bad certificate message
+ * @param ssl The SSL struct
+ * @param socket The socket descriptor
+ * @param username The user name
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_write_bad_certificate(SSL* ssl, int socket, char* username);
+
+/**
  * Write an unsupported security model message
  * @param ssl The SSL struct
  * @param socket The socket descriptor

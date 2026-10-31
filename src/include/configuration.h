@@ -120,6 +120,7 @@ extern "C" {
 #define CONFIGURATION_ARGUMENT_TLS_CERT_FILE                          "tls_cert_file"
 #define CONFIGURATION_ARGUMENT_TLS_KEY_FILE                           "tls_key_file"
 #define CONFIGURATION_ARGUMENT_TLS_CA_FILE                            "tls_ca_file"
+#define CONFIGURATION_ARGUMENT_TLS_CRL_FILE                           "tls_crl_file"
 #define CONFIGURATION_ARGUMENT_METRICS_CERT_FILE                      "metrics_cert_file"
 #define CONFIGURATION_ARGUMENT_METRICS_KEY_FILE                       "metrics_key_file"
 #define CONFIGURATION_ARGUMENT_METRICS_CA_FILE                        "metrics_ca_file"

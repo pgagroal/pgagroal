@@ -128,6 +128,7 @@ extern "C" {
 #define SECURITY_TRUST                                 0
 #define SECURITY_PASSWORD                              3
 #define SECURITY_SCRAM256                              10
+#define SECURITY_CERT                                  20
 #define SECURITY_ALL                                   99
 
 #define AUTH_SUCCESS                                   0
@@ -403,6 +404,7 @@ struct server
    char tls_cert_file[MAX_PATH];  /**< TLS certificate path */
    char tls_key_file[MAX_PATH];   /**< TLS key path */
    char tls_ca_file[MAX_PATH];    /**< TLS CA certificate path */
+   char tls_crl_file[MAX_PATH];   /**< TLS certificate revocation list path */
    unsigned char channel_binding; /**< SCRAM channel binding (CHANNEL_BINDING_*) */
    atomic_schar state;            /**< The state of the server */
    atomic_schar health_state;     /**< The health state of the server */
@@ -674,6 +676,7 @@ struct configuration
    char tls_cert_file[MAX_PATH]; /**< TLS certificate path */
    char tls_key_file[MAX_PATH];  /**< TLS key path */
    char tls_ca_file[MAX_PATH];   /**< TLS CA certificate path */
+   char tls_crl_file[MAX_PATH];  /**< TLS certificate revocation list path */
    // Prometheus
    unsigned char hugepage;                /**< Huge page support */
    int metrics;                           /**< The metrics port */
