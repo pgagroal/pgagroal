@@ -269,7 +269,7 @@ pgagroal_read_configuration(void* shm, char* filename, bool emit_warnings)
    int lineno = 0;
    int return_value = 0;
 
-   file = fopen(filename, "r");
+   pgagroal_fopen_secure(filename, "r", &file);
 
    if (!file)
    {
@@ -993,7 +993,7 @@ pgagroal_vault_read_configuration(void* shm, char* filename, bool emit_warnings)
    int lineno = 0;
    int return_value = 0;
 
-   file = fopen(filename, "r");
+   pgagroal_fopen_secure(filename, "r", &file);
 
    if (!file)
    {
@@ -1264,7 +1264,7 @@ pgagroal_read_hba_configuration(void* shm, char* filename)
    int lineno = 0;
    struct main_configuration* config;
 
-   file = fopen(filename, "r");
+   pgagroal_fopen_secure(filename, "r", &file);
 
    if (!file)
    {
@@ -1422,7 +1422,7 @@ pgagroal_read_limit_configuration(void* shm, char* filename)
    int lineno;
    struct main_configuration* config;
 
-   file = fopen(filename, "r");
+   pgagroal_fopen_secure(filename, "r", &file);
 
    if (!file)
    {
@@ -1699,7 +1699,7 @@ pgagroal_read_users_configuration(void* shm, char* filename)
    struct main_configuration* config;
    int status;
 
-   file = fopen(filename, "r");
+   pgagroal_fopen_secure(filename, "r", &file);
 
    if (!file)
    {
@@ -1835,7 +1835,7 @@ pgagroal_read_frontend_users_configuration(void* shm, char* filename)
    struct main_configuration* config;
    int status = PGAGROAL_CONFIGURATION_STATUS_OK;
 
-   file = fopen(filename, "r");
+   pgagroal_fopen_secure(filename, "r", &file);
 
    if (!file)
    {
@@ -1996,7 +1996,7 @@ pgagroal_read_admins_configuration(void* shm, char* filename)
    struct main_configuration* config;
    int status = PGAGROAL_CONFIGURATION_STATUS_OK;
 
-   file = fopen(filename, "r");
+   pgagroal_fopen_secure(filename, "r", &file);
 
    if (!file)
    {
@@ -2126,7 +2126,7 @@ pgagroal_vault_read_users_configuration(void* shm, char* filename)
    struct vault_configuration* config;
    int status = PGAGROAL_CONFIGURATION_STATUS_OK;
 
-   file = fopen(filename, "r");
+   pgagroal_fopen_secure(filename, "r", &file);
 
    if (!file)
    {
@@ -2271,7 +2271,7 @@ pgagroal_read_superuser_configuration(void* shm, char* filename)
    struct main_configuration* config;
    int status = PGAGROAL_CONFIGURATION_STATUS_OK;
 
-   file = fopen(filename, "r");
+   pgagroal_fopen_secure(filename, "r", &file);
 
    if (!file)
    {
@@ -7527,7 +7527,7 @@ pgagroal_is_binary_file(const char* path)
    size_t bytes;
    int error;
 
-   fp = fopen(path, "rb");
+   pgagroal_fopen_secure(path, "rb", &fp);
    if (fp == NULL)
    {
       goto error;
