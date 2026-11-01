@@ -26,10 +26,14 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <pgagroal.h>
+/* pgagroal */
+#include <logging.h>
 #include <message.h>
+#include <pgagroal.h>
 #include <queries.h>
 #include <utils.h>
+
+/* system */
 #include <string.h>
 
 const char*
@@ -50,36 +54,47 @@ pgagroal_queries_replication_lag_bytes(void)
    return "SELECT COALESCE(pg_wal_lsn_diff(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn()), 0)::bigint;";
 }
 
-const char*
+char*
 pgagroal_queries_wal_receiver_status(void)
 {
    return "SELECT status, slot_name, sender_host, sender_port FROM pg_stat_wal_receiver;";
 }
 
+/* Note: Requires pg_monitor privilege to read from pg_stat_replication */
+
+char*
+pgagroal_queries_replication_slots_status(void)
+{
+   return "SELECT s.slot_name, r.client_addr FROM pg_stat_replication r LEFT JOIN pg_replication_slots s ON r.pid = s.active_pid;";
+}
+
 int
-pgagroal_read_query_multiple_columns_text(int fd, int expected_cols, char** values, size_t* value_sizes)
+pgagroal_read_query_multiple_rows_text(int fd, int expected_cols, int max_rows,
+                                       char** values, size_t* value_sizes, int* num_rows)
 {
    int status;
    int offset = 0;
-   bool has_value = false;
+   int row = 0;
    struct message* msg = NULL;
 
-   if (values == NULL || value_sizes == NULL || expected_cols <= 0)
+   if (values == NULL || value_sizes == NULL || num_rows == NULL || expected_cols <= 0 || max_rows <= 0)
    {
       return 1;
    }
 
-   for (int i = 0; i < expected_cols; i++)
+   for (int cell_idx = 0; cell_idx < max_rows * expected_cols; cell_idx++)
    {
-      if (values[i] != NULL && value_sizes[i] > 0)
+      if (values[cell_idx] != NULL && value_sizes[cell_idx] > 0)
       {
-         values[i][0] = '\0';
+         values[cell_idx][0] = '\0';
       }
       else
       {
          return 1;
       }
    }
+
+   *num_rows = 0;
 
    while (true)
    {
@@ -104,39 +119,41 @@ pgagroal_read_query_multiple_columns_text(int fd, int expected_cols, char** valu
             int num_cols = pgagroal_read_int16(msg->data + dr_offset);
             dr_offset += 2;
 
-            if (num_cols == expected_cols)
+            if (num_cols != expected_cols)
+            {
+               goto error;
+            }
+
+            if (row < max_rows)
             {
                for (int i = 0; i < num_cols; i++)
                {
                   int col_len = pgagroal_read_int32(msg->data + dr_offset);
+                  char* dest = values[row * expected_cols + i];
+                  size_t dest_size = value_sizes[row * expected_cols + i];
+
                   dr_offset += 4;
 
                   if (col_len <= 0)
                   {
-                     if (values[i] != NULL && value_sizes[i] > 0)
-                     {
-                        values[i][0] = '\0';
-                     }
+                     dest[0] = '\0';
+                  }
+                  else if ((size_t)col_len < dest_size)
+                  {
+                     memset(dest, 0, (size_t)col_len + 1);
+                     memcpy(dest, msg->data + dr_offset, (size_t)col_len);
+                     dr_offset += col_len;
                   }
                   else
                   {
-                     if (values[i] != NULL && (size_t)col_len < value_sizes[i])
-                     {
-                        memcpy(values[i], msg->data + dr_offset, (size_t)col_len);
-                        values[i][col_len] = '\0';
-                     }
-                     else
-                     {
-                        goto error;
-                     }
-                     dr_offset += col_len;
+                     goto error;
                   }
                }
-               has_value = true;
+               row++;
             }
             else
             {
-               goto error;
+               pgagroal_log_debug("pgagroal_read_query_multiple_rows_text: maximum number of rows (%d) reached, ignoring additional rows", max_rows);
             }
          }
          else if (kind == 'E')
@@ -146,7 +163,8 @@ pgagroal_read_query_multiple_columns_text(int fd, int expected_cols, char** valu
          else if (kind == 'Z')
          {
             pgagroal_clear_message(msg);
-            return has_value ? 0 : 1;
+            *num_rows = row;
+            return 0;
          }
 
          offset += 1 + len;
@@ -159,6 +177,19 @@ pgagroal_read_query_multiple_columns_text(int fd, int expected_cols, char** valu
 error:
    pgagroal_clear_message(msg);
    return 1;
+}
+
+int
+pgagroal_read_query_multiple_columns_text(int fd, int expected_cols, char** values, size_t* value_sizes)
+{
+   int num_rows = 0;
+
+   if (pgagroal_read_query_multiple_rows_text(fd, expected_cols, 1, values, value_sizes, &num_rows))
+   {
+      return 1;
+   }
+
+   return num_rows > 0 ? 0 : 1;
 }
 int
 pgagroal_read_query_first_column_text(int fd, char* value, size_t value_size)
