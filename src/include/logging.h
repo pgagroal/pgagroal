@@ -101,7 +101,7 @@ pgagroal_stop_logging(void);
  * @return 0 upon success, otherwise 1
  */
 void
-pgagroal_log_line(int level, char* file, int line, char* fmt, ...);
+pgagroal_log_line(int level, char* file, int line, char* fmt, ...) __attribute__((format(printf, 4, 5)));
 
 /**
  * Log a memory segment

@@ -1946,7 +1946,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       if (pid == -1)
       {
          pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_STATUS_NOFORK, compression, encryption, payload);
-         pgagroal_log_error("Status: No fork %s (%d)", NULL, MANAGEMENT_ERROR_STATUS_NOFORK);
+         pgagroal_log_error("Status: No fork (%d)", MANAGEMENT_ERROR_STATUS_NOFORK);
          goto error;
       }
       else if (pid == 0)
@@ -1970,7 +1970,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       if (pid == -1)
       {
          pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_STATUS_NOFORK, compression, encryption, payload);
-         pgagroal_log_error("Status: No fork %s (%d)", NULL, MANAGEMENT_ERROR_STATUS_NOFORK);
+         pgagroal_log_error("Status: No fork (%d)", MANAGEMENT_ERROR_STATUS_NOFORK);
          goto error;
       }
       else if (pid == 0)
@@ -2180,7 +2180,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       if (pid == -1)
       {
          pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_CONF_GET_NOFORK, compression, encryption, payload);
-         pgagroal_log_error("Conf Get: No fork %s (%d)", NULL, MANAGEMENT_ERROR_CONF_GET_NOFORK);
+         pgagroal_log_error("Conf Get: No fork (%d)", MANAGEMENT_ERROR_CONF_GET_NOFORK);
          goto error;
       }
       else if (pid == 0)
@@ -2203,7 +2203,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       if (pid == -1)
       {
          pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_CONF_SET_NOFORK, compression, encryption, payload);
-         pgagroal_log_error("Conf Set: No fork %s (%d)", NULL, MANAGEMENT_ERROR_CONF_SET_NOFORK);
+         pgagroal_log_error("Conf Set: No fork (%d)", MANAGEMENT_ERROR_CONF_SET_NOFORK);
          goto error;
       }
       else if (pid == 0)
@@ -2226,7 +2226,7 @@ accept_mgt_cb(struct io_watcher* watcher)
       if (pid == -1)
       {
          pgagroal_management_response_error(NULL, client_fd, NULL, MANAGEMENT_ERROR_CONF_ALIAS_NOFORK, compression, encryption, payload);
-         pgagroal_log_error("Config Alias: No fork %s (%d)", NULL, MANAGEMENT_ERROR_CONF_ALIAS_NOFORK);
+         pgagroal_log_error("Config Alias: No fork (%d)", MANAGEMENT_ERROR_CONF_ALIAS_NOFORK);
          goto error;
       }
       else if (pid == 0)

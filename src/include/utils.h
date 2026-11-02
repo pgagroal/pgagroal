@@ -489,7 +489,7 @@ pgagroal_append(char* orig, char* s);
  * @return The resulting string
  */
 char*
-pgagroal_format_and_append(char* buf, char* format, ...);
+pgagroal_format_and_append(char* buf, char* format, ...) __attribute__((format(printf, 2, 3)));
 
 /**
  * Append an int
