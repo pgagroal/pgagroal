@@ -47,6 +47,7 @@
 #define MAX_LENGTH  4096
 
 static void output_log_line(char* l);
+static char* log_line_prefix(struct configuration* config);
 
 FILE* log_file;
 
@@ -338,14 +339,9 @@ retry:
 
       if (atomic_compare_exchange_strong(&config->log_lock, &isfree, STATE_IN_USE))
       {
-         char buf[256];
+         char* buf;
          va_list vl;
-         struct tm* tm;
-         time_t t;
          char* filename;
-
-         t = time(NULL);
-         tm = localtime(&t);
 
          filename = strrchr(file, '/');
          if (filename != NULL)
@@ -362,11 +358,12 @@ retry:
             memcpy(config->log_line_prefix, PGAGROAL_LOGGING_DEFAULT_LOG_LINE_PREFIX, strlen(PGAGROAL_LOGGING_DEFAULT_LOG_LINE_PREFIX));
          }
 
+         buf = log_line_prefix(config);
+
          va_start(vl, fmt);
 
          if (config->log_type == PGAGROAL_LOGGING_TYPE_CONSOLE)
          {
-            buf[strftime(buf, sizeof(buf), config->log_line_prefix, tm)] = '\0';
             fprintf(stdout, "%s %s%-5s\x1b[0m \x1b[90m%s:%d\x1b[0m ",
                     buf, colors[level - 1], levels[level - 1],
                     filename, line);
@@ -376,7 +373,6 @@ retry:
          }
          else if (config->log_type == PGAGROAL_LOGGING_TYPE_FILE)
          {
-            buf[strftime(buf, sizeof(buf), config->log_line_prefix, tm)] = '\0';
             if (log_file != NULL)
             {
                fprintf(log_file, "%s %-5s %s:%d ",
@@ -757,6 +753,29 @@ pgagroal_log_postgres(struct message* msg)
 
       partial_buf_size = remaining;
    }
+}
+
+static char*
+log_line_prefix(struct configuration* config)
+{
+   static time_t cached_time = (time_t)-1;
+   static char cached_format[MISC_LENGTH];
+   static char cached_prefix[256];
+   time_t t;
+
+   /* The prefix has a resolution of one second, so format it at most once a
+    * second. localtime() is slow in a forked child on macOS (it reloads the
+    * time zone on every call), and the log lock is held while it runs */
+   t = time(NULL);
+
+   if (t != cached_time || strcmp(cached_format, config->log_line_prefix))
+   {
+      cached_prefix[strftime(cached_prefix, sizeof(cached_prefix), config->log_line_prefix, localtime(&t))] = '\0';
+      memcpy(cached_format, config->log_line_prefix, sizeof(cached_format));
+      cached_time = t;
+   }
+
+   return cached_prefix;
 }
 
 static void
