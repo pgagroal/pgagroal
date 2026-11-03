@@ -38,7 +38,6 @@
 #include <prometheus.h>
 #include <security.h>
 #include <server.h>
-#include <signal.h>
 #include <tls.h>
 #include <tracker.h>
 #include <utils.h>
@@ -728,20 +727,34 @@ retry2:
             wait_queue_dequeue_if_present(wq, entry_idx);
             atomic_store(&wq->entries[entry_idx].state, WAIT_QUEUE_ENTRY_FREE);
 
-            /* Drain any in-flight SIGUSR2/SIGALRM while our no-op handlers are
-            * still installed and the signals blocked: a late wake-up must
-            * never be delivered through the old (possibly default-terminating)
-            * dispositions restored below. */
+            /* sigwait() consumes a pending signal without running any handler.
+             * Standard (non-realtime) signals coalesce, so at most one SIGUSR2
+             * and one SIGALRM can be pending here; sigwait() is only called
+             * once sigpending() showed the signal, so it never blocks */
             {
+               sigset_t drain_set;
                sigset_t pending_set;
-               struct timespec zero = {0, 0};
+               sigset_t one;
+               int drained_sig;
 
-               sigemptyset(&pending_set);
-               sigaddset(&pending_set, SIGUSR2);
-               sigaddset(&pending_set, SIGALRM);
-               while (sigtimedwait(&pending_set, NULL, &zero) != -1)
+               sigemptyset(&drain_set);
+               sigaddset(&drain_set, SIGUSR2);
+               sigaddset(&drain_set, SIGALRM);
+
+               if (sigpending(&pending_set) == 0)
                {
-                  /* Consume */
+                  if (sigismember(&pending_set, SIGUSR2))
+                  {
+                     sigemptyset(&one);
+                     sigaddset(&one, SIGUSR2);
+                     sigwait(&one, &drained_sig);
+                  }
+                  if (sigismember(&pending_set, SIGALRM))
+                  {
+                     sigemptyset(&one);
+                     sigaddset(&one, SIGALRM);
+                     sigwait(&one, &drained_sig);
+                  }
                }
             }
 
