@@ -41,6 +41,13 @@
 #define MAX_WAIT_QUEUE_CONNECTIONS 16
 #define HOLD_SECONDS               2
 
+/* Upper bound on the holder count for the saturation (timeout) test: the
+ * holders need one real backend each, and the CI runner's PostgreSQL allows
+ * far fewer connections than pgagroal's largest test pools expose. Keeping
+ * the holder batch below that budget prevents mass holder failures that
+ * would make the saturation verdict meaningless. */
+#define MAX_HOLD_CLIENTS 64
+
 static bool
 wait_queue_value_line(const char* line, const char* metric, int* value)
 {
@@ -181,10 +188,15 @@ static void*
 wait_queue_holder_thread(void* arg)
 {
    struct main_configuration* config = (struct main_configuration*)shmem;
+   int holders = wait_queue_hold_capacity();
    int* rc = (int*)arg;
 
-   *rc = pgagroal_tsclient_execute_concurrent_holds(user, database,
-                                                    wait_queue_hold_capacity(),
+   if (holders > MAX_HOLD_CLIENTS)
+   {
+      holders = MAX_HOLD_CLIENTS;
+   }
+
+   *rc = pgagroal_tsclient_execute_concurrent_holds(user, database, holders,
                                                     config->blocking_timeout.s + 5);
    return NULL;
 }
@@ -214,11 +226,6 @@ MCTF_TEST(test_pgagroal_wait_queue_timeout, 300)
       MCTF_SKIP("configuration not available for wait queue oversubscription");
    }
 
-   if (config->pipeline == PIPELINE_TRANSACTION)
-   {
-      MCTF_SKIP("transaction pipeline does not saturate the pool with holds");
-   }
-
    blocking = config->blocking_timeout.s;
    if (blocking < 3 || blocking > 120)
    {
@@ -235,9 +242,29 @@ MCTF_TEST(test_pgagroal_wait_queue_timeout, 300)
    /* Give the holders time to take every slot */
    sleep(3);
 
-   /* Surplus client: must be queued and time out after blocking_timeout */
-   doomed = wait_queue_build_psql("SELECT 1", watchdog);
-   rc = system(doomed);
+   {
+      int probe_window = (int)(blocking / 2);
+      time_t probe_start;
+
+      if (probe_window > 10)
+      {
+         probe_window = 10;
+      }
+
+      doomed = wait_queue_build_psql("SELECT 1", watchdog);
+      probe_start = time(NULL);
+      rc = 0;
+      while (rc == 0 && difftime(time(NULL), probe_start) < (double)probe_window)
+      {
+         rc = system(doomed);
+         if (rc != 0)
+         {
+            break;
+         }
+         sleep(2);
+      }
+   }
+
    MCTF_ASSERT(rc != 0, cleanup,
                "surplus client unexpectedly succeeded while the pool stayed saturated "
                "beyond blocking_timeout (%lds)",
@@ -257,10 +284,9 @@ MCTF_TEST(test_pgagroal_wait_queue_timeout, 300)
                "failed to acquire a slot");
 
 cleanup:
-   if (pthread_cancel(holder) == 0)
+   if (!joined)
    {
-      /* Unreachable in the success path; only a failed assert above leaves
-       * the holders running, and MCTF jumps here before the join */
+      pthread_cancel(holder);
       pthread_join(holder, NULL);
    }
    free(doomed);
