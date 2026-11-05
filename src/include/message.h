@@ -45,6 +45,11 @@ extern "C" {
 #define MESSAGE_STATUS_OK    1
 #define MESSAGE_STATUS_ERROR 2
 
+/* Maximum bytes of a message copied into pgagroal_message_state.msg_buffer
+ * (8 KB): the callback then sees the complete message, or this many bytes
+ * of it when the message is larger */
+#define PARSE_BUFFER_LIMIT 8192
+
 /** @struct message
  * Defines a message
  */
@@ -132,6 +137,97 @@ pgagroal_copy_message(struct message* msg);
  */
 void
 pgagroal_free_message(struct message* msg);
+
+/**
+ * Callback invoked by pgagroal_parse_message when a complete message has been
+ * received. If the message is at most PARSE_BUFFER_LIMIT bytes the callback
+ * sees a contiguous copy of the complete message; for a larger message it
+ * sees only the first PARSE_BUFFER_LIMIT bytes (msglen still reports the
+ * declared total length), so reacting on the kind byte and on the leading
+ * payload fields is safe for any message, while parsing the full payload is
+ * not. A NULL arg is valid; the callback is responsible for guarding against
+ * it if needed.
+ * @param kind The message type byte (e.g. 'Z', 'E', 'D')
+ * @param msg Pointer to the message start (kind byte included); min(msglen, PARSE_BUFFER_LIMIT)
+ *            bytes are valid
+ * @param msglen Declared total length of the message (kind byte + 4-byte length field + payload)
+ * @param arg Caller-supplied context passed through unchanged from pgagroal_parse_message
+ */
+typedef void (*pgagroal_message_callback)(char kind, char* msg, int msglen, void* arg);
+
+/**
+ * Parser state for pgagroal_parse_message. Zero-initialize before the first
+ * call and pass the same instance on every subsequent call for the same
+ * connection so the parser can resume exactly where the previous read stopped.
+ * All fields are private to the parser; callers must not modify them directly.
+ */
+struct pgagroal_message_state
+{
+   char header[5];        /**< Partial header buffer (kind byte + 4-byte length field) */
+   int header_len;        /**< Bytes of the header received so far (0-5); 5 means complete */
+   int payload_remaining; /**< Payload bytes not yet consumed from the current message */
+
+   /* First PARSE_BUFFER_LIMIT bytes of the message under construction
+    * (all of it when the message fits), so callbacks operate on
+    * contiguous data */
+   char msg_buffer[PARSE_BUFFER_LIMIT];
+   int msg_buffer_len;
+   int msg_target_len;
+};
+
+/**
+ * Read a buffer holding one or more concatenated PostgreSQL protocol messages
+ * that may be split across multiple reads. The caller keeps the parser state
+ * in `state` (zero it before the first call); it is updated so a subsequent
+ * call can continue exactly where this one stopped.
+ *
+ * The callback is invoked once per message, when the message is complete.
+ * The callback sees the complete message if it is at most PARSE_BUFFER_LIMIT
+ * bytes, otherwise only its first PARSE_BUFFER_LIMIT bytes (see the callback
+ * documentation). A header split across reads is buffered in the state until
+ * it can be parsed, so a split never desynchronizes the parser. A malformed
+ * header length field discards the rest of the chunk (the parser cannot
+ * resynchronize inside it) and the state is ready for the next chunk.
+ * @param state Parser state, zero-initialized before the first call
+ * @param data The buffer holding the received bytes
+ * @param length The number of received bytes
+ * @param callback The callback to invoke per message
+ * @param arg An argument passed through to the callback
+ */
+void
+pgagroal_parse_message(struct pgagroal_message_state* state,
+                       char* data,
+                       int length,
+                       pgagroal_message_callback callback, void* arg);
+
+/**
+ * Caller-supplied context passed to pgagroal_pipeline_server_rfq via the
+ * pgagroal_parse_message arg parameter. in_tx is required and must not be
+ * NULL; saw_rfq and fatal are optional and may be NULL when the caller does
+ * not need that tracking.
+ */
+struct pipeline_server_state
+{
+   bool* in_tx;   /**< Required. Updated with the transaction state from 'Z' messages */
+   bool* saw_rfq; /**< Optional. Set to true when a genuine idle ReadyForQuery is seen */
+   bool* fatal;   /**< Optional. Set to true when an 'E' message carries FATAL or PANIC */
+};
+
+/**
+ * Shared server-side message callback for the session and transaction
+ * pipelines. Updates the pipeline transaction state and prometheus counters
+ * when a genuine ReadyForQuery ('Z') boundary is seen, and sets the fatal
+ * flag when a genuine ErrorResponse ('E') carries FATAL or PANIC.
+ * Safe to call with a NULL arg, or with a state whose in_tx is NULL; returns
+ * immediately in either case.
+ * @param kind The message type byte
+ * @param msg Pointer to the message start (kind byte included)
+ * @param msglen Declared total length of the message
+ * @param arg Pointer to a pipeline_server_state, or NULL. If non-NULL,
+ *            arg->in_tx must not be NULL.
+ */
+void
+pgagroal_pipeline_server_rfq(char kind, char* msg, int msglen, void* arg);
 
 /**
  * Write an empty message
