@@ -21,39 +21,80 @@ jobs:
         run: |
           sudo apt update -y
           sudo apt install -y lsb-release wget software-properties-common gnupg
-          max_retries=5
-          retry_delay=2
-          tmp_key=$(mktemp)
-          success=false
-          
-          for i in $(seq 1 $max_retries); do
-            echo "Attempt $i of $max_retries to fetch LLVM GPG key..."
-            if wget --timeout=10 --tries=1 -O "$tmp_key" https://apt.llvm.org/llvm-snapshot.gpg.key 2>&1; then
-              echo "✓ Successfully fetched GPG key on attempt $i"
-              success=true
-              break
-            else
-              if [ $i -eq $max_retries ]; then
-                echo "✗ Failed after $max_retries attempts"
-                rm -f "$tmp_key"
-                exit 1
+
+          install_clang_format_from_apt()
+          {
+            local tmp_key max_retries retry_delay i
+            local success=false
+            tmp_key=$(mktemp)
+            max_retries=5
+            retry_delay=2
+
+            for i in $(seq 1 $max_retries); do
+              echo "Attempt $i of $max_retries to fetch LLVM GPG key..."
+              if wget --timeout=10 --tries=1 -O "$tmp_key" https://apt.llvm.org/llvm-snapshot.gpg.key 2>&1; then
+                echo "✓ Successfully fetched GPG key on attempt $i"
+                success=true
+                break
               else
-                echo "  Attempt $i failed, retrying in ${retry_delay}s..."
-                sleep $retry_delay
-                retry_delay=$((retry_delay * 2))
+                if [ $i -eq $max_retries ]; then
+                  echo "✗ Failed after $max_retries attempts"
+                  rm -f "$tmp_key"
+                  return 1
+                else
+                  echo "  Attempt $i failed, retrying in ${retry_delay}s..."
+                  sleep $retry_delay
+                  retry_delay=$((retry_delay * 2))
+                fi
               fi
-            fi
-          done
-          
-          if [ "$success" = true ]; then
-            cat "$tmp_key" | sudo gpg --dearmor -o /usr/share/keyrings/llvm-snapshot.gpg
+            done
+
+            cat "$tmp_key" | sudo gpg --dearmor -o /usr/share/keyrings/llvm-snapshot.gpg || { rm -f "$tmp_key"; return 1; }
             rm -f "$tmp_key"
+
+            echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot.gpg] http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+            sudo apt update -y || return 1
+            sudo apt remove -y clang-format 2>/dev/null || true
+            sudo apt install -y clang-format-21 || return 1
+            sudo ln -sf /usr/bin/clang-format-21 /usr/bin/clang-format || return 1
+            return 0
+          }
+
+          install_clang_format_from_pypi()
+          {
+            echo "Installing clang-format 21.1.x from PyPI"
+            python3 -m pip install --user "clang-format==21.1.*" \
+              || python3 -m pip install --user --break-system-packages "clang-format==21.1.*" \
+              || python3 -m pip install --break-system-packages "clang-format==21.1.*" \
+              || return 1
+
+            local cf_bin="$HOME/.local/bin/clang-format"
+            if [ ! -x "$cf_bin" ]; then
+              cf_bin="$(command -v clang-format || true)"
+            fi
+            if [ -z "$cf_bin" ] || [ ! -x "$cf_bin" ]; then
+              echo "✗ clang-format binary not found after PyPI install"
+              return 1
+            fi
+
+            "$cf_bin" --version | grep -Eq "version 21\." || { echo "✗ Unexpected clang-format version, expected 21.x"; return 1; }
+            sudo ln -sf "$cf_bin" /usr/bin/clang-format || return 1
+            return 0
+          }
+
+          if install_clang_format_from_apt; then
+            echo "✓ clang-format installed from apt.llvm.org"
+            clang-format --version
+          else
+            echo "WARNING: apt.llvm.org is unreachable - switching to the PyPI fallback"
+            if install_clang_format_from_pypi; then
+              echo "✓ clang-format installed from PyPI"
+              clang-format --version
+            else
+              echo "✗ Failed to install clang-format 21 from both apt.llvm.org and PyPI"
+              exit 1
+            fi
           fi
-          echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot.gpg] http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm.list
-          sudo apt update -y
-          sudo apt remove -y clang-format 2>/dev/null || true
-          sudo apt install -y clang-format-21
-          sudo ln -sf /usr/bin/clang-format-21 /usr/bin/clang-format
 
       - name: Check code formatting
         run: |
