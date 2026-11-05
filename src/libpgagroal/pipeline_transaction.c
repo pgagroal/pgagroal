@@ -79,6 +79,7 @@ static struct io_watcher io_mgt;
 static struct worker_io server_io;
 static bool io_watcher_active = false;
 static bool saw_rfq;
+static bool query_in_flight;
 
 struct pipeline
 transaction_pipeline(void)
@@ -120,6 +121,7 @@ transaction_start(struct event_loop* loop, struct worker_io* w)
    memset(&client_message_state, 0, sizeof(client_message_state));
    memset(&server_message_state, 0, sizeof(server_message_state));
    deallocate = false;
+   query_in_flight = false;
 
    memset(&p, 0, sizeof(p));
    /* Use a per-worker socket, not MAIN_UDS: binding MAIN_UDS here would collide with the main management socket and reset pgagroal-cli once a client is attached */
@@ -166,15 +168,24 @@ transaction_stop(struct event_loop* loop, struct worker_io* w)
 {
    if (slot != -1)
    {
-      struct main_configuration* config = NULL;
-
-      config = (struct main_configuration*)shmem;
-
-      /* We are either in 'X' or the client terminated (consider cancel query) */
-      if (in_tx)
+      /* If the client went away while the backend still owes us a response,
+       * or while a transaction is open, the connection cannot be reused:
+       * returning it would let the next client read the previous query's
+       * remaining messages. Sending ROLLBACK here would leave its reply
+       * unread as well, so just close the backend and let PostgreSQL abort
+       * the transaction (#989). */
+      if (fatal || in_tx || query_in_flight)
       {
-         /* ROLLBACK */
-         pgagroal_write_rollback(w->server_ssl, config->connections[slot].fd);
+         if (io_watcher_active)
+         {
+            pgagroal_io_stop(&server_io.io);
+            io_watcher_active = false;
+         }
+         pgagroal_tracking_event_slot(TRACKER_TX_RETURN_CONNECTION_STOP, w->slot);
+         pgagroal_kill_connection(slot, w->server_ssl);
+         slot = -1;
+         shutdown_mgt(loop);
+         return;
       }
 
       if (io_watcher_active)
@@ -289,6 +300,8 @@ transaction_client(struct io_watcher* watcher)
                                 msg->length,
                                 transaction_client_message,
                                 wi);
+
+         query_in_flight = true;
 
          status = pgagroal_send_message(watcher, msg);
 
@@ -412,6 +425,11 @@ transaction_server(struct io_watcher* watcher)
                              msg->length,
                              pgagroal_pipeline_server_rfq,
                              &pipeline_server_state);
+
+      if (saw_rfq)
+      {
+         query_in_flight = false;
+      }
 
       status = pgagroal_send_message(watcher, msg);
 
