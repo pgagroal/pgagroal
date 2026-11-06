@@ -28,6 +28,29 @@
 #
 set -eo pipefail
 
+# GNU sed takes -i with no argument, BSD sed on macOS requires one. Passing the
+# empty string works on BSD and not on GNU, so the two cannot share a call.
+sed_in_place() {
+   local expression=$1
+   shift
+   if sed --version >/dev/null 2>&1; then
+      sed -i "$expression" "$@"
+   else
+      sed -i '' "$expression" "$@"
+   fi
+}
+
+# nproc is coreutils, which macOS does not ship.
+cpu_count() {
+   if command -v nproc >/dev/null 2>&1; then
+      nproc
+   elif command -v sysctl >/dev/null 2>&1; then
+      sysctl -n hw.ncpu
+   else
+      echo 1
+   fi
+}
+
 # Variables
 ENV_PGVERSION="${TEST_PG_VERSION:-17}"
 export TEST_PG_VERSION="${TEST_PG_VERSION:-17}"
@@ -592,10 +615,10 @@ run_single_config_dir() {
    fi
 
    # Update log path in the configuration to use our log directory
-   sed -i "s|log_path = test.log|log_path = $LOG_DIR/pgagroal-$config_name.log|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
+   sed_in_place "s|log_path = test.log|log_path = $LOG_DIR/pgagroal-$config_name.log|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
 
    # Update port to match our PostgreSQL container
-   sed -i "s|port = 5432|port = $PORT|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
+   sed_in_place "s|port = 5432|port = $PORT|g" "$CONFIGURATION_DIRECTORY/pgagroal.conf"
 
    # Stop any running pgagroal instance before starting new config
    stop_pgagroal
@@ -1122,7 +1145,7 @@ do_setup() {
    cmake -DCMAKE_C_COMPILER=$CC \
         -DCMAKE_BUILD_TYPE=Debug \
         ..
-   make -j$(nproc)
+   make -j$(cpu_count)
    cd ..
   else
     echo "pgagroal binaries up to date, skipping build"
