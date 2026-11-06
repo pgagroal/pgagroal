@@ -1163,7 +1163,7 @@ pgagroal_vault_validate_configuration(void* shm)
    {
       pgagroal_log_fatal("pgagroal-vault: No host defined for server [%s] (%s:%d)",
                          config->vault_server.server.name,
-                         config->common.configuration_path[0],
+                         config->common.configuration_path,
                          config->vault_server.server.lineno);
       return 1;
    }
@@ -1172,7 +1172,7 @@ pgagroal_vault_validate_configuration(void* shm)
    {
       pgagroal_log_fatal("pgagroal-vault: No port defined for server [%s] (%s:%d)",
                          config->vault_server.server.name,
-                         config->common.configuration_path[0],
+                         config->common.configuration_path,
                          config->vault_server.server.lineno);
       return 1;
    }
@@ -1181,7 +1181,7 @@ pgagroal_vault_validate_configuration(void* shm)
    {
       pgagroal_log_fatal("pgagroal-vault: No user defined for server [%s] (%s:%d)",
                          config->vault_server.server.name,
-                         config->common.configuration_path[0],
+                         config->common.configuration_path,
                          config->vault_server.server.lineno);
       return 1;
    }
@@ -1511,7 +1511,7 @@ pgagroal_read_limit_configuration(void* shm, char* filename)
                   }
                   else
                   {
-                     pgagroal_log_fatal("Alias '%s' exceeds maximum length (%zu characters) in limit entry %d (%s:%d)",
+                     pgagroal_log_fatal("Alias '%s' exceeds maximum length (%d characters) in limit entry %d (%s:%d)",
                                         aliases[i], MAX_DATABASE_LENGTH, index + 1, config->limit_path, lineno);
                      exit(1);
                   }
