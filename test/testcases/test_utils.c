@@ -31,6 +31,7 @@
 #include <utils.h>
 
 #include <limits.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -206,6 +207,41 @@ MCTF_TEST(test_utils_append_bool)
 
    s = pgagroal_append_bool(NULL, false);
    MCTF_ASSERT_STR_EQ(s, "false", cleanup, "append_bool wrong for false");
+
+cleanup:
+   free(s);
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_utils_append_double_special_values)
+{
+   char* s = NULL;
+
+   /* format_and_append sizes its buffer with vsnprintf(NULL, 0, ...) before
+      formatting. NAN and INFINITY are the one input class where a naive
+      length precomputation could plausibly disagree with the C library
+      between the sizing pass and the write pass. */
+   s = pgagroal_append_double(NULL, NAN);
+   MCTF_ASSERT_PTR_NONNULL(s, cleanup, "append_double returned NULL for NAN");
+   MCTF_ASSERT(strstr(s, "nan") != NULL, cleanup, "append_double did not format NAN as nan");
+   free(s);
+   s = NULL;
+
+   s = pgagroal_append_double(NULL, INFINITY);
+   MCTF_ASSERT_PTR_NONNULL(s, cleanup, "append_double returned NULL for INFINITY");
+   MCTF_ASSERT(strstr(s, "inf") != NULL, cleanup, "append_double did not format INFINITY as inf");
+   free(s);
+   s = NULL;
+
+   s = pgagroal_append_double(NULL, -INFINITY);
+   MCTF_ASSERT_PTR_NONNULL(s, cleanup, "append_double returned NULL for -INFINITY");
+   MCTF_ASSERT(strstr(s, "-inf") != NULL, cleanup, "append_double did not format -INFINITY as -inf");
+   free(s);
+   s = NULL;
+
+   s = pgagroal_append_double(NULL, -1e19);
+   MCTF_ASSERT_PTR_NONNULL(s, cleanup, "append_double returned NULL for -1e19");
+   MCTF_ASSERT_STR_EQ(s, "-10000000000000000000.000000", cleanup, "append_double wrong for -1e19");
 
 cleanup:
    free(s);
