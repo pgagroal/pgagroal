@@ -3534,6 +3534,14 @@ shutdown_ports(bool remove)
 
    shutdown_uds(remove);
 
+   /* A child that outlives main must not keep the listening sockets open,
+    * otherwise the port stays bound and nobody accepts on it */
+   for (int i = 0; i < main_fds_length; i++)
+   {
+      pgagroal_disconnect(*(main_fds + i));
+      errno = 0;
+   }
+
    if (config->common.metrics > 0)
    {
       shutdown_metrics();
