@@ -1109,8 +1109,6 @@ accept_vault_cb(struct io_watcher* watcher)
 static void
 accept_metrics_cb(struct io_watcher* watcher)
 {
-   struct sockaddr_in6 client_addr;
-   socklen_t client_addr_length;
    int client_fd;
    struct vault_configuration* config;
    SSL_CTX* ctx = NULL;
@@ -1118,8 +1116,7 @@ accept_metrics_cb(struct io_watcher* watcher)
 
    config = (struct vault_configuration*)shmem;
 
-   client_addr_length = sizeof(client_addr);
-   client_fd = accept(watcher->fds.main.listen_fd, (struct sockaddr*)&client_addr, &client_addr_length);
+   client_fd = watcher->fds.main.client_fd;
 
    pgagroal_prometheus_self_sockets_add();
 
