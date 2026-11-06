@@ -211,3 +211,11 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test")
 else()
   message(STATUS "Test directory not found, skipping tests")
 endif()
+
+#
+# Benchmark harness (benchmarks/bench.sh builds it)
+#
+option(benchmark "Build the benchmark harness" OFF)
+if (benchmark)
+  add_subdirectory(benchmarks)
+endif()

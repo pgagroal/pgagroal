@@ -5,3 +5,5 @@ build/
 vendor/
 __pycache__/
 *.pyc
+build-bench/
+benchmarks/results/
