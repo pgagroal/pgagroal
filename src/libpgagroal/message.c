@@ -606,7 +606,7 @@ pgagroal_write_tls(SSL* ssl, int socket)
 int
 pgagroal_write_pool_full(SSL* ssl, int socket)
 {
-   int size = 51;
+   int size = 52;
    char pool_full[size];
    struct message msg;
 
@@ -619,6 +619,7 @@ pgagroal_write_pool_full(SSL* ssl, int socket)
    pgagroal_write_string(&(pool_full[12]), "VFATAL");
    pgagroal_write_string(&(pool_full[19]), "C53300");
    pgagroal_write_string(&(pool_full[26]), "Mconnection pool is full");
+   pgagroal_write_byte(&(pool_full[51]), 0);
 
    msg.kind = 'E';
    msg.length = size;
@@ -635,7 +636,7 @@ pgagroal_write_pool_full(SSL* ssl, int socket)
 int
 pgagroal_write_connection_refused(SSL* ssl, int socket)
 {
-   int size = 46;
+   int size = 47;
    char connection_refused[size];
    struct message msg;
 
@@ -648,6 +649,7 @@ pgagroal_write_connection_refused(SSL* ssl, int socket)
    pgagroal_write_string(&(connection_refused[12]), "VFATAL");
    pgagroal_write_string(&(connection_refused[19]), "C53300");
    pgagroal_write_string(&(connection_refused[26]), "Mconnection refused");
+   pgagroal_write_byte(&(connection_refused[46]), 0);
 
    msg.kind = 'E';
    msg.length = size;
