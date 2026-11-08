@@ -76,6 +76,11 @@ pgagroal_worker(int client_fd, char* address, char** argv)
 
    config = (struct main_configuration*)shmem;
 
+   /* The wait queue wakes this process with SIGUSR2 and expires it with
+    * SIGALRM; make both no-ops for the whole lifetime of the worker so a
+    * late/stray wake-up kill can never terminate a serving worker. */
+   pgagroal_wait_queue_signal_init();
+
    memset(&client_io, 0, sizeof(struct worker_io));
    memset(&server_io, 0, sizeof(struct worker_io));
 

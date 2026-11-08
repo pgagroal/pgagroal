@@ -85,6 +85,33 @@ wait_queue_alarm_handler(int signum)
    (void)signum;
 }
 
+/* The wait queue wakes workers with SIGUSR2 and expires them with SIGALRM
+ * (ITIMER_REAL). Both dispositions must be these no-op handlers for the
+ * WHOLE lifetime of a worker process, not just while a wait is in progress:
+ * a wake-up kill can legitimately arrive after the waiter has already left
+ * its protected window (e.g. it was claimed between publishing its entry and
+ * reaching sigsuspend, so it never suspended, or it self-woke on the
+ * capacity re-check), and the default disposition of SIGUSR2 would terminate
+ * a worker that is serving a client. Outside a wait, SIGUSR2/SIGALRM have no
+ * other user in a worker (main's shutdown SIGALRM does not survive the
+ * worker's own event loop setup), and a stray signal must never kill a
+ * serving worker. Workers call pgagroal_wait_queue_signal_init() once at
+ * startup; the dispositions are never restored afterwards. */
+void
+pgagroal_wait_queue_signal_init(void)
+{
+   struct sigaction sa;
+
+   memset(&sa, 0, sizeof(sa));
+   sa.sa_handler = wait_queue_wakeup_handler;
+   sigemptyset(&sa.sa_mask);
+   sa.sa_flags = 0;
+   sigaction(SIGUSR2, &sa, NULL);
+
+   sa.sa_handler = wait_queue_alarm_handler;
+   sigaction(SIGALRM, &sa, NULL);
+}
+
 /* The wait queue deadline: wait_queue_timeout when configured, otherwise the
  * legacy blocking_timeout default. */
 static pgagroal_time_t
@@ -161,7 +188,7 @@ wait_queue_enqueue(struct wait_queue* wq, int idx, int best_rule, const char* us
 }
 
 static pid_t
-wait_queue_claim_oldest_waiter(struct wait_queue* wq, int queue_timeout_s)
+wait_queue_claim_oldest_waiter(struct wait_queue* wq, int queue_timeout_s, int rule)
 {
    time_t now = time(NULL);
    pid_t timeout_pids[MAX_NUMBER_OF_CONNECTIONS];
@@ -222,39 +249,56 @@ wait_queue_claim_oldest_waiter(struct wait_queue* wq, int queue_timeout_s)
       }
    }
 
-   /* Phase 2: Claim the oldest valid waiter. This only dequeues it and marks
-    * it CLAIMED; the caller signals the waiter after the returned connection
-    * has gone through the normal parking/return path below, and the waiter
-    * then re-runs the regular acquisition logic in pgagroal_get_connection(). */
-   if (wq->head != WAIT_QUEUE_NULL_INDEX)
+   /* Phase 2: Claim the oldest waiter that can use the freed slot's limit
+    * rule. The reuse scan in pgagroal_get_connection() only reuses a parked
+    * slot when its limit_rule matches the acquirer's best_rule, so waking a
+    * waiter of a different rule would only send it back to the queue tail;
+    * scanning past non-matching entries keeps them queued in FIFO order. The
+    * claim only dequeues the entry and marks it CLAIMED; the caller signals
+    * the waiter after the returned connection has gone through the normal
+    * parking/return path, and the waiter then re-runs the regular
+    * acquisition logic in pgagroal_get_connection(). */
    {
-      int claimed_idx = wq->head;
-      struct wait_queue_entry* claimed = &wq->entries[claimed_idx];
+      int scan_idx = wq->head;
 
-      /* Unlink */
-      wq->head = claimed->next;
-      if (claimed->next != WAIT_QUEUE_NULL_INDEX)
+      while (scan_idx != WAIT_QUEUE_NULL_INDEX)
       {
-         wq->entries[claimed->next].prev = WAIT_QUEUE_NULL_INDEX;
-      }
-      else
-      {
-         wq->tail = WAIT_QUEUE_NULL_INDEX;
-      }
-      atomic_store(&wq->count, atomic_load(&wq->count) - 1);
-      claimed->prev = WAIT_QUEUE_NULL_INDEX;
-      claimed->next = WAIT_QUEUE_NULL_INDEX;
+         struct wait_queue_entry* claimed = &wq->entries[scan_idx];
+         signed char expected = WAIT_QUEUE_ENTRY_WAITING;
 
-      /* WAITING -> CLAIMED: waiter now owns this entry again */
-      signed char expected = WAIT_QUEUE_ENTRY_WAITING;
-      if (atomic_compare_exchange_strong(&claimed->state,
-                                         &expected,
-                                         WAIT_QUEUE_ENTRY_CLAIMED))
-      {
-         claimed_pid = claimed->pid;
-         pgagroal_prometheus_wait_queue_handoff();
-         pgagroal_log_debug("wait_queue: claimed (entry %d pid %d queue %d) on slot return",
-                            claimed_idx, claimed_pid, atomic_load(&wq->count));
+         if (claimed->best_rule == rule &&
+             atomic_compare_exchange_strong(&claimed->state,
+                                            &expected,
+                                            WAIT_QUEUE_ENTRY_CLAIMED))
+         {
+            int next_idx = claimed->next;
+
+            /* Unlink */
+            if (claimed->prev != WAIT_QUEUE_NULL_INDEX)
+               wq->entries[claimed->prev].next = next_idx;
+            else
+               wq->head = next_idx;
+
+            if (next_idx != WAIT_QUEUE_NULL_INDEX)
+            {
+               wq->entries[next_idx].prev = claimed->prev;
+            }
+            else
+            {
+               wq->tail = claimed->prev;
+            }
+            atomic_store(&wq->count, atomic_load(&wq->count) - 1);
+            claimed->prev = WAIT_QUEUE_NULL_INDEX;
+            claimed->next = WAIT_QUEUE_NULL_INDEX;
+
+            claimed_pid = claimed->pid;
+            pgagroal_prometheus_wait_queue_handoff();
+            pgagroal_log_debug("wait_queue: claimed (entry %d pid %d rule %d queue %d) on slot return",
+                               scan_idx, claimed_pid, rule, atomic_load(&wq->count));
+            break;
+         }
+
+         scan_idx = claimed->next;
       }
    }
 
@@ -650,24 +694,34 @@ retry2:
           * transferred through the queue. */
          if (wq != NULL && difftime(time(NULL), start_time) < (double)timeout_s)
          {
+            /* Re-validate the pool before queueing. The fast-path check that
+             * brought us here read a stale snapshot: a concurrent return may
+             * already have freed capacity (the return decrements
+             * active_connections and publishes STATE_FREE before its claim
+             * scan runs). Sleeping in the queue in that window means nobody
+             * wakes us until the NEXT return, which under long-held
+             * connections may be the full deadline away -- reported as
+             * "connection pool is full" while slots are actually free.
+             * Re-check and retry the acquisition instead, with the standard
+             * back-off so a pool whose free slots are unusable for this
+             * user/database (parked for someone else) does not spin hot. */
+            if (atomic_load(&config->active_connections) < config->max_connections)
+            {
+               retry_delay = pgagroal_pool_next_retry_delay(retry_delay, config->connection_retry_delay);
+               SLEEP(retry_delay);
+               goto start;
+            }
             entry_idx = wait_queue_get_free_entry(wq);
          }
 
          if (entry_idx != WAIT_QUEUE_NULL_INDEX)
          {
-            /* Set up SIGUSR2 handler (for wake-up notifications) */
-            struct sigaction sa_usr2, old_usr2;
-            sa_usr2.sa_handler = wait_queue_wakeup_handler;
-            sigemptyset(&sa_usr2.sa_mask);
-            sa_usr2.sa_flags = 0;
-            sigaction(SIGUSR2, &sa_usr2, &old_usr2);
-
-            /* Set up SIGALRM handler (for self-timed wakeup) */
-            struct sigaction sa_alarm, old_alarm;
-            sa_alarm.sa_handler = wait_queue_alarm_handler;
-            sigemptyset(&sa_alarm.sa_mask);
-            sa_alarm.sa_flags = 0;
-            sigaction(SIGALRM, &sa_alarm, &old_alarm);
+            /* SIGUSR2/SIGALRM dispositions are the permanent no-op handlers
+             * installed by pgagroal_wait_queue_signal_init() at worker start;
+             * only the blocking is per-wait here. This closes the race where
+             * a wake-up kill arrives after the waiter has left its protected
+             * window: a late SIGUSR2 is absorbed by the no-op handler instead
+             * of killing a worker that is already serving a client. */
 
             /* Block both signals so we can control when they're delivered */
             sigset_t mask, old_mask;
@@ -677,9 +731,23 @@ retry2:
             sigprocmask(SIG_BLOCK, &mask, &old_mask);
 
             wait_queue_enqueue(wq, entry_idx, best_rule, username, database);
+            
+            /* Watchdog cadence: re-validate the pool at the same interval the
+             * blocking retry path polls at, instead of sleeping the whole
+             * remaining deadline. Signals still deliver instant wake-ups; the
+             * periodic re-check only catches what the protocol can miss
+             * (capacity freed between our fast-path check and the enqueue, a
+             * wake-up lost to a dead pid, or a capacity-freeing path that
+             * does not claim). */
+            double recheck_s = (double)config->connection_retry_delay / 1000.0;
+            if (recheck_s < 0.001)
+            {
+               recheck_s = 0.001;
+            }
 
-            /* Wait loop: exit only on CLAIMED or TIMEOUT */
+            /* Wait loop: exit only on CLAIMED, self-recovery or TIMEOUT */
             signed char state;
+            bool self_wake = false;
             while ((state = atomic_load(&wq->entries[entry_idx].state)) == WAIT_QUEUE_ENTRY_WAITING)
             {
                /* Check our own timeout first */
@@ -700,15 +768,37 @@ retry2:
                   continue;
                }
 
-               /* Arm a one-shot alarm for the remaining deadline so that a
-                * return worker that dies between claiming us and signaling
-                * can never hang us forever */
+               /* Watchdog: capacity is visible, so re-run the acquisition
+                * path instead of sleeping on the queue. The claimer may have
+                * already CAS'd us to CLAIMED (the return decrements the
+                * counter before claiming); the CAS below loses that race and
+                * the loop re-reads the state, exiting through the CLAIMED
+                * path. */
+               if (atomic_load(&config->active_connections) < config->max_connections)
+               {
+                  signed char expected = WAIT_QUEUE_ENTRY_WAITING;
+                  if (atomic_compare_exchange_strong(&wq->entries[entry_idx].state,
+                                                     &expected,
+                                                     WAIT_QUEUE_ENTRY_TIMEOUT))
+                  {
+                     state = WAIT_QUEUE_ENTRY_TIMEOUT;
+                     self_wake = true;
+                     break;
+                  }
+                  continue;
+               }
+
+               /* Arm a one-shot alarm for the sooner of the remaining
+                * deadline and the watchdog interval, so that a return worker
+                * that dies between claiming us and signaling can never hang
+                * us forever, and so the watchdog above runs periodically */
                double remaining = (double)timeout_s - elapsed;
+               double nap = remaining < recheck_s ? remaining : recheck_s;
                struct itimerval itv;
                itv.it_interval.tv_sec = 0;
                itv.it_interval.tv_usec = 0;
-               itv.it_value.tv_sec = (time_t)remaining;
-               itv.it_value.tv_usec = (suseconds_t)((remaining - (time_t)remaining) * 1000000.0);
+               itv.it_value.tv_sec = (time_t)nap;
+               itv.it_value.tv_usec = (suseconds_t)((nap - (time_t)nap) * 1000000.0);
                setitimer(ITIMER_REAL, &itv, NULL);
 
                /* Sleep until signaled. old_mask is our suspend mask: it does
@@ -758,9 +848,7 @@ retry2:
                }
             }
 
-            /* Restore signal handlers */
-            sigaction(SIGUSR2, &old_usr2, NULL);
-            sigaction(SIGALRM, &old_alarm, NULL);
+            /* Restore the signal mask; the no-op dispositions stay installed */
             sigprocmask(SIG_SETMASK, &old_mask, NULL);
 
             if (state == WAIT_QUEUE_ENTRY_CLAIMED)
@@ -773,6 +861,16 @@ retry2:
                pgagroal_log_debug("wait_queue: exit (entry %d pid %d state CLAIMED)", entry_idx, getpid());
                goto start;
             }
+
+            if (self_wake)
+            {
+               /* The watchdog saw free capacity: leave the queue and re-run
+                * the acquisition path immediately. This is not a timeout and
+                * is not counted as one. */
+               pgagroal_log_debug("wait_queue: exit (entry %d pid %d state SELF_WAKE)", entry_idx, getpid());
+               goto start;
+            }
+
 
             /* TIMEOUT (or unexpected state) */
             pgagroal_log_debug("wait_queue: exit (entry %d pid %d state %s)", entry_idx, getpid(), state == WAIT_QUEUE_ENTRY_TIMEOUT ? "TIMEOUT" : "unexpected");
@@ -985,23 +1083,6 @@ pgagroal_return_connection(int slot, SSL* ssl, bool transaction_mode)
             }
          }
 
-         /* Wait queue wake-up: claim the oldest waiter, if any. The wake-up is
-          * only a hint -- the waiter re-runs the normal acquisition path in
-          * pgagroal_get_connection() once this return has completed and the
-          * slot is actually FREE. Nothing is transferred here: no slot
-          * metadata, no fd, no security context. */
-         pid_t woken_pid = -1;
-         {
-            struct wait_queue* wq = (struct wait_queue*)wait_queue_shmem;
-
-            if (wq != NULL && !config->gracefully)
-            {
-               woken_pid = wait_queue_claim_oldest_waiter(
-                  wq,
-                  (int)pgagroal_time_convert(wait_queue_effective_timeout(config), FORMAT_TIME_S));
-            }
-         }
-
          /* Park the serialized context for a later checkout to resume. Buffered
           * ciphertext would be lost on worker exit, so only park when rbuf is empty. */
          if (tls_owned)
@@ -1072,6 +1153,11 @@ pgagroal_return_connection(int slot, SSL* ssl, bool transaction_mode)
             atomic_fetch_sub(&config->limits[config->connections[slot].limit_rule].active_connections, 1);
          }
 
+         /* The rule of the parked slot, read before the slot becomes visible
+          * as FREE: a racing acquirer can rewrite it the moment the state
+          * store below lands. */
+         int parked_rule = config->connections[slot].limit_rule;
+
          config->connections[slot].new = false;
          config->connections[slot].pid = -1;
          config->connections[slot].tx_mode = transaction_mode;
@@ -1079,14 +1165,34 @@ pgagroal_return_connection(int slot, SSL* ssl, bool transaction_mode)
          atomic_store(&config->states[slot], STATE_FREE);
          atomic_fetch_sub(&config->active_connections, 1);
 
-         /* The slot is FREE now: wake the claimed waiter so it re-runs the
-          * normal acquisition path. If the wake-up is lost (e.g. the waiter
-          * exited), nothing happens; the waiter's own SIGALRM deadline or the
-          * next returning connection covers it. */
-         if (woken_pid > 0)
+         /* Wait queue wake-up: the slot is FREE now, so claim the oldest
+          * waiter that can reuse it (same limit rule) and signal it. The
+          * claim is issued only after the return has fully completed:
+          * claiming earlier and waking only on this success path left an
+          * orphan window where any failure between claim and wake (TLS
+          * parking, the transfer hops) left the waiter dequeued, CLAIMED and
+          * never signaled, sleeping until its own deadline. The wake-up is
+          * still only a hint -- the waiter re-runs the normal acquisition
+          * path in pgagroal_get_connection(); nothing is transferred through
+          * the queue. If the wake-up is lost (e.g. the waiter exited),
+          * nothing happens; the waiter's own watchdog or deadline, or the
+          * next returning connection, covers it. */
          {
-            pgagroal_log_debug("wait_queue: wake (slot %d pid %d)", slot, woken_pid);
-            kill(woken_pid, SIGUSR2);
+            struct wait_queue* wq = (struct wait_queue*)wait_queue_shmem;
+
+            if (wq != NULL && !config->gracefully)
+            {
+               pid_t woken_pid = wait_queue_claim_oldest_waiter(
+                  wq,
+                  (int)pgagroal_time_convert(wait_queue_effective_timeout(config), FORMAT_TIME_S),
+                  parked_rule);
+
+               if (woken_pid > 0)
+               {
+                  pgagroal_log_debug("wait_queue: wake (slot %d pid %d)", slot, woken_pid);
+                  kill(woken_pid, SIGUSR2);
+               }
+            }
          }
 
          pgagroal_log_debug("Connection returned: slot=%d, active_connections=%d, gracefully=%s",
@@ -1125,6 +1231,8 @@ pgagroal_kill_connection(int slot, SSL* ssl)
    int result = 0;
    int fd;
    int transfer_fd;
+   int killed_rule;
+   bool freed_capacity;
    struct main_configuration* config;
 
    config = (struct main_configuration*)shmem;
@@ -1134,6 +1242,12 @@ pgagroal_kill_connection(int slot, SSL* ssl)
                       config->connections[slot].pid);
 
    pgagroal_tracking_event_slot(TRACKER_KILL_CONNECTION, slot);
+
+   /* Read before the teardown below clears the fields: the rule the killed
+    * backend belonged to, and whether the kill frees capacity at all (an
+    * active checkout dropped, or a rule-bound pooled backend removed). */
+   killed_rule = config->connections[slot].limit_rule;
+   freed_capacity = (config->connections[slot].pid != -1 || killed_rule >= 0);
 
    fd = config->connections[slot].fd;
    if (fd != -1)
@@ -1254,6 +1368,33 @@ pgagroal_kill_connection(int slot, SSL* ssl)
    atomic_store(&config->connections[slot].generation, 0);
 
    atomic_store(&config->states[slot], STATE_NOTINIT);
+
+   /* Wait queue wake-up: destroying a backend frees capacity -- an active
+    * checkout dropped, or a rule-bound pooled backend removed, and the slot
+    * is NOTINIT so any waiter can build a fresh connection in it. Without
+    * this, the idle-timeout, max-connection-age, validation, flush and
+    * CLI-kill paths never wake queued waiters: with a saturated pool they
+    * sleep to their full deadline even though capacity became available. The
+    * claim is issued after the slot teardown above, so the woken waiter
+    * races for a slot that is actually available. */
+   if (freed_capacity && !config->gracefully)
+   {
+      struct wait_queue* wq = (struct wait_queue*)wait_queue_shmem;
+
+      if (wq != NULL)
+      {
+         pid_t woken_pid = wait_queue_claim_oldest_waiter(
+            wq,
+            (int)pgagroal_time_convert(wait_queue_effective_timeout(config), FORMAT_TIME_S),
+            killed_rule);
+
+         if (woken_pid > 0)
+         {
+            pgagroal_log_debug("wait_queue: wake (kill slot %d pid %d)", slot, woken_pid);
+            kill(woken_pid, SIGUSR2);
+         }
+      }
+   }
 
    pgagroal_prometheus_connection_kill();
 

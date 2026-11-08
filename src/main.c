@@ -1171,6 +1171,21 @@ read_superuser_path:
 
    pgagroal_pool_init();
 
+   /* The wait queue in the workers signals wake-ups with SIGUSR2. Main never
+    * waits in the queue, but a wake-up kill whose target pid was reused could
+    * land here; SIGUSR2 has no other user in main, so make it a no-op instead
+    * of the terminating default. (SIGALRM is left alone: main uses it for the
+    * shutdown timeout.) */
+   {
+      struct sigaction sa;
+
+      memset(&sa, 0, sizeof(sa));
+      sa.sa_handler = SIG_IGN;
+      sigemptyset(&sa.sa_mask);
+      sa.sa_flags = 0;
+      sigaction(SIGUSR2, &sa, NULL);
+   }
+
    pgagroal_set_proc_title(argc, argv, "main", NULL);
 
    free(os);

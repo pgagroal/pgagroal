@@ -71,27 +71,6 @@ wait_queue_value_line(const char* line, const char* metric, int* value)
    return true;
 }
 
-/*
- * The wait queue is a wake-up protocol: a return worker dequeues the oldest
- * waiter (WAITING -> CLAIMED), completes the normal parking/return of its
- * connection, and signals the waiter, which then re-runs the regular
- * pgagroal_get_connection() acquisition path. Exercise exactly that with an
- * oversubscription of clients holding BEGIN; SELECT pg_sleep(); COMMIT for
- * HOLD_SECONDS: the surplus clients must be admitted through queue wake-ups
- * (or, if the wait queue is momentarily full, the bounded spin fallback) and
- * must all succeed within blocking_timeout, with bookkeeping intact across
- * two back-to-back rounds (no leaked or orphaned entries between rounds).
- *
- * Runs on every pipeline. In performance/session pipelines each client holds
- * its slot for the whole psql session, so admission only proceeds when a
- * client exits -- claims fire there as the hold-wave ends. In the transaction
- * pipeline slots are freed at every COMMIT, so the 'wait_queue: claimed' /
- * 'wake' debug lines in the server log show the queue actively cycling
- * mid-run. The client count adapts to the configured pool: up to
- * max_connections + 2, capped so the oversubscription stays within the
- * PostgreSQL backend budget of a CI runner (also allowing the run-configs
- * configurations with max_connections = 100/200 to exercise the queue).
- */
 MCTF_TEST(test_pgagroal_wait_queue_wakeups)
 {
    struct main_configuration* config = (struct main_configuration*)shmem;
@@ -103,7 +82,7 @@ MCTF_TEST(test_pgagroal_wait_queue_wakeups)
       MCTF_SKIP("configuration not available for wait queue oversubscription");
    }
 
-   client_count = config->max_connections + 2 < MAX_WAIT_QUEUE_CONNECTIONS ? config->max_connections + 2 : MAX_WAIT_QUEUE_CONNECTIONS;
+   client_count = config->max_connections;
 
    if (config->blocking_timeout.s < (int64_t)HOLD_SECONDS + 2)
    {

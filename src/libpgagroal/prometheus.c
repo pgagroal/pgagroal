@@ -3231,6 +3231,20 @@ wait_queue_information(prometheus_metrics_container_t* container)
    prometheus = (struct main_prometheus*)prometheus_shmem;
    wq = (struct wait_queue*)wait_queue_shmem;
 
+   /* The queue lives in shared memory allocated by the pgagroal binary at
+    * startup; the vault binary (and any process that never created it)
+    * reports zeros instead of dereferencing NULL. */
+   if (wq == NULL)
+   {
+      data = pgagroal_append(data, "# HELP pgagroal_wait_queue_size Current number of connections in the wait queue\n");
+      data = pgagroal_append(data, "# TYPE pgagroal_wait_queue_size gauge\n");
+      data = pgagroal_append(data, "pgagroal_wait_queue_size 0\n");
+      add_metric_to_art(container->pool_metrics, "pgagroal_wait_queue_size", data, NULL, NULL, 0);
+      free(data);
+      data = NULL;
+      return;
+   }
+
    /* 1. Current Queue Size (Gauge) */
    data = pgagroal_append(data, "# HELP pgagroal_wait_queue_size Current number of connections in the wait queue\n");
    data = pgagroal_append(data, "# TYPE pgagroal_wait_queue_size gauge\n");
