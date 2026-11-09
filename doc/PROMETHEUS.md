@@ -176,6 +176,18 @@ Number of sockets used by pgagroal itself
 
 Number of connection on-hold (awaiting)
 
+**pgagroal_wait_queue_size**
+
+Current number of connections in the wait queue
+
+**pgagroal_wait_queue_timeouts**
+
+Number of connections that timed out in the wait queue
+
+**pgagroal_wait_queue_handoffs**
+
+Number of waiters released from the wait queue
+
 **pgagroal_os_info**
 
 Operating system version information
