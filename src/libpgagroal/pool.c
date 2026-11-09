@@ -731,7 +731,7 @@ retry2:
             sigprocmask(SIG_BLOCK, &mask, &old_mask);
 
             wait_queue_enqueue(wq, entry_idx, best_rule, username, database);
-            
+
             /* Watchdog cadence: re-validate the pool at the same interval the
              * blocking retry path polls at, instead of sleeping the whole
              * remaining deadline. Signals still deliver instant wake-ups; the
@@ -870,7 +870,6 @@ retry2:
                pgagroal_log_debug("wait_queue: exit (entry %d pid %d state SELF_WAKE)", entry_idx, getpid());
                goto start;
             }
-
 
             /* TIMEOUT (or unexpected state) */
             pgagroal_log_debug("wait_queue: exit (entry %d pid %d state %s)", entry_idx, getpid(), state == WAIT_QUEUE_ENTRY_TIMEOUT ? "TIMEOUT" : "unexpected");

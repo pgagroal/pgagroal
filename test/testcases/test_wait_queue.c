@@ -82,7 +82,7 @@ MCTF_TEST(test_pgagroal_wait_queue_wakeups)
       MCTF_SKIP("configuration not available for wait queue oversubscription");
    }
 
-   client_count = config->max_connections;
+   client_count = config->max_connections + 2 < MAX_WAIT_QUEUE_CONNECTIONS ? config->max_connections + 2 : MAX_WAIT_QUEUE_CONNECTIONS;
 
    if (config->blocking_timeout.s < (int64_t)HOLD_SECONDS + 2)
    {
