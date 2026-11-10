@@ -89,6 +89,7 @@ static void service_reload_cb(void);
 static void graceful_cb(void);
 static void coredump_cb(void);
 static void sigchld_cb(void);
+static void sigpipe_handler(int signum);
 static void idle_timeout_cb(void);
 static void max_connection_age_cb(void);
 static void rotate_frontend_password_cb(void);
@@ -412,6 +413,7 @@ main(int argc, char** argv)
    bool has_main_sockets = false;
    void* tmp_shmem = NULL;
    struct signal_info signal_watcher[SIGNALS_NUMBER];
+   struct sigaction sigpipe_action;
    struct rlimit flimit;
    size_t shmem_size;
    size_t pipeline_shmem_size = 0;
@@ -1232,6 +1234,22 @@ read_superuser_path:
    {
       signal_watcher[i].slot = -1;
       pgagroal_signal_start(&signal_watcher[i].sig_w);
+   }
+
+   /* A write to a peer that has gone away must fail with EPIPE, not kill the
+    * process. The children inherit the handler. Not SIG_IGN, since an ignored signal would stay
+    * ignored in the failover scripts we execute */
+   memset(&sigpipe_action, 0, sizeof(sigpipe_action));
+   sigpipe_action.sa_handler = sigpipe_handler;
+   sigpipe_action.sa_flags = SA_RESTART;
+   sigemptyset(&sigpipe_action.sa_mask);
+   if (sigaction(SIGPIPE, &sigpipe_action, NULL) == -1)
+   {
+      pgagroal_log_fatal("pgagroal: Could not set the SIGPIPE handler: %s", strerror(errno));
+#ifdef HAVE_SYSTEMD
+      sd_notifyf(0, "STATUS=Could not set the SIGPIPE handler");
+#endif
+      goto error;
    }
 
    if (config->pipeline == PIPELINE_PERFORMANCE)
@@ -2890,6 +2908,11 @@ sigchld_cb(void)
    {
       ;
    }
+}
+
+static void
+sigpipe_handler(int signum __attribute__((unused)))
+{
 }
 
 static void
