@@ -721,6 +721,14 @@ pgagroal_kill_connection(int slot, SSL* ssl)
    fd = config->connections[slot].fd;
    if (fd != -1)
    {
+      long long generation = atomic_load(&config->connections[slot].generation);
+
+      for (int wait_iter = 0; generation == FD_GENERATION_PENDING && wait_iter < 500; wait_iter++)
+      {
+         SLEEP(100000L)
+         generation = atomic_load(&config->connections[slot].generation);
+      }
+
       if (pgagroal_connection_get(&transfer_fd))
       {
          result = 1;
@@ -737,7 +745,7 @@ pgagroal_kill_connection(int slot, SSL* ssl)
       }
 
       /* Tells main which of its descriptors for the slot to close */
-      if (pgagroal_connection_generation_write(transfer_fd, atomic_load(&config->connections[slot].generation)))
+      if (pgagroal_connection_generation_write(transfer_fd, generation))
       {
          result = 1;
       }
@@ -2165,6 +2173,13 @@ fetch_descriptor(int slot)
 
    target = config->connections[slot].fd;
    expected = atomic_load(&config->connections[slot].generation);
+
+   for (int wait_iter = 0; target >= 0 && expected == FD_GENERATION_PENDING && wait_iter < 500; wait_iter++)
+   {
+      SLEEP(100000L)
+      target = config->connections[slot].fd;
+      expected = atomic_load(&config->connections[slot].generation);
+   }
 
    if (target < 0 || expected == FD_GENERATION_PENDING)
    {
