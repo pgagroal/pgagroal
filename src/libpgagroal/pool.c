@@ -2110,6 +2110,10 @@ pgagroal_prefill_if_can(bool do_fork, bool initial)
       if (pgagroal_get_primary(&primary))
       {
          pgagroal_log_warn("No primary detected, cannot try to prefill!");
+         if (!do_fork)
+         {
+            exit(0);
+         }
          return;
       }
 
