@@ -95,6 +95,18 @@ long
 pgagroal_pool_next_retry_delay(long current_ns, int cap_ms);
 
 /**
+ * Install the permanent no-op SIGUSR2/SIGALRM handlers used by the FIFO wait
+ * queue. Every worker process must call this once at startup: a wake-up is a
+ * kill(SIGUSR2) that can arrive at any point of the worker's lifetime (a
+ * claim can even land between the waiter publishing its queue entry and
+ * reaching sigsuspend), and the default disposition of SIGUSR2 would
+ * terminate a worker that is serving a client. Must be called before any
+ * pgagroal_get_connection() call.
+ */
+void
+pgagroal_wait_queue_signal_init(void);
+
+/**
  * Return a connection
  * @param slot The slot
  * @param ssl The SSL connection (can be NULL)

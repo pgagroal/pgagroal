@@ -96,6 +96,15 @@ blocking_timeout
   'H' for hours, 'D' for days, and 'W' for weeks.
   (disable = 0) Default is 30
 
+wait_queue_timeout
+  The amount of time a client may wait in the connection wait queue for a connection. The wait queue is a
+  shared memory FIFO: when the pool is saturated, clients are served strictly in arrival order, and the
+  head of the line is the only client that may take a freed connection or create a new one. A client whose
+  limit rule is exhausted steps aside for one turn so it cannot block clients that can still be served,
+  and then gets its turn back. When this value is not set (or 0), ``blocking_timeout`` is used instead;
+  if both are 0 the queue is disabled and the legacy bounded retry applies. It accepts the same units as
+  ``blocking_timeout``. Default is 0 (use ``blocking_timeout``)
+
 connection_retry_delay
   When ``blocking_timeout`` is set, the cap (in milliseconds) on the back-off between
   connection-acquisition retries. The delay starts at 1ms and doubles on each retry
