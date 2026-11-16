@@ -206,7 +206,7 @@ pgagroal_bind_unix_socket(const char* directory, const char* file, int* fd)
       pgagroal_snprintf(&buf[0], sizeof(buf), "%s%s.%d", directory, file, config->common.port);
    }
 
-   strncpy(addr.sun_path, &buf[0], sizeof(addr.sun_path) - 1);
+   pgagroal_snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", &buf[0]);
    unlink(&buf[0]);
 
    if (bind(*fd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
@@ -396,7 +396,7 @@ pgagroal_connect_unix_socket(const char* directory, const char* file, int* fd)
    memset(&buf, 0, sizeof(buf));
    pgagroal_snprintf(&buf[0], sizeof(buf), "%s/%s.%d", directory, file, config->common.port);
 
-   strncpy(addr.sun_path, &buf[0], sizeof(addr.sun_path) - 1);
+   pgagroal_snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", &buf[0]);
 
    if (connect(*fd, (struct sockaddr*)&addr, sizeof(addr)) == -1)
    {

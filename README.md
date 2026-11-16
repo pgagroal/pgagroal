@@ -53,6 +53,7 @@ See [Architecture](./doc/ARCHITECTURE.md) for the architecture of [**pgagroal**]
 
 * [FreeBSD](https://www.freebsd.org/)
 * [OpenBSD](http://www.openbsd.org/)
+* [NetBSD](https://www.netbsd.org/)
 
 
 ## Compiling from sources

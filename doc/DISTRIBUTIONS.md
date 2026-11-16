@@ -61,6 +61,40 @@ pkg install cmake          	\
             binutils
 ```
 
+## Compiling on NetBSD
+
+First, ensure `pkgin` is installed. If you are using a fresh NetBSD installation, you can bootstrap `pkgin` and set the package path as follows:
+
+```sh
+export PKG_PATH=https://cdn.netbsd.org/pub/pkgsrc/packages/NetBSD/$(uname -p)/$(uname -r | cut -d_ -f1)/All
+pkg_add pkgin
+pkgin update
+```
+
+All the dependencies can then be installed via pkgin(8) as follows:
+
+```sh
+pkgin install gcc        \ 
+              clang      \
+              cmake      \      
+              pkg-config \
+              openssl    \
+              zlib       \
+              zstd       \
+              lz4        \
+              bzip2      \
+              python313  \
+              py313-pip  \
+              doxygen
+```
+
+`rst2man` is provided by `docutils`. If `py313-docutils` is not available for
+your pkgsrc branch, install it with `pip(1)` instead:
+
+```sh
+python3.13 -m pip install docutils
+```
+
 ## Compiling on Ubuntu / Debian
 
 All the dependencies can be installed via `apt(8)` as follows:

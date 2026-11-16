@@ -417,10 +417,10 @@ master_key(char* password, bool generate_pwd, int pwd_length, int32_t output_for
    }
    using_temp = true;
 
-#if defined(HAVE_OSX)
-#define PGAGROAL_GETENV(name) getenv(name)
-#else
+#if defined(HAVE_LINUX)
 #define PGAGROAL_GETENV(name) secure_getenv(name)
+#else
+#define PGAGROAL_GETENV(name) getenv(name)
 #endif
 
    if (password == NULL)
@@ -671,7 +671,7 @@ username:
    }
 
    /* Verify */
-#ifdef HAVE_FREEBSD
+#if defined(HAVE_FREEBSD) || defined(HAVE_NETBSD)
    fseek(users_file, 0, SEEK_SET);
 #endif
    while (fgets(line, sizeof(line), users_file))
