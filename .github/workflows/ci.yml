@@ -105,6 +105,11 @@ jobs:
         run: |
           dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm
           dnf -qy module disable postgresql 2>/dev/null || true
+
+          # Disable all PGDG repos to prevent metadata sync failures for older PG versions on EL-10
+          dnf config-manager --set-disabled pgdg* || true
+          dnf config-manager --set-enabled pgdg17
+
           dnf install -y postgresql17 postgresql17-server postgresql17-contrib postgresql17-libs postgresql17-devel
 
       - name: Set Env Path Variable for PostgreSQL
