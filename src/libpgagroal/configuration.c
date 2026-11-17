@@ -4625,11 +4625,11 @@ pgagroal_as_bytes(char* str, unsigned int* bytes, unsigned int default_bytes)
    index = 0;
    for (unsigned long i = 0; i < strlen(str); i++)
    {
-      if (isdigit(str[i]))
+      if (isdigit((unsigned char)str[i]))
       {
          value[index++] = str[i];
       }
-      else if (isalpha(str[i]) && multiplier_set)
+      else if (isalpha((unsigned char)str[i]) && multiplier_set)
       {
          // allow a 'B' suffix on a multiplier
          // like for instance 'MB', but don't allow it
@@ -4640,7 +4640,7 @@ pgagroal_as_bytes(char* str, unsigned int* bytes, unsigned int default_bytes)
             goto error;
          }
       }
-      else if (isalpha(str[i]) && !multiplier_set)
+      else if (isalpha((unsigned char)str[i]) && !multiplier_set)
       {
          if (str[i] == 'M' || str[i] == 'm')
          {

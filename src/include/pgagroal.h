@@ -50,7 +50,7 @@ extern "C" {
 #define TRANSFER_UDS      ".s.pgagroal.tu"
 #define PG_UDS            ".s.PGSQL"
 
-#ifdef HAVE_FREEBSD
+#if defined(HAVE_FREEBSD) || defined(HAVE_NETBSD)
 #define PGAGROAL_DEFAULT_CONFIGURATION_PATH "/usr/local/etc/pgagroal/"
 #else
 #define PGAGROAL_DEFAULT_CONFIGURATION_PATH "/etc/pgagroal/"

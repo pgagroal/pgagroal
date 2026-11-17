@@ -14,6 +14,7 @@ This section contains reference links used throughout the manual.
 - **AppStream**: https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/installing_managing_and_removing_user-space_components/using-appstream_using-appstream
 - **FreeBSD**: https://www.freebsd.org/
 - **OpenBSD**: http://www.openbsd.org/
+- **NetBSD**: http://www.netbsd.org/
 - **GCC**: https://gcc.gnu.org
 - **CMake**: https://cmake.org
 - **Make**: https://www.gnu.org/software/make/
@@ -104,6 +105,7 @@ This section contains reference links used throughout the manual.
   [appstream]: https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/installing_managing_and_removing_user-space_components/using-appstream_using-appstream
   [freebsd]: https://www.freebsd.org/
   [openbsd]: http://www.openbsd.org/
+  [netbsd]: http://www.netbsd.org/
   [gcc]: https://gcc.gnu.org
   [cmake]: https://cmake.org
   [make]: https://www.gnu.org/software/make/

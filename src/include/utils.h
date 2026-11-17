@@ -733,7 +733,7 @@ pgagroal_connection_state_as_string(signed char state);
 /**
  * Get the OS name and kernel version.
  *
- * @param os            Pointer to store the OS name (e.g., "Linux", "FreeBSD", "OpenBSD").
+ * @param os            Pointer to store the OS name (e.g., "Linux", "FreeBSD", "OpenBSD", "NetBSD").
  *                      Memory will be allocated internally and should be freed by the caller.
  * @param kernel_major  Pointer to store the kernel major version.
  * @param kernel_minor  Pointer to store the kernel minor version.

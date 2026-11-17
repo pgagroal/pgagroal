@@ -391,7 +391,7 @@ parse_string(char* str, uint64_t* index, struct json** obj)
       while (idx < len)
       {
          // pre key
-         while (idx < len && isspace(str[idx]))
+         while (idx < len && isspace((unsigned char)str[idx]))
          {
             idx++;
          }
@@ -444,7 +444,7 @@ parse_string(char* str, uint64_t* index, struct json** obj)
             goto error;
          }
          // The lands between
-         while (idx < len && (str[idx] == '"' || isspace(str[idx])))
+         while (idx < len && (str[idx] == '"' || isspace((unsigned char)str[idx])))
          {
             idx++;
          }
@@ -452,7 +452,7 @@ parse_string(char* str, uint64_t* index, struct json** obj)
          {
             goto error;
          }
-         while (idx < len && (str[idx] == ':' || isspace(str[idx])))
+         while (idx < len && (str[idx] == ':' || isspace((unsigned char)str[idx])))
          {
             idx++;
          }
@@ -473,7 +473,7 @@ parse_string(char* str, uint64_t* index, struct json** obj)
    {
       while (idx < len)
       {
-         while (idx < len && isspace(str[idx]))
+         while (idx < len && isspace((unsigned char)str[idx]))
          {
             idx++;
          }
@@ -537,11 +537,11 @@ json_add(struct json* obj, char* key, uintptr_t val, enum value_type type)
 static bool
 value_start(char ch)
 {
-   return (isdigit(ch) || ch == '-' || ch == '+') || // number
-          (ch == '[') ||                             // array
-          (ch == '{') ||                             // item
-          (ch == '"' || ch == 'n') ||                // string or null string
-          (ch == 't' || ch == 'f');                  // potential boolean value
+   return (isdigit((unsigned char)ch) || ch == '-' || ch == '+') || // number
+          (ch == '[') ||                                            // array
+          (ch == '{') ||                                            // item
+          (ch == '"' || ch == 'n') ||                               // string or null string
+          (ch == 't' || ch == 'f');                                 // potential boolean value
 }
 
 static int
@@ -583,11 +583,11 @@ fill_value(char* str, char* key, uint64_t* index, struct json* o)
       idx++;
       free(val);
    }
-   else if (str[idx] == '-' || str[idx] == '+' || isdigit(str[idx]))
+   else if (str[idx] == '-' || str[idx] == '+' || isdigit((unsigned char)str[idx]))
    {
       bool has_digit = false;
       char* val_str = NULL;
-      while (idx < len && (isdigit(str[idx]) || str[idx] == '.' || str[idx] == '-' || str[idx] == '+'))
+      while (idx < len && (isdigit((unsigned char)str[idx]) || str[idx] == '.' || str[idx] == '-' || str[idx] == '+'))
       {
          if (str[idx] == '.')
          {

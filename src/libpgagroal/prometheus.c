@@ -1747,7 +1747,7 @@ home_page(SSL* client_ssl, int client_fd)
    data = pgagroal_append(data, "  <p>\n");
    data = pgagroal_append(data, "  Reports the kernel version of the Linux system where pgagroal is running, including major, minor, and patch versions.\n");
    data = pgagroal_append(data, "  </p>\n");
-#elif defined(HAVE_OPENBSD) || defined(HAVE_FREEBSD)
+#elif defined(HAVE_OPENBSD) || defined(HAVE_FREEBSD) || defined(HAVE_NETBSD)
    data = pgagroal_append(data, "  <h2>pgagroal_os_bsd</h2>\n");
    data = pgagroal_append(data, "  <p>\n");
    data = pgagroal_append(data, "  Reports the operating system version of the BSD system where pgagroal is running, including major and minor versions (patch version is not available).\n");

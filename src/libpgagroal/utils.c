@@ -822,11 +822,11 @@ pgagroal_base64_encode(void* raw, size_t raw_length, char** encoded, size_t* enc
    BIO_push(b64_bio, mem_bio);
    BIO_set_flags(b64_bio, BIO_FLAGS_BASE64_NO_NL);
    BIO_write(b64_bio, raw, raw_length);
-   BIO_flush(b64_bio);
+   (void)BIO_flush(b64_bio);
 
    BIO_get_mem_ptr(mem_bio, &mem_bio_mem_ptr);
 
-   BIO_set_close(mem_bio, BIO_NOCLOSE);
+   (void)BIO_set_close(mem_bio, BIO_NOCLOSE);
    BIO_free_all(b64_bio);
 
    BUF_MEM_grow(mem_bio_mem_ptr, (*mem_bio_mem_ptr).length + 1);
@@ -998,6 +998,8 @@ pgagroal_set_proc_title(int argc, char** argv, char* s1, char* s2)
    memset(*argv + MIN(size, max_process_title_size), 0, 1);
 
 #else
+   (void)argc;
+   (void)argv;
    setproctitle("-pgagroal: %s%s%s",
                 s1 != NULL ? s1 : "",
                 s1 != NULL && s2 != NULL ? "/" : "",
@@ -1267,6 +1269,9 @@ error:
    return 1;
 
 #else
+   (void)addr;
+   (void)offset;
+   (void)filepath;
    return 1;
 
 #endif
@@ -1727,7 +1732,7 @@ pgagroal_os_kernel_version(char** os, int* kernel_major, int* kernel_minor, int*
    *kernel_minor = 0;
    *kernel_patch = 0;
 
-#if defined(HAVE_LINUX) || defined(HAVE_FREEBSD) || defined(HAVE_OPENBSD) || defined(HAVE_OSX)
+#if defined(HAVE_LINUX) || defined(HAVE_FREEBSD) || defined(HAVE_OPENBSD) || defined(HAVE_NETBSD) || defined(HAVE_OSX)
    struct utsname buffer;
 
    if (uname(&buffer) != 0)
@@ -1751,7 +1756,7 @@ pgagroal_os_kernel_version(char** os, int* kernel_major, int* kernel_minor, int*
       pgagroal_log_debug("Failed to parse Linux kernel version.");
       goto error;
    }
-#elif defined(HAVE_FREEBSD) || defined(HAVE_OPENBSD)
+#elif defined(HAVE_FREEBSD) || defined(HAVE_OPENBSD) || defined(HAVE_NETBSD)
    if (sscanf(buffer.release, "%d.%d", kernel_major, kernel_minor) < 2)
    {
       pgagroal_log_debug("Failed to parse BSD OS kernel version.");
@@ -1814,10 +1819,10 @@ error:
 int
 pgagroal_resolve_path(char* orig_path, char** new_path)
 {
-#if defined(HAVE_OSX)
-#define GET_ENV(name) getenv(name)
-#else
+#if defined(HAVE_LINUX)
 #define GET_ENV(name) secure_getenv(name)
+#else
+#define GET_ENV(name) getenv(name)
 #endif
 
    char* res = NULL;

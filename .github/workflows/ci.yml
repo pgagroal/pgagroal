@@ -314,6 +314,75 @@ jobs:
           cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} "$GITHUB_WORKSPACE"
           make -j$(sysctl -n hw.ncpu)
 
+  build-netbsd:
+    needs: [format-check]
+    runs-on: ubuntu-latest
+    name: NetBSD Build and Test
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        compiler: [clang]
+        build_type: [Debug, Release]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install QEMU dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qemu-system-x86 \
+            qemu-utils \
+            libvirt-daemon-system \
+            libvirt-clients \
+            bridge-utils
+          sudo systemctl start libvirtd
+
+      - name: Setup NetBSD VM
+        uses: vmactions/netbsd-vm@v1
+        id: netbsd-vm
+        with:
+          release: "10.1"
+          usesh: true
+          envs: "PATH,GITHUB_ENV,GITHUB_WORKSPACE,GITHUB_OUTPUT"
+          mem: 4096
+          sync: rsync
+          copyback: true
+          run: |
+            # System bootstrap
+            pkg_add pkgin
+            pkgin -y update
+
+            # Base dependencies
+            pkgin -y install \
+              bash \
+              cmake \
+              clang \
+              pkg-config \
+              openssl \
+              zlib \
+              zstd \
+              lz4 \
+              bzip2 \
+              libssh \
+              libarchive \
+              curl \
+              postgresql17-server \
+              postgresql17-contrib \
+              python313 \
+              py313-pip
+
+            # Python / documentation
+            python3.13 -m pip install docutils --break-system-packages || python3.13 -m pip install docutils
+
+      - name: Build Project
+        shell: netbsd {0}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/build"
+          cd "$GITHUB_WORKSPACE/build"
+          cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} "$GITHUB_WORKSPACE"
+          make -j$(sysctl -n hw.ncpu)
+
   build-rpm:
     needs: [format-check]
     uses: ./.github/workflows/rpm-build.yml

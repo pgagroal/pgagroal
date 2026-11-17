@@ -31,6 +31,7 @@ The supported platforms are
 * [RHEL][rhel] 10 / RockyLinux 10
 * [FreeBSD][freebsd]
 * [OpenBSD][openbsd]
+* [NetBSD][netbsd]
 
 ## Migration
 
