@@ -60,6 +60,26 @@ database connections.
 The transaction pipeline requires that there are users defined such that connections
 can be kept in the pool in all security scenarios.
 
+__Setup without limits__
+
+The transaction pipeline does not require a `[limit]` section, and limit entries
+may set `initial_size` and `min_size` to 0. In that case the pool starts empty
+and grows at runtime: when a transaction needs a backend and no free slot
+matches, a new connection to PostgreSQL is created and authenticated on behalf
+of the client, up to the `max_size` of the matching limit entry or, when no
+limits are defined, up to `max_connections`. The socket descriptor of the new
+backend is transferred from the worker to the main process, which keeps it at a
+fixed descriptor number and pushes it to the other transaction workers, so any
+worker can reuse the slot in a later transaction.
+
+With this setup no backend is kept alive while the pool is idle beyond the
+connections actually created by client traffic, and no `initial_size` sizing
+decision is needed at configuration time. Supported security models for the
+on-demand authentication are `trust`, `password` and `scram-sha-256`, which are
+the same models supported by the prefill mechanism. Note that clients may need
+to wait for a free slot once the cap is reached; transactions are short, so the
+pool drains as they commit.
+
 However, there are some session based features of PostgreSQL that can't be supported in this
 pipeline.
 
