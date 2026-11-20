@@ -803,23 +803,17 @@ pgagroal_validate_configuration(void* shm, bool has_unix_socket, bool has_main_s
          }
       }
 
-      if (config->number_of_limits == 0)
-      {
-         pgagroal_log_fatal("pgagroal: Defining limits for the transaction pipeline is mandatory");
-         return 1;
-      }
-
       for (int i = 0; i < config->number_of_limits; i++)
       {
-         if (config->limits[i].min_size <= 0)
+         if (config->limits[i].min_size < 0)
          {
-            pgagroal_log_fatal("pgagroal: min_size for transaction pipeline must be greater than 0");
+            pgagroal_log_fatal("pgagroal: min_size for transaction pipeline must be greater or equal to 0");
             return 1;
          }
 
-         if (config->limits[i].initial_size <= 0)
+         if (config->limits[i].initial_size < 0)
          {
-            pgagroal_log_fatal("pgagroal: initial_size for transaction pipeline must be greater than 0");
+            pgagroal_log_fatal("pgagroal: initial_size for transaction pipeline must be greater or equal to 0");
             return 1;
          }
 

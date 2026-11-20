@@ -146,7 +146,7 @@ start:
             }
 
             /* We don't hold the descriptor if main received it after we were forked */
-            if (can_reuse && !transaction_mode && !holds_descriptor(i) && !fetch_descriptor(i))
+            if (can_reuse && !holds_descriptor(i) && !fetch_descriptor(i))
             {
                can_reuse = false;
             }
@@ -172,7 +172,7 @@ start:
       }
    }
 
-   if (*slot == -1 && !transaction_mode)
+   if (*slot == -1)
    {
       if (best_rule >= 0)
       {
@@ -316,6 +316,38 @@ start:
          pgagroal_log_debug("Connection setup: client_db='%s' -> postgres_db='%s'", database, real_database);
          config->connections[*slot].has_security = SECURITY_INVALID;
          config->connections[*slot].fd = fd;
+
+         if (transaction_mode)
+         {
+            /* Transactions run on an established backend, so the
+             * freshly connected socket is authenticated here on behalf of the
+             * client (trust, password or SCRAM-SHA-256). The worker keeps the
+             * descriptor, when the slot is returned, it is transferred to main
+             * (CONNECTION_TRANSFER) and pushed to the other transaction
+             * workers, so any worker can reuse the slot afterwards. */
+            if (pgagroal_backend_authenticate(username, real_database, *slot))
+            {
+               pgagroal_log_error("pgagroal: Backend authentication failed for user %s database %s slot %d",
+                                  username, real_database, *slot);
+               if (best_rule >= 0)
+               {
+                  /* The backend was reserved but never established; release it. */
+                  atomic_fetch_sub(&config->limits[best_rule].backend_connections, 1);
+               }
+               config->connections[*slot].limit_rule = -1;
+               config->connections[*slot].pid = -1;
+               config->connections[*slot].server = -1;
+               config->connections[*slot].fd = -1;
+               atomic_store(&config->states[*slot], STATE_NOTINIT);
+
+               pgagroal_prometheus_server_error(server);
+
+               pgagroal_disconnect(fd);
+               errno = 0;
+
+               goto error;
+            }
+         }
 
          atomic_store(&config->states[*slot], STATE_IN_USE);
       }

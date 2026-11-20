@@ -254,7 +254,7 @@ transaction_client(struct io_watcher* watcher)
 
       memset(&server_message_state, 0, sizeof(server_message_state));
 
-      wi->server_fd = fds[slot];
+      wi->server_fd = config->connections[slot].fd;
       wi->server_ssl = s_ssl;
       wi->slot = slot;
 

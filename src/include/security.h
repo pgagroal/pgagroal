@@ -71,6 +71,17 @@ int
 pgagroal_prefill_auth(char* username, char* password, char* database, int* slot, SSL** server_ssl);
 
 /**
+ * Authenticate a freshly connected backend for a slot on behalf of a known
+ * user. On-demand creation for the transaction pipeline
+ * @param username The user name
+ * @param database The database
+ * @param slot The slot with the backend descriptor at connections[slot].fd
+ * @return 0 upon success, otherwise 1
+ */
+int
+pgagroal_backend_authenticate(char* username, char* database, int slot);
+
+/**
  * Authenticate a remote management user
  * @param client_fd The descriptor
  * @param address The client address
