@@ -308,3 +308,27 @@ cleanup:
    pgagroal_json_destroy(array);
    MCTF_FINISH();
 }
+
+MCTF_TEST(test_json_iterator_failure)
+{
+   struct json* item = NULL;
+   struct json* empty = NULL;
+   struct json_iterator* iter = NULL;
+
+   pgagroal_json_create(&item);
+   pgagroal_json_create(&empty);
+
+   pgagroal_json_put(item, "1", 1, ValueInt32);
+
+   MCTF_ASSERT(!pgagroal_json_iterator_create(item, &iter), cleanup, "iterator create for item should succeed");
+   pgagroal_json_iterator_destroy(iter);
+
+   MCTF_ASSERT(pgagroal_json_iterator_create(empty, &iter), cleanup, "iterator creation should fail if json type is unknown");
+   MCTF_ASSERT(iter == NULL, cleanup, "iterator should be NULL on failure");
+
+cleanup:
+   pgagroal_json_iterator_destroy(iter);
+   pgagroal_json_destroy(item);
+   pgagroal_json_destroy(empty);
+   MCTF_FINISH();
+}
