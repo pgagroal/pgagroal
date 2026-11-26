@@ -63,6 +63,7 @@ struct art_iterator
    uint32_t count;      /**< The count of the iterator */
    char* key;           /**< The key */
    struct value* value; /**< The value */
+   bool started;        /**< Whether iteration has started */
 };
 
 /**
