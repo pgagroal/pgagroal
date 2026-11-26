@@ -412,8 +412,7 @@ pgagroal_authenticate(int client_fd, char* address, int* slot, SSL** client_ssl,
       /* Set the application_name on the connection */
       if (appname != NULL)
       {
-         memset(&config->connections[*slot].appname, 0, MAX_APPLICATION_NAME);
-         memcpy(&config->connections[*slot].appname, appname, strlen(appname));
+         pgagroal_copy_string(config->connections[*slot].appname, sizeof(config->connections[*slot].appname), appname);
       }
 
       if (config->connections[*slot].has_security != SECURITY_INVALID)
@@ -1693,18 +1692,15 @@ use_unpooled_connection(struct message* request_msg, SSL* c_ssl, int client_fd, 
    // Store the extracted values in the connection slot
    if (client_username != NULL)
    {
-      memset(&config->connections[slot].username, 0, MAX_USERNAME_LENGTH);
-      memcpy(&config->connections[slot].username, client_username, strlen(client_username));
+      pgagroal_copy_string(config->connections[slot].username, sizeof(config->connections[slot].username), client_username);
    }
    if (client_database != NULL)
    {
-      memset(&config->connections[slot].database, 0, MAX_DATABASE_LENGTH);
-      memcpy(&config->connections[slot].database, client_database, strlen(client_database));
+      pgagroal_copy_string(config->connections[slot].database, sizeof(config->connections[slot].database), client_database);
    }
    if (client_appname != NULL)
    {
-      memset(&config->connections[slot].appname, 0, MAX_APPLICATION_NAME);
-      memcpy(&config->connections[slot].appname, client_appname, strlen(client_appname));
+      pgagroal_copy_string(config->connections[slot].appname, sizeof(config->connections[slot].appname), client_appname);
    }
 
    // Create startup message with the REAL database name for PostgreSQL

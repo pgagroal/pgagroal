@@ -211,3 +211,26 @@ cleanup:
    free(s);
    MCTF_FINISH();
 }
+
+MCTF_TEST(test_utils_copy_string_truncates)
+{
+   /* Guard bytes after dst detect an overflow; 'x' must survive */
+   char buf[8 + 4];
+   char long_src[64];
+
+   memset(buf, 'x', sizeof(buf));
+   memset(long_src, 'a', sizeof(long_src) - 1);
+   long_src[sizeof(long_src) - 1] = '\0';
+
+   pgagroal_copy_string(buf, 8, long_src);
+
+   MCTF_ASSERT(buf[7] == '\0', cleanup, "destination must stay NUL terminated");
+   MCTF_ASSERT(strlen(buf) == 7, cleanup, "value must be truncated to size - 1");
+   MCTF_ASSERT(buf[8] == 'x' && buf[11] == 'x', cleanup, "bytes past the destination must be untouched");
+
+   pgagroal_copy_string(buf, 8, "abc");
+   MCTF_ASSERT_STR_EQ(buf, "abc", cleanup, "short value must be copied as is");
+
+cleanup:
+   MCTF_FINISH();
+}
