@@ -165,6 +165,13 @@ pgagroal_extract_username_database(struct message* msg, char** username, char** 
    return 0;
 }
 
+void
+pgagroal_copy_string(char* dst, size_t size, char* src)
+{
+   memset(dst, 0, size);
+   memcpy(dst, src, MIN(strlen(src), size - 1));
+}
+
 int
 pgagroal_extract_message(char type, struct message* msg, struct message** extracted)
 {

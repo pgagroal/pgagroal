@@ -137,6 +137,15 @@ int
 pgagroal_extract_username_database(struct message* msg, char** username, char** database, char** appname);
 
 /**
+ * Copy a string into a fixed size buffer, truncating it and always NUL terminating
+ * @param dst The destination buffer
+ * @param size The size of the destination buffer
+ * @param src The source string
+ */
+void
+pgagroal_copy_string(char* dst, size_t size, char* src);
+
+/**
  * Extract a message from a message
  * @param type The message type to be extracted
  * @param msg The message
