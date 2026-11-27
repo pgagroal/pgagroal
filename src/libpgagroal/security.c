@@ -659,6 +659,104 @@ error:
 }
 
 int
+pgagroal_backend_authenticate(char* username, char* database, int slot)
+{
+   int server_fd = -1;
+   int auth_type = -1;
+   int user = -1;
+   signed char server_state;
+   struct main_configuration* config = NULL;
+   struct message* startup_msg = NULL;
+   struct message* msg = NULL;
+   int status = -1;
+   SSL* server_ssl = NULL;
+   char* password = NULL;
+
+   config = (struct main_configuration*)shmem;
+
+   if (slot < 0 || slot >= config->max_connections)
+   {
+      goto error;
+   }
+
+   for (int i = 0; i < config->number_of_users && user == -1; i++)
+   {
+      if (pgagroal_strcmp(config->users[i].username, username))
+      {
+         user = i;
+      }
+   }
+
+   if (user == -1)
+   {
+      pgagroal_log_error("pgagroal_backend_authenticate: unknown user %s", username);
+      goto error;
+   }
+
+   password = config->users[user].password;
+   server_fd = config->connections[slot].fd;
+
+   status = pgagroal_create_startup_message(username, database, &startup_msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   status = pgagroal_write_message(server_ssl, server_fd, startup_msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   status = pgagroal_read_block_message(server_ssl, server_fd, &msg);
+   if (status != MESSAGE_STATUS_OK)
+   {
+      goto error;
+   }
+
+   get_auth_type(msg, &auth_type);
+   pgagroal_log_trace("backend_authenticate: auth type %d", auth_type);
+
+   if (auth_type == -1)
+   {
+      goto error;
+   }
+   else if (auth_type != SECURITY_TRUST && auth_type != SECURITY_PASSWORD && auth_type != SECURITY_SCRAM256)
+   {
+      goto error;
+   }
+
+   if (server_authenticate(msg, auth_type, username, password, slot, server_ssl))
+   {
+      goto error;
+   }
+
+   server_state = atomic_load(&config->servers[config->connections[slot].server].state);
+   if (server_state == SERVER_NOTINIT || server_state == SERVER_NOTINIT_PRIMARY)
+   {
+      pgagroal_log_debug("Verify server mode: %d", config->connections[slot].server);
+      pgagroal_update_server_state(slot, server_fd, server_ssl);
+      pgagroal_server_status();
+   }
+
+   pgagroal_log_debug("backend_authenticate: SUCCESS (slot %d user %s database %s)", slot, username, database);
+
+   pgagroal_free_message(startup_msg);
+   pgagroal_clear_message(msg);
+
+   return AUTH_SUCCESS;
+
+error:
+
+   pgagroal_log_debug("backend_authenticate: ERROR");
+
+   pgagroal_free_message(startup_msg);
+   pgagroal_clear_message(msg);
+
+   return AUTH_ERROR;
+}
+
+int
 pgagroal_remote_management_auth(int client_fd, char* address, SSL** client_ssl)
 {
    int status = MESSAGE_STATUS_ERROR;
