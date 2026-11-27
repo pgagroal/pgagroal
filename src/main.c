@@ -1424,6 +1424,7 @@ read_superuser_path:
          pgagroal_event_loop_fork();
          shutdown_ports(false);
          pgagroal_prefill_if_can(false, true);
+         exit(0);
       }
    }
 
