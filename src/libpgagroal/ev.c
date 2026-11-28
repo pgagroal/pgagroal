@@ -1112,7 +1112,20 @@ ev_io_uring_loop(void)
 static int
 ev_io_uring_fork(void)
 {
-   return 0;
+   /* The rings are not mapped in the child (io_uring_ring_dontfork), but their
+    * descriptors are inherited. Close them: the parent's pending accepts would
+    * keep its listening sockets open as long as the child lives */
+   if (loop->ring_rcv.ring_fd >= 0)
+   {
+      close(loop->ring_rcv.ring_fd);
+      loop->ring_rcv.ring_fd = -1;
+   }
+   if (loop->ring_snd.ring_fd >= 0)
+   {
+      close(loop->ring_snd.ring_fd);
+      loop->ring_snd.ring_fd = -1;
+   }
+   return PGAGROAL_EVENT_RC_OK;
 }
 
 static int
