@@ -28,6 +28,7 @@
  */
 #include <pgagroal.h>
 #include <mctf.h>
+#include <message.h>
 #include <utils.h>
 
 #include <limits.h>
@@ -232,5 +233,109 @@ MCTF_TEST(test_utils_copy_string_truncates)
    MCTF_ASSERT_STR_EQ(buf, "abc", cleanup, "short value must be copied as is");
 
 cleanup:
+   MCTF_FINISH();
+}
+
+/* Copy a wire buffer to an exact-size heap block so a read past its end is caught */
+static struct message*
+wire_message(const char* bytes, size_t size)
+{
+   struct message* msg = calloc(1, sizeof(struct message));
+
+   if (msg == NULL)
+   {
+      return NULL;
+   }
+
+   msg->data = malloc(size);
+   if (msg->data == NULL)
+   {
+      free(msg);
+      return NULL;
+   }
+
+   memcpy(msg->data, bytes, size);
+   msg->length = (ssize_t)size;
+
+   return msg;
+}
+
+static void
+free_wire_message(struct message* msg)
+{
+   if (msg != NULL)
+   {
+      free(msg->data);
+      free(msg);
+   }
+}
+
+MCTF_TEST(test_utils_extract_message_finds_second)
+{
+   /* 'A' with an empty body, then 'Z' with one byte of body */
+   const char bytes[] = {'A', 0, 0, 0, 4, 'Z', 0, 0, 0, 5, 'I'};
+   struct message* msg = wire_message(bytes, sizeof(bytes));
+   struct message* extracted = NULL;
+
+   MCTF_ASSERT_PTR_NONNULL(msg, cleanup, "failed to build test message");
+   MCTF_ASSERT_INT_EQ(pgagroal_extract_message('Z', msg, &extracted), 0, cleanup, "the 'Z' message should be found");
+   MCTF_ASSERT_PTR_NONNULL(extracted, cleanup, "extracted message should be set");
+   MCTF_ASSERT_INT_EQ(extracted->length, 6, cleanup, "extracted message should be 6 bytes");
+   MCTF_ASSERT(((char*)extracted->data)[5] == 'I', cleanup, "extracted body should be copied");
+
+cleanup:
+   pgagroal_free_message(extracted);
+   free_wire_message(msg);
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_utils_extract_message_rejects_truncated_header)
+{
+   /* A complete 'A' message followed by a two byte tail that cannot hold a header */
+   const char bytes[] = {'A', 0, 0, 0, 4, 'Z', 0};
+   struct message* msg = wire_message(bytes, sizeof(bytes));
+   struct message* extracted = NULL;
+
+   MCTF_ASSERT_PTR_NONNULL(msg, cleanup, "failed to build test message");
+   MCTF_ASSERT_INT_EQ(pgagroal_extract_message('Z', msg, &extracted), 1, cleanup, "a truncated header must be rejected");
+   MCTF_ASSERT_PTR_NULL(extracted, cleanup, "nothing should be extracted");
+
+cleanup:
+   pgagroal_free_message(extracted);
+   free_wire_message(msg);
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_utils_extract_message_rejects_short_length)
+{
+   /* A length of -1 would leave the offset where it is, then a valid 'Z' */
+   const char bytes[] = {'A', -1, -1, -1, -1, 'Z', 0, 0, 0, 4};
+   struct message* msg = wire_message(bytes, sizeof(bytes));
+   struct message* extracted = NULL;
+
+   MCTF_ASSERT_PTR_NONNULL(msg, cleanup, "failed to build test message");
+   MCTF_ASSERT_INT_EQ(pgagroal_extract_message('Z', msg, &extracted), 1, cleanup, "a length below 4 must be rejected");
+   MCTF_ASSERT_PTR_NULL(extracted, cleanup, "nothing should be extracted");
+
+cleanup:
+   pgagroal_free_message(extracted);
+   free_wire_message(msg);
+   MCTF_FINISH();
+}
+
+MCTF_TEST(test_utils_extract_message_rejects_overlong_length)
+{
+   /* 'Z' declares 100 bytes but only 5 follow the kind byte */
+   const char bytes[] = {'Z', 0, 0, 0, 100, 'x', 'x', 'x', 'x', 'x'};
+   struct message* msg = wire_message(bytes, sizeof(bytes));
+   struct message* extracted = NULL;
+
+   MCTF_ASSERT_PTR_NONNULL(msg, cleanup, "failed to build test message");
+   MCTF_ASSERT_INT_EQ(pgagroal_extract_message('Z', msg, &extracted), 1, cleanup, "a length past the buffer must be rejected");
+   MCTF_ASSERT_PTR_NULL(extracted, cleanup, "nothing should be extracted");
+
+cleanup:
+   pgagroal_free_message(extracted);
+   free_wire_message(msg);
    MCTF_FINISH();
 }
